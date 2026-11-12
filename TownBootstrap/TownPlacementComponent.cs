@@ -337,46 +337,54 @@ namespace Game
 
         private static void BuildRoads(SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY, ref int placed)
         {
-            // Main approach lanes stop at the central square and at each house entrance.
-            for (int z = -20; z <= 20; z++)
-            {
-                if (z >= -5 && z <= 5) continue;
-                if (z >= -9 && z <= -6) continue;
-                if (z >= 6 && z <= 9) continue;
+            // Four diagonal approaches lead from the corner homes into the square.
+            for (int z = -10; z <= -7; z++)
                 for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            }
+                    Place(terrain, cx - 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
+            for (int x = -14; x <= -7; x++)
+                for (int dz = -1; dz <= 1; dz++)
+                    Place(terrain, cx + x, baseY + 1, cz - 7 + dz, p.Cobble, ref placed);
+            for (int z = -7; z <= -5; z++)
+                for (int dx = -1; dx <= 1; dx++)
+                    Place(terrain, cx - 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
 
-            for (int x = -20; x <= 20; x++)
-            {
-                if (x >= -5 && x <= 5) continue;
-                if (x >= -9 && x <= -6) continue;
-                if (x >= 6 && x <= 9) continue;
+            for (int z = -10; z <= -7; z++)
+                for (int dx = -1; dx <= 1; dx++)
+                    Place(terrain, cx + 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
+            for (int x = 7; x <= 14; x++)
                 for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz + dz, p.Cobble, ref placed);
-            }
+                    Place(terrain, cx + x, baseY + 1, cz - 7 + dz, p.Cobble, ref placed);
+            for (int z = -7; z <= -5; z++)
+                for (int dx = -1; dx <= 1; dx++)
+                    Place(terrain, cx + 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
 
-            // Four short paths connect the square to the six houses.
-            for (int z = -9; z <= -6; z++)
-            {
+            for (int z = 7; z <= 10; z++)
                 for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            }
-            for (int z = 6; z <= 9; z++)
-            {
+                    Place(terrain, cx - 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
+            for (int x = -14; x <= -7; x++)
+                for (int dz = -1; dz <= 1; dz++)
+                    Place(terrain, cx + x, baseY + 1, cz + 7 + dz, p.Cobble, ref placed);
+            for (int z = 5; z <= 7; z++)
                 for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            }
-            for (int x = -9; x <= -6; x++)
-            {
+                    Place(terrain, cx - 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
+
+            for (int z = 7; z <= 10; z++)
+                for (int dx = -1; dx <= 1; dx++)
+                    Place(terrain, cx + 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
+            for (int x = 7; x <= 14; x++)
+                for (int dz = -1; dz <= 1; dz++)
+                    Place(terrain, cx + x, baseY + 1, cz + 7 + dz, p.Cobble, ref placed);
+            for (int z = 5; z <= 7; z++)
+                for (int dx = -1; dx <= 1; dx++)
+                    Place(terrain, cx + 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
+
+            // Short east/west paths connect the two side homes without running through them.
+            for (int x = -10; x <= -6; x++)
                 for (int dz = -1; dz <= 1; dz++)
                     Place(terrain, cx + x, baseY + 1, cz + dz, p.Cobble, ref placed);
-            }
-            for (int x = 6; x <= 9; x++)
-            {
+            for (int x = 6; x <= 10; x++)
                 for (int dz = -1; dz <= 1; dz++)
                     Place(terrain, cx + x, baseY + 1, cz + dz, p.Cobble, ref placed);
-            }
         }
 
         // frontSide: 0 = south (+Z), 1 = north (-Z), 2 = east (+X), 3 = west (-X)
