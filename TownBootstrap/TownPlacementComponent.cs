@@ -193,16 +193,12 @@ namespace Game
             p.Fence = ResolveBlockIndex("wooden fence", "WoodenFenceBlock", "FenceBlock");
             p.Workbench = ResolveBlockIndex("workbench", "CraftingTableBlock", "WorkbenchBlock");
 
-            // Vanilla Survivalcraft 2 content IDs. Keep these fallbacks because some
-            // API builds rename concrete block classes, causing reflection to return 0.
-            if (p.Stone <= 0) p.Stone = 1;     // Granite
-            if (p.Cobble <= 0) p.Cobble = 6;   // Cobblestone
-            if (p.Planks <= 0) p.Planks = 7;   // Planks
-            if (p.Log <= 0) p.Log = 8;         // Oak log
-            if (p.Glass <= 0) p.Glass = 15;    // Glass
-            if (p.Water <= 0) p.Water = 12;    // Water
-            if (p.Torch <= 0) p.Torch = 29;    // Torch
-            if (p.Workbench <= 0) p.Workbench = 24; // Workbench
+            // Do not guess numeric IDs: a wrong ID can silently become sand/soil.
+            // Granite ID 1 is verified; use it as a safe stone fallback for core materials.
+            if (p.Stone <= 0) p.Stone = 1;
+            if (p.Cobble <= 0) p.Cobble = p.Stone;
+            if (p.Planks <= 0) p.Planks = p.Stone;
+            if (p.Log <= 0) p.Log = p.Stone;
 
             Log.Information("[TownBootstrap] Palette: stone=" + p.Stone + ", cobble=" + p.Cobble +
                 ", planks=" + p.Planks + ", log=" + p.Log + ", glass=" + p.Glass +
@@ -536,7 +532,7 @@ namespace Game
             }
 
             // First-storey walls: stone lower course, warm timber above.
-            for (int y = baseY + 2; y <= baseY + 4; y++)
+            for (int y = baseY + 2; y <= baseY + 3; y++)
             {
                 for (int side = -4; side <= 4; side++)
                 {
@@ -546,7 +542,7 @@ namespace Game
             }
 
             // Corner timber posts emphasize the half-timbered frame.
-            for (int y = baseY + 2; y <= baseY + 8; y++)
+            for (int y = baseY + 2; y <= baseY + 6; y++)
             {
                 Place(terrain, cx - 4, y, cz - 4, p.Log, ref placed);
                 Place(terrain, cx + 4, y, cz - 4, p.Log, ref placed);
@@ -560,12 +556,12 @@ namespace Game
                 for (int dz = -3; dz <= 3; dz++)
                 {
                     if (dx == -1 && dz == 2) continue;
-                    Place(terrain, cx + dx, baseY + 5, cz + dz, p.Planks, ref placed);
+                    Place(terrain, cx + dx, baseY + 4, cz + dz, p.Planks, ref placed);
                 }
             }
 
             // Second-storey walls.
-            for (int y = baseY + 6; y <= baseY + 8; y++)
+            for (int y = baseY + 5; y <= baseY + 6; y++)
             {
                 for (int side = -4; side <= 4; side++)
                 {
@@ -575,19 +571,19 @@ namespace Game
             }
 
             // Gable ends beneath the pitched timber roof.
-            for (int h = 0; h <= 3; h++)
+            for (int h = 0; h <= 2; h++)
             {
                 for (int dx = -h; dx <= h; dx++)
                 {
-                    Place(terrain, cx + dx, baseY + 9 + h, cz - 4, p.Planks, ref placed);
-                    Place(terrain, cx + dx, baseY + 9 + h, cz + 4, p.Planks, ref placed);
+                    Place(terrain, cx + dx, baseY + 7 + h, cz - 4, p.Planks, ref placed);
+                    Place(terrain, cx + dx, baseY + 7 + h, cz + 4, p.Planks, ref placed);
                 }
             }
 
             // Pitched roof: the two slopes meet in a long ridge.
             for (int dx = -4; dx <= 4; dx++)
             {
-                int roofY = baseY + 9 + (4 - Math.Abs(dx));
+                int roofY = baseY + 7 + (2 - Math.Abs(dx) / 2);
                 for (int dz = -5; dz <= 5; dz++)
                     Place(terrain, cx + dx, roofY, cz + dz, p.Planks, ref placed);
             }
@@ -618,9 +614,9 @@ namespace Game
                 PlaceWindow(terrain, p, cx + 4, baseY + 3, cz - 2, ref placed);
                 PlaceWindow(terrain, p, cx + 4, baseY + 3, cz + 2, ref placed);
 
-                PlaceWindow(terrain, p, cx - 2, baseY + 7, cz - 4, ref placed);
+                PlaceWindow(terrain, p, cx - 2, baseY + 6, cz - 4, ref placed);
                 PlaceWindow(terrain, p, cx + 2, baseY + 7, cz - 4, ref placed);
-                PlaceWindow(terrain, p, cx - 2, baseY + 7, cz + 4, ref placed);
+                PlaceWindow(terrain, p, cx - 2, baseY + 6, cz + 4, ref placed);
                 PlaceWindow(terrain, p, cx + 2, baseY + 7, cz + 4, ref placed);
             }
 
@@ -632,7 +628,7 @@ namespace Game
                     for (int dz = -1; dz <= 1; dz++)
                     {
                         Place(terrain, cx + dx, baseY + 2, cz + dz, p.Carpet, ref placed);
-                        Place(terrain, cx + dx, baseY + 6, cz + dz, p.Carpet, ref placed);
+                        Place(terrain, cx + dx, baseY + 5, cz + dz, p.Carpet, ref placed);
                     }
                 }
             }
@@ -640,23 +636,23 @@ namespace Game
             // Interior storage and a small work corner on the ground floor.
             Place(terrain, cx - 2, baseY + 2, cz - 2, p.Chest, ref placed);
             Place(terrain, cx + 2, baseY + 2, cz - 2, p.Workbench, ref placed);
-            Place(terrain, cx - 2, baseY + 6, cz - 2, p.Chest, ref placed);
+            Place(terrain, cx - 2, baseY + 5, cz - 2, p.Chest, ref placed);
 
             // Floor-mounted torches keep the rooms lit without replacing wall blocks.
             Place(terrain, cx - 3, baseY + 2, cz + 2, p.Torch, ref placed);
             Place(terrain, cx + 3, baseY + 2, cz + 2, p.Torch, ref placed);
-            Place(terrain, cx - 3, baseY + 6, cz + 2, p.Torch, ref placed);
-            Place(terrain, cx + 3, baseY + 6, cz + 2, p.Torch, ref placed);
+            Place(terrain, cx - 3, baseY + 5, cz + 2, p.Torch, ref placed);
+            Place(terrain, cx + 3, baseY + 5, cz + 2, p.Torch, ref placed);
 
             // A compact internal stair run. Wooden stair blocks are preferred; planks are a safe fallback.
             int stairBlock = p.Stairs > 0 ? p.Stairs : p.Planks;
-            for (int step = 0; step < 4; step++)
+            for (int step = 0; step < 3; step++)
                 Place(terrain, cx + 2 - step, baseY + 2 + step, cz + 2, stairBlock, ref placed);
 
             // The blacksmith receives a stone chimney and extra stonework.
             if (style == 2)
             {
-                for (int y = baseY + 9; y <= baseY + 14; y++)
+                for (int y = baseY + 8; y <= baseY + 11; y++)
                 {
                     Place(terrain, cx + 3, y, cz - 3, p.Cobble, ref placed);
                     Place(terrain, cx + 3, y, cz - 2, p.Cobble, ref placed);
@@ -694,8 +690,8 @@ namespace Game
                 return;
 
             // Openings for ground-floor windows.
-            bool windowPosition = (y == baseY + 3 || y == baseY + 7) && (Math.Abs(side) == 2);
-            bool windowOnSide = wallGroup >= 2 && (y == baseY + 3 || y == baseY + 7) && (Math.Abs(side) == 2);
+            bool windowPosition = (y == baseY + 3 || y == baseY + 6) && (Math.Abs(side) == 2);
+            bool windowOnSide = wallGroup >= 2 && (y == baseY + 3 || y == baseY + 6) && (Math.Abs(side) == 2);
             if (windowPosition || windowOnSide)
             {
                 if (p.Glass > 0)
