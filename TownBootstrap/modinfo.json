@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Town Bootstrap - Two-Storey Village",
-  "Version": "0.3.0",
+  "Version": "0.3.1",
   "ApiVersion": "1.9.5.1",
-  "Description": "Generates a compact village with six two-storey timber-and-stone houses, furnished interiors, a well, market stall, paths and a small garden.",
+  "Description": "Generates a compact village with six two-storey timber-and-stone houses, furnished interiors, a well, market stall, paths and a small garden on gently uneven natural terrain.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": true,
