@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Mod xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/Assets/Database.xsd">
+  <EntityTemplate Name="Player" Guid="4be6c1c5-d65d-4537-8a8b-a391969e6dc2">
+    <MemberComponentTemplate
+      Name="TownPlacement"
+      Guid="73a8b8d2-04bf-4bce-aade-4a6327f90711"
+      InheritanceParent="c81a8598-c83f-4b3e-9f08-f8c7e6b2b12a" />
+  </EntityTemplate>
+
+  <Folder Name="TownBootstrap" Guid="9f10a9aa-57ae-4563-a946-6e73f3d9f62b">
+    <ComponentTemplate
+      Name="TownPlacement"
+      Guid="c81a8598-c83f-4b3e-9f08-f8c7e6b2b12a"
+      InheritanceParent="b05700ed-7e4e-4679-98f5-b597f421496b">
+      <Parameter
+        Name="Class"
+        Guid="ca63e268-5c42-4f58-a6a2-01e6a6c0ef12"
+        Value="Game.TownPlacementComponent"
+        Type="string" />
+      <Parameter
+        Name="LoadOrder"
+        Guid="e7b2ed34-6ba8-45a7-8fe2-8b7e65ad1f40"
+        Value="2147483647"
+        Type="int" />
+    </ComponentTemplate>
+  </Folder>
+</Mod>

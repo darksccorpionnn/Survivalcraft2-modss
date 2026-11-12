@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Town Bootstrap Test",
-  "Version": "0.1.0",
+  "Name": "Town Bootstrap - Block Placement Test",
+  "Version": "0.2.0",
   "ApiVersion": "1.9.5.1",
-  "Description": "Initial loading test for the upcoming town-generation mod.",
+  "Description": "Tests safe terrain block placement by creating a small stone marker near the player.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": true,

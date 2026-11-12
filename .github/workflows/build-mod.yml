@@ -42,7 +42,11 @@ jobs:
 
           with ZipFile(package) as archive:
               names = set(archive.namelist())
-              required = {"TownBootstrap.dll", "modinfo.json"}
+              required = {
+                  "TownBootstrap.dll",
+                  "modinfo.json",
+                  "Assets/TownBootstrapDatabase.xdb",
+              }
               missing = required - names
               if missing:
                   raise SystemExit(f"Package is missing required files: {sorted(missing)}")

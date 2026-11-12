@@ -4,10 +4,8 @@ C# mod projects for Survivalcraft 2 API.
 
 ## Current project
 
-- [TownBootstrap](TownBootstrap/README.md): first API 1.9.5.1 loading and packaging test.
+- [TownBootstrap](TownBootstrap/README.md): API loading test and first safe terrain block-placement test.
 - Automatic build: GitHub Actions workflow at `.github/workflows/build-mod.yml`.
-
-The first package is intentionally a small diagnostic mod. After it passes the in-game loading test, the next stage is the town-generation system.
 
 ## Compatibility target
 

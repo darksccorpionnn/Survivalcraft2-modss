@@ -1,46 +1,44 @@
-# Town Bootstrap Test Mod
+# Town Bootstrap - Block Placement Test
 
-This is the first smoke-test project for the planned Survivalcraft 2 town-generation mod.
+This stage verifies that the Survivalcraft API mod can safely place blocks in a loaded world.
 
 ## Target
 
-- Game version: Survivalcraft 2.4.0.0
-- API package: SurvivalcraftAPI.Survivalcraft 1.9.5.1
-- Target framework: .NET 10
+- Survivalcraft: 2.4.0.0
+- Survivalcraft API: 1.9.5.1
+- .NET: 10
 - Package: `TownBootstrap.scmod`
 
-## What this first build does
+## What version 0.2.0 does
 
-The mod loader writes two diagnostic entries:
+When the player entity loads into a world, the mod looks a few blocks diagonally from the player and attempts to place a small 3x3 stone pad with a two-block-high center marker.
 
-- `[TownBootstrap] Mod initialized`
-- `[TownBootstrap] OnLoadingFinished reached`
+- It uses `SubsystemTerrain.ChangeCell` so the game receives normal terrain-change notifications.
+- It only places blocks into air cells; it does not replace existing blocks.
+- It checks for the marker before placing, to avoid stacking another copy when the same area is revisited.
+- If no surface is found, it skips the placement and records a diagnostic message.
 
-This verifies that the assembly is packaged and that the API recognizes the mod loader. It does not generate a town yet.
+This is a block-placement test, not the finished village generator.
 
 ## Build
-
-Install the .NET 10 SDK, then run from the repository root:
 
 ```bash
 dotnet restore TownBootstrap/TownBootstrap.csproj --configfile nuget.config
 dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release
 ```
 
-The build target creates:
+The build target creates `TownBootstrap.scmod` one directory above the output folder. The package must contain:
 
-```
-TownBootstrap/bin/Release/TownBootstrap.scmod
-```
-
-GitHub Actions runs the same build after pushes to `main` and stores the package as the `TownBootstrap-scmod` workflow artifact.
+- `TownBootstrap.dll`
+- `modinfo.json`
+- `Assets/TownBootstrapDatabase.xdb`
 
 ## Android installation
 
-Copy the built `.scmod` file to the Survivalcraft API mod folder:
+Replace the previous TownBootstrap test package with the new `.scmod` file in:
 
 ```
 /storage/emulated/0/download/Survivalcraft/Mods/
 ```
 
-Restart the API client and check the mod list. This project still requires an in-game smoke test before it can be called confirmed working.
+Keep any separate villager mod installed. Then restart the API client, open a test world, and look a few blocks diagonally from the player for the small stone pad and marker.
