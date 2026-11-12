@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Town Bootstrap - Two-Storey Village",
-  "Version": "0.5.0",
+  "Version": "0.5.1",
   "ApiVersion": "1.9.5.1",
-  "Description": "Generates one furnished village at each 256-block world-grid node as the player explores. The first town is centred at the world origin; robust vanilla block-ID fallbacks and relaxed terrain-site selection help ensure generation across natural terrain.",
+  "Description": "Compact two-storey village with shorter houses, safe block palette resolution, and one town per 256-block world-grid node.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": true,
