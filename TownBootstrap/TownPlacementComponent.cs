@@ -30,6 +30,7 @@ namespace Game
             public int Water;
             public int Soil;
             public int Fence;
+            public int Workbench;
         }
 
         public UpdateOrder UpdateOrder => UpdateOrder.Default;
@@ -126,6 +127,7 @@ namespace Game
             p.Water = ResolveBlockIndex("water", "WaterBlock");
             p.Soil = ResolveBlockIndex("soil", "SoilBlock", "FarmlandBlock");
             p.Fence = ResolveBlockIndex("wooden fence", "WoodenFenceBlock", "FenceBlock");
+            p.Workbench = ResolveBlockIndex("workbench", "CraftingTableBlock", "WorkbenchBlock");
             return p;
         }
 
@@ -141,7 +143,7 @@ namespace Game
             {
                 MethodInfo candidate = methods[i];
                 if (candidate.Name == "GetBlockIndex" && candidate.IsGenericMethodDefinition &&
-                    candidate.GetGenericArguments().Length == 1)
+                    candidate.GetGenericArguments().Length == 1 && candidate.GetParameters().Length <= 1)
                 {
                     getIndex = candidate;
                     break;
@@ -497,7 +499,7 @@ namespace Game
 
             // Interior storage and a small work corner on the ground floor.
             Place(terrain, cx - 2, baseY + 2, cz - 2, p.Chest, ref placed);
-            Place(terrain, cx + 2, baseY + 2, cz - 2, 24, ref placed); // Vanilla workbench content.
+            Place(terrain, cx + 2, baseY + 2, cz - 2, p.Workbench, ref placed);
             Place(terrain, cx - 2, baseY + 6, cz - 2, p.Chest, ref placed);
 
             // Floor-mounted torches keep the rooms lit without replacing wall blocks.
@@ -552,8 +554,8 @@ namespace Game
                 return;
 
             // Openings for ground-floor windows.
-            bool windowPosition = y == baseY + 3 && (Math.Abs(side) == 2);
-            bool windowOnSide = wallGroup >= 2 && y == baseY + 3 && (Math.Abs(side) == 2);
+            bool windowPosition = (y == baseY + 3 || y == baseY + 7) && (Math.Abs(side) == 2);
+            bool windowOnSide = wallGroup >= 2 && (y == baseY + 3 || y == baseY + 7) && (Math.Abs(side) == 2);
             if (windowPosition || windowOnSide)
             {
                 if (p.Glass > 0)
@@ -615,7 +617,7 @@ namespace Game
             // Market stall: timber posts, counter and a broad wooden canopy.
             for (int dx = 2; dx <= 4; dx += 2)
             {
-                for (int dz = 2; dz <= 4; dz += 2)
+                for (int dz = -4; dz <= -2; dz += 2)
                 {
                     Place(terrain, cx + dx, baseY + 2, cz + dz, p.Log, ref placed);
                     Place(terrain, cx + dx, baseY + 3, cz + dz, p.Log, ref placed);
@@ -623,13 +625,13 @@ namespace Game
             }
             for (int dx = 2; dx <= 4; dx++)
             {
-                Place(terrain, cx + dx, baseY + 2, cz + 3, p.Planks, ref placed);
-                Place(terrain, cx + dx, baseY + 4, cz + 2, p.Planks, ref placed);
-                Place(terrain, cx + dx, baseY + 4, cz + 3, p.Planks, ref placed);
-                Place(terrain, cx + dx, baseY + 4, cz + 4, p.Planks, ref placed);
+                Place(terrain, cx + dx, baseY + 2, cz - 3, p.Planks, ref placed);
+                Place(terrain, cx + dx, baseY + 4, cz - 4, p.Planks, ref placed);
+                Place(terrain, cx + dx, baseY + 4, cz - 3, p.Planks, ref placed);
+                Place(terrain, cx + dx, baseY + 4, cz - 2, p.Planks, ref placed);
             }
-            Place(terrain, cx + 3, baseY + 2, cz + 2, p.Chest, ref placed);
-            Place(terrain, cx + 3, baseY + 2, cz + 4, p.Chest, ref placed);
+            Place(terrain, cx + 3, baseY + 2, cz - 2, p.Chest, ref placed);
+            Place(terrain, cx + 3, baseY + 2, cz - 4, p.Chest, ref placed);
 
             // Short benches around the well.
             Place(terrain, cx - 4, baseY + 2, cz, p.Planks, ref placed);
@@ -658,7 +660,7 @@ namespace Game
             SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY, ref int placed)
         {
             // A small fenced planting bed on the south side of the square.
-            for (int dx = -4; dx <= -2; dx++)
+            for (int dx = -5; dx <= -3; dx++)
             {
                 for (int dz = 2; dz <= 4; dz++)
                 {
@@ -671,15 +673,15 @@ namespace Game
 
             if (p.Fence > 0)
             {
-                for (int dx = -5; dx <= -1; dx++)
+                for (int dx = -5; dx <= -3; dx++)
                 {
                     Place(terrain, cx + dx, baseY + 2, cz + 1, p.Fence, ref placed);
                     Place(terrain, cx + dx, baseY + 2, cz + 5, p.Fence, ref placed);
                 }
                 for (int dz = 2; dz <= 4; dz++)
                 {
-                    Place(terrain, cx - 5, baseY + 2, cz + dz, p.Fence, ref placed);
-                    Place(terrain, cx - 1, baseY + 2, cz + dz, p.Fence, ref placed);
+                    Place(terrain, cx - 6, baseY + 2, cz + dz, p.Fence, ref placed);
+                    Place(terrain, cx - 2, baseY + 2, cz + dz, p.Fence, ref placed);
                 }
             }
         }
