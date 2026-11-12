@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Town Bootstrap - Block Placement Test",
-  "Version": "0.2.0",
+  "Name": "Town Bootstrap - Two-Storey Village",
+  "Version": "0.3.0",
   "ApiVersion": "1.9.5.1",
-  "Description": "Tests safe terrain block placement by creating a small stone marker near the player.",
+  "Description": "Generates a compact village with six two-storey timber-and-stone houses, furnished interiors, a well, market stall, paths and a small garden.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": true,
