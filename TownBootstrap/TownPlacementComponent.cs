@@ -103,9 +103,9 @@ namespace Game
             BuildHouse(terrain, palette, townX - 14, townZ, baseY, 2, 2, ref placed);      // Blacksmith
             BuildHouse(terrain, palette, townX + 14, townZ, baseY, 3, 3, ref placed);      // Inn / larger home
 
+            BuildSmallGarden(terrain, palette, townX, townZ, baseY, ref placed);
             BuildCentralSquare(terrain, palette, townX, townZ, baseY, ref placed);
             BuildTownLights(terrain, palette, townX, townZ, baseY, ref placed);
-            BuildSmallGarden(terrain, palette, townX, townZ, baseY, ref placed);
 
             Log.Information("[TownBootstrap] Village created at X=" + townX + ", Y=" + baseY + ", Z=" + townZ +
                 ". Blocks placed: " + placed + ". Six two-storey houses, central well, market and paths.");
