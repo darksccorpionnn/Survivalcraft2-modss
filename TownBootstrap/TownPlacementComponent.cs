@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Collections.Generic;
 using Engine;
 using GameEntitySystem;
 using TemplatesDatabase;
@@ -12,12 +13,13 @@ namespace Game
     /// </summary>
     public sealed class TownPlacementComponent : Component, IUpdateable
     {
-        private static Project s_processedProject;
+        private static Project s_activeProject;
+        private static readonly HashSet<string> s_processedCells = new HashSet<string>();
         private ComponentPlayer m_componentPlayer;
         private Palette m_palette;
         private float m_retryTimer;
         private int m_attemptCount;
-        private bool m_markerChecked;
+
 
         private sealed class Palette
         {
@@ -49,11 +51,16 @@ namespace Game
         public void Update(float dt)
         {
             Project project = GameManager.Project;
-            if (project == null || project == s_processedProject)
+            if (project == null)
                 return;
 
-            // The player component or nearby terrain chunks may not be ready on the first update.
-            // Keep looking for the player and retry generation instead of permanently giving up.
+            if (s_activeProject != project)
+            {
+                s_activeProject = project;
+                s_processedCells.Clear();
+                Log.Information("[TownBootstrap] New world session detected; 256-block town grid enabled.");
+            }
+
             if (m_componentPlayer == null)
                 m_componentPlayer = Entity.FindComponent<ComponentPlayer>(true);
             if (m_componentPlayer == null)
@@ -63,7 +70,6 @@ namespace Game
             if (m_retryTimer < 2f)
                 return;
             m_retryTimer = 0f;
-            m_attemptCount++;
 
             SubsystemTerrain terrain = project.FindSubsystem<SubsystemTerrain>();
             if (terrain == null)
@@ -71,46 +77,58 @@ namespace Game
 
             try
             {
-                int playerX = (int)Math.Floor(m_componentPlayer.ComponentBody.Position.X);
-                int playerY = (int)Math.Floor(m_componentPlayer.ComponentBody.Position.Y);
-                int playerZ = (int)Math.Floor(m_componentPlayer.ComponentBody.Position.Z);
+                Vector3 playerPosition = m_componentPlayer.ComponentBody.Position;
+                int playerX = (int)Math.Floor(playerPosition.X);
+                int playerY = (int)Math.Floor(playerPosition.Y);
+                int playerZ = (int)Math.Floor(playerPosition.Z);
 
-                if (!m_markerChecked)
+                // One town per 256x256 world-grid cell. Towns are centred on each cell,
+                // so neighbouring town centres are exactly 256 blocks apart.
+                int cellX = (int)Math.Floor(playerX / 256.0);
+                int cellZ = (int)Math.Floor(playerZ / 256.0);
+                string cellKey = cellX + ":" + cellZ;
+                if (s_processedCells.Contains(cellKey))
+                    return;
+
+                int anchorX = cellX * 256 + 128;
+                int anchorZ = cellZ * 256 + 128;
+                int dx = playerX - anchorX;
+                int dz = playerZ - anchorZ;
+
+                // Wait until the player is close enough that the candidate sites are loaded.
+                if (dx * dx + dz * dz > 112 * 112)
+                    return;
+
+                if (HasTownMarker(terrain, anchorX, playerY, anchorZ))
                 {
-                    if (HasTownMarker(terrain, playerX, playerY, playerZ))
-                    {
-                        Log.Information("[TownBootstrap] Existing town marker found; generation skipped.");
-                        s_processedProject = project;
-                        return;
-                    }
-                    m_markerChecked = true;
+                    Log.Information("[TownBootstrap] Town already exists in grid cell " + cellKey + ".");
+                    s_processedCells.Add(cellKey);
+                    return;
                 }
 
                 if (m_palette == null)
                     m_palette = ResolvePalette();
 
-                if (GenerateTown(terrain, m_componentPlayer.ComponentBody.Position, m_palette))
+                if (GenerateTown(terrain, anchorX, playerY, anchorZ, m_palette))
                 {
-                    s_processedProject = project;
+                    s_processedCells.Add(cellKey);
                     return;
                 }
 
+                m_attemptCount++;
                 if (m_attemptCount == 1 || m_attemptCount % 5 == 0)
-                    Log.Information("[TownBootstrap] Generation attempt " + m_attemptCount +
-                        " did not find a safe site yet. It will retry while the world is active.");
+                    Log.Information("[TownBootstrap] Cell " + cellKey + " has no safe site yet; retrying.");
             }
             catch (Exception ex)
             {
-                Log.Information("[TownBootstrap] Town generation attempt " + m_attemptCount +
-                    " stopped safely and will retry: " + ex);
+                Log.Information("[TownBootstrap] Town generation attempt failed and will retry: " + ex);
             }
         }
 
-        private static bool GenerateTown(SubsystemTerrain terrain, Vector3 playerPosition, Palette palette)
+        private static bool GenerateTown(SubsystemTerrain terrain, int anchorX, int playerY, int anchorZ, Palette palette)
         {
-            int playerX = (int)Math.Floor(playerPosition.X);
-            int playerY = (int)Math.Floor(playerPosition.Y);
-            int playerZ = (int)Math.Floor(playerPosition.Z);
+            int playerX = anchorX;
+            int playerZ = anchorZ;
 
             if (palette == null || palette.Stone <= 0 || palette.Planks <= 0 || palette.Log <= 0 || palette.Cobble <= 0)
             {
@@ -230,14 +248,14 @@ namespace Game
             SubsystemTerrain subsystemTerrain, int playerX, int playerY, int playerZ,
             out int centerX, out int centerZ, out int baseY)
         {
-            // Each candidate centre is 36-54 blocks from the player's first loaded position.
+            // Candidate sites stay near the 256-block grid-cell centre.
             int[,] offsets = new int[,]
             {
-                { 40, 0 }, { -40, 0 }, { 0, 40 }, { 0, -40 },
+                { 0, 0 }, { 24, 0 }, { -24, 0 }, { 0, 24 }, { 0, -24 },
                 { 32, 32 }, { -32, 32 }, { 32, -32 }, { -32, -32 },
-                { 52, 0 }, { -52, 0 }, { 0, 52 }, { 0, -52 },
-                { 60, 0 }, { -60, 0 }, { 0, 60 }, { 0, -60 },
-                { 44, 44 }, { -44, 44 }, { 44, -44 }, { -44, -44 }
+                { 48, 0 }, { -48, 0 }, { 0, 48 }, { 0, -48 },
+                { 40, 24 }, { -40, 24 }, { 40, -24 }, { -40, -24 },
+                { 24, 40 }, { -24, 40 }, { 24, -40 }, { -24, -40 }
             };
 
             for (int i = 0; i < offsets.GetLength(0); i++)
@@ -324,9 +342,9 @@ namespace Game
         private static bool TryFindSurfaceY(
             SubsystemTerrain terrain, int x, int z, int scanY, out int surfaceY)
         {
-            int minY = Math.Max(1, scanY - 32);
-            // Player height is near the ground surface; avoid mistaking tree canopies for terrain.
-            int maxY = Math.Min(254, scanY + 3);
+            int minY = Math.Max(1, scanY - 48);
+            // Search a wider vertical band because the cell centre can be above/below the player.
+            int maxY = Math.Min(254, scanY + 24);
 
             for (int y = maxY; y >= minY; y--)
             {
@@ -342,14 +360,14 @@ namespace Game
             return false;
         }
 
-        private static bool HasTownMarker(SubsystemTerrain terrain, int playerX, int playerY, int playerZ)
+        private static bool HasTownMarker(SubsystemTerrain terrain, int anchorX, int playerY, int anchorZ)
         {
-            // The well contains a four-block granite column. It is distinctive and also decorative.
-            int minY = Math.Max(1, playerY - 6);
-            int maxY = Math.Min(248, playerY + 20);
-            for (int x = playerX - 64; x <= playerX + 64; x++)
+            // Search the central 112x112 area of this grid cell for the well's granite marker.
+            int minY = Math.Max(1, playerY - 48);
+            int maxY = Math.Min(248, playerY + 24);
+            for (int x = anchorX - 56; x <= anchorX + 56; x++)
             {
-                for (int z = playerZ - 64; z <= playerZ + 64; z++)
+                for (int z = anchorZ - 56; z <= anchorZ + 56; z++)
                 {
                     for (int y = minY; y <= maxY; y++)
                     {
