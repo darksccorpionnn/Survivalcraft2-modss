@@ -1,0 +1,60 @@
+name: Build Survivalcraft Mod
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "TownBootstrap/**"
+      - "nuget.config"
+      - ".github/workflows/build-mod.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore TownBootstrap/TownBootstrap.csproj --configfile nuget.config
+
+      - name: Build and package
+        run: dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release --no-restore
+
+      - name: Verify mod package
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          package = Path("TownBootstrap/bin/Release/TownBootstrap.scmod")
+          if not package.is_file():
+              raise SystemExit(f"Package not found: {package}")
+
+          with ZipFile(package) as archive:
+              names = set(archive.namelist())
+              required = {"TownBootstrap.dll", "modinfo.json"}
+              missing = required - names
+              if missing:
+                  raise SystemExit(f"Package is missing required files: {sorted(missing)}")
+              print("Package contents:")
+              for name in sorted(names):
+                  print(" -", name)
+          PY
+
+      - name: Upload .scmod artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TownBootstrap-scmod
+          path: TownBootstrap/bin/Release/TownBootstrap.scmod
+          if-no-files-found: error
+          retention-days: 14
