@@ -243,23 +243,38 @@ namespace Game
                 }
             }
 
-            if (maxSurface - minSurface > 2 || maxSurface >= 238)
+            // Natural terrain rarely stays perfectly level over 41x41 blocks.
+            // Allow a gentle slope; structures are elevated to the highest sampled ground.
+            if (maxSurface - minSurface > 8 || maxSurface >= 238)
             {
                 baseY = 0;
                 return false;
             }
 
-            // A full-cell clearance pass rejects trees, buildings and other occupied spaces.
-            for (int x = -20; x <= 20; x++)
+            // Check the actual house footprints and square, not every tree in the whole 41x41 area.
+            // A blocked site is skipped; the placement routine itself still writes only into air.
+            int[,] footprints = new int[,]
             {
-                for (int z = -20; z <= 20; z++)
+                { -14, -14 }, { 14, -14 }, { -14, 14 }, { 14, 14 },
+                { -14, 0 }, { 14, 0 }, { 0, 0 }
+            };
+            for (int i = 0; i < footprints.GetLength(0); i++)
+            {
+                int half = i == 6 ? 5 : 4;
+                for (int x = -half; x <= half; x += 2)
                 {
-                    for (int y = maxSurface + 1; y <= maxSurface + 14; y++)
+                    for (int z = -half; z <= half; z += 2)
                     {
-                        if (Terrain.ExtractContents(terrain.Terrain.GetCellValue(centerX + x, y, centerZ + z)) != 0)
+                        for (int y = maxSurface + 1; y <= maxSurface + 13; y++)
                         {
-                            baseY = 0;
-                            return false;
+                            int value = terrain.Terrain.GetCellValue(
+                                centerX + footprints[i, 0] + x, y,
+                                centerZ + footprints[i, 1] + z);
+                            if (Terrain.ExtractContents(value) != 0)
+                            {
+                                baseY = 0;
+                                return false;
+                            }
                         }
                     }
                 }
