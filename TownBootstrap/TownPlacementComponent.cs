@@ -142,11 +142,9 @@ namespace Game
             int playerX = anchorX;
             int playerZ = anchorZ;
 
-            if (palette == null || palette.Stone <= 0 || palette.Planks <= 0 || palette.Log <= 0 || palette.Cobble <= 0)
+            if (palette == null || palette.Stone <= 0 || palette.Cobble <= 0)
             {
-                Log.Information("[TownBootstrap] Required stone/wood blocks could not be resolved (planks=" +
-                    (palette == null ? 0 : palette.Planks) + ", log=" + (palette == null ? 0 : palette.Log) +
-                    "). No terrain was changed.");
+                Log.Information("[TownBootstrap] Essential stone blocks could not be resolved. No terrain was changed.");
                 return false;
             }
 
@@ -202,6 +200,10 @@ namespace Game
             if (p.Stone <= 0) p.Stone = 1; // verified granite fallback only
             if (p.Cobble <= 0) p.Cobble = p.Stone;
             if (p.StoneBricks <= 0) p.StoneBricks = p.Cobble;
+            // Never block village generation when optional wood classes differ between API builds.
+            // Use the known-safe stone palette as a last-resort fallback; the generator remains active.
+            if (p.Planks <= 0) p.Planks = p.Stone;
+            if (p.Log <= 0) p.Log = p.Stone;
 
             Log.Information("[TownBootstrap] Palette: stone=" + p.Stone + ", cobble=" + p.Cobble +
                 ", stoneBricks=" + p.StoneBricks + ", planks=" + p.Planks + ", log=" + p.Log + ", glass=" + p.Glass +
