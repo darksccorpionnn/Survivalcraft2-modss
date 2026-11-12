@@ -14,6 +14,10 @@ namespace Game
     {
         private static Project s_processedProject;
         private ComponentPlayer m_componentPlayer;
+        private Palette m_palette;
+        private float m_retryTimer;
+        private int m_attemptCount;
+        private bool m_markerChecked;
 
         private sealed class Palette
         {
@@ -45,50 +49,80 @@ namespace Game
         public void Update(float dt)
         {
             Project project = GameManager.Project;
-            if (project == null || project == s_processedProject || m_componentPlayer == null)
+            if (project == null || project == s_processedProject)
                 return;
+
+            // The player component or nearby terrain chunks may not be ready on the first update.
+            // Keep looking for the player and retry generation instead of permanently giving up.
+            if (m_componentPlayer == null)
+                m_componentPlayer = Entity.FindComponent<ComponentPlayer>(true);
+            if (m_componentPlayer == null)
+                return;
+
+            m_retryTimer += dt;
+            if (m_retryTimer < 2f)
+                return;
+            m_retryTimer = 0f;
+            m_attemptCount++;
 
             SubsystemTerrain terrain = project.FindSubsystem<SubsystemTerrain>();
             if (terrain == null)
                 return;
 
-            // Avoid repeating the search every frame, including when no safe site exists.
-            s_processedProject = project;
-
             try
             {
-                GenerateTown(terrain, m_componentPlayer.ComponentBody.Position);
+                int playerX = (int)Math.Floor(m_componentPlayer.ComponentBody.Position.X);
+                int playerY = (int)Math.Floor(m_componentPlayer.ComponentBody.Position.Y);
+                int playerZ = (int)Math.Floor(m_componentPlayer.ComponentBody.Position.Z);
+
+                if (!m_markerChecked)
+                {
+                    if (HasTownMarker(terrain, playerX, playerY, playerZ))
+                    {
+                        Log.Information("[TownBootstrap] Existing town marker found; generation skipped.");
+                        s_processedProject = project;
+                        return;
+                    }
+                    m_markerChecked = true;
+                }
+
+                if (m_palette == null)
+                    m_palette = ResolvePalette();
+
+                if (GenerateTown(terrain, m_componentPlayer.ComponentBody.Position, m_palette))
+                {
+                    s_processedProject = project;
+                    return;
+                }
+
+                if (m_attemptCount == 1 || m_attemptCount % 5 == 0)
+                    Log.Information("[TownBootstrap] Generation attempt " + m_attemptCount +
+                        " did not find a safe site yet. It will retry while the world is active.");
             }
             catch (Exception ex)
             {
-                Log.Information("[TownBootstrap] Town generation stopped safely: " + ex);
+                Log.Information("[TownBootstrap] Town generation attempt " + m_attemptCount +
+                    " stopped safely and will retry: " + ex);
             }
         }
 
-        private static void GenerateTown(SubsystemTerrain terrain, Vector3 playerPosition)
+        private static bool GenerateTown(SubsystemTerrain terrain, Vector3 playerPosition, Palette palette)
         {
             int playerX = (int)Math.Floor(playerPosition.X);
             int playerY = (int)Math.Floor(playerPosition.Y);
             int playerZ = (int)Math.Floor(playerPosition.Z);
 
-            if (HasTownMarker(terrain, playerX, playerY, playerZ))
-            {
-                Log.Information("[TownBootstrap] A generated town marker was found nearby; no second town was made.");
-                return;
-            }
-
-            Palette palette = ResolvePalette();
-            if (palette.Stone <= 0 || palette.Planks <= 0 || palette.Log <= 0 || palette.Cobble <= 0)
+            if (palette == null || palette.Stone <= 0 || palette.Planks <= 0 || palette.Log <= 0 || palette.Cobble <= 0)
             {
                 Log.Information("[TownBootstrap] Required stone/wood blocks could not be resolved. No terrain was changed.");
-                return;
+                return false;
             }
 
             int townX, townZ, baseY;
             if (!TryFindVillageSite(terrain, playerX, playerY, playerZ, out townX, out townZ, out baseY))
             {
-                Log.Information("[TownBootstrap] No clear, nearly flat 41x41 site was found 30-60 blocks from the player. No terrain was changed.");
-                return;
+                Log.Information("[TownBootstrap] No suitable site was found in this pass. No terrain was changed.");
+                return false;
             }
 
             int placed = 0;
@@ -109,6 +143,7 @@ namespace Game
 
             Log.Information("[TownBootstrap] Village created at X=" + townX + ", Y=" + baseY + ", Z=" + townZ +
                 ". Blocks placed: " + placed + ". Six two-storey houses, central well, market and paths.");
+            return placed > 0;
         }
 
         private static Palette ResolvePalette()
@@ -200,7 +235,9 @@ namespace Game
             {
                 { 40, 0 }, { -40, 0 }, { 0, 40 }, { 0, -40 },
                 { 32, 32 }, { -32, 32 }, { 32, -32 }, { -32, -32 },
-                { 52, 0 }, { -52, 0 }, { 0, 52 }, { 0, -52 }
+                { 52, 0 }, { -52, 0 }, { 0, 52 }, { 0, -52 },
+                { 60, 0 }, { -60, 0 }, { 0, 60 }, { 0, -60 },
+                { 44, 44 }, { -44, 44 }, { 44, -44 }, { -44, -44 }
             };
 
             for (int i = 0; i < offsets.GetLength(0); i++)
@@ -245,7 +282,7 @@ namespace Game
 
             // Natural terrain rarely stays perfectly level over 41x41 blocks.
             // Allow a gentle slope; structures are elevated to the highest sampled ground.
-            if (maxSurface - minSurface > 8 || maxSurface >= 238)
+            if (maxSurface - minSurface > 12 || maxSurface >= 238)
             {
                 baseY = 0;
                 return false;
@@ -288,7 +325,8 @@ namespace Game
             SubsystemTerrain terrain, int x, int z, int scanY, out int surfaceY)
         {
             int minY = Math.Max(1, scanY - 32);
-            int maxY = Math.Min(254, scanY + 12);
+            // Player height is near the ground surface; avoid mistaking tree canopies for terrain.
+            int maxY = Math.Min(254, scanY + 3);
 
             for (int y = maxY; y >= minY; y--)
             {
