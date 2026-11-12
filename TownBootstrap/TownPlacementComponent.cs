@@ -19,6 +19,7 @@ namespace Game
         private Palette m_palette;
         private float m_retryTimer;
         private int m_attemptCount;
+        private bool m_runtimeLogged;
 
 
         private sealed class Palette
@@ -84,20 +85,30 @@ namespace Game
 
                 // One town per 256x256 world-grid cell. Towns are centred on each cell,
                 // so neighbouring town centres are exactly 256 blocks apart.
-                int cellX = (int)Math.Floor(playerX / 256.0);
-                int cellZ = (int)Math.Floor(playerZ / 256.0);
+                // Grid nodes are multiples of 256. This puts the first town at/near
+                // the usual world origin instead of leaving the spawn stranded 181 blocks
+                // from the centre of cell (0,0).
+                int cellX = (int)Math.Floor((playerX + 128.0) / 256.0);
+                int cellZ = (int)Math.Floor((playerZ + 128.0) / 256.0);
                 string cellKey = cellX + ":" + cellZ;
                 if (s_processedCells.Contains(cellKey))
                     return;
 
-                int anchorX = cellX * 256 + 128;
-                int anchorZ = cellZ * 256 + 128;
+                int anchorX = cellX * 256;
+                int anchorZ = cellZ * 256;
                 int dx = playerX - anchorX;
                 int dz = playerZ - anchorZ;
 
-                // Wait until the player is close enough that the candidate sites are loaded.
+                // Generate only when near the selected grid node, where its terrain is loaded.
                 if (dx * dx + dz * dz > 112 * 112)
                     return;
+
+                if (!m_runtimeLogged)
+                {
+                    Log.Information("[TownBootstrap] Runtime active. Player=" + playerX + "," + playerY + "," + playerZ +
+                        "; grid cell=" + cellKey + "; town anchor=" + anchorX + "," + anchorZ + ".");
+                    m_runtimeLogged = true;
+                }
 
                 if (HasTownMarker(terrain, anchorX, playerY, anchorZ))
                 {
@@ -181,6 +192,21 @@ namespace Game
             p.Soil = ResolveBlockIndex("soil", "SoilBlock", "FarmlandBlock");
             p.Fence = ResolveBlockIndex("wooden fence", "WoodenFenceBlock", "FenceBlock");
             p.Workbench = ResolveBlockIndex("workbench", "CraftingTableBlock", "WorkbenchBlock");
+
+            // Vanilla Survivalcraft 2 content IDs. Keep these fallbacks because some
+            // API builds rename concrete block classes, causing reflection to return 0.
+            if (p.Stone <= 0) p.Stone = 1;     // Granite
+            if (p.Cobble <= 0) p.Cobble = 6;   // Cobblestone
+            if (p.Planks <= 0) p.Planks = 7;   // Planks
+            if (p.Log <= 0) p.Log = 8;         // Oak log
+            if (p.Glass <= 0) p.Glass = 15;    // Glass
+            if (p.Water <= 0) p.Water = 12;    // Water
+            if (p.Torch <= 0) p.Torch = 29;    // Torch
+            if (p.Workbench <= 0) p.Workbench = 24; // Workbench
+
+            Log.Information("[TownBootstrap] Palette: stone=" + p.Stone + ", cobble=" + p.Cobble +
+                ", planks=" + p.Planks + ", log=" + p.Log + ", glass=" + p.Glass +
+                ", torch=" + p.Torch + ", chest=" + p.Chest + ", door=" + p.Door + ".");
             return p;
         }
 
@@ -251,11 +277,10 @@ namespace Game
             // Candidate sites stay near the 256-block grid-cell centre.
             int[,] offsets = new int[,]
             {
-                { 0, 0 }, { 24, 0 }, { -24, 0 }, { 0, 24 }, { 0, -24 },
-                { 32, 32 }, { -32, 32 }, { 32, -32 }, { -32, -32 },
-                { 48, 0 }, { -48, 0 }, { 0, 48 }, { 0, -48 },
-                { 40, 24 }, { -40, 24 }, { 40, -24 }, { -40, -24 },
-                { 24, 40 }, { -24, 40 }, { 24, -40 }, { -24, -40 }
+                { 0, 0 }, { 16, 0 }, { -16, 0 }, { 0, 16 }, { 0, -16 },
+                { 24, 24 }, { -24, 24 }, { 24, -24 }, { -24, -24 },
+                { 32, 0 }, { -32, 0 }, { 0, 32 }, { 0, -32 },
+                { 32, 16 }, { -32, 16 }, { 32, -16 }, { -32, -16 }
             };
 
             for (int i = 0; i < offsets.GetLength(0); i++)
@@ -283,9 +308,9 @@ namespace Game
             int maxSurface = 0;
 
             // Check the entire footprint in a two-block grid for height consistency.
-            for (int x = -20; x <= 20; x += 2)
+            for (int x = -20; x <= 20; x += 4)
             {
-                for (int z = -20; z <= 20; z += 2)
+                for (int z = -20; z <= 20; z += 4)
                 {
                     int surface;
                     if (!TryFindSurfaceY(terrain, centerX + x, centerZ + z, scanY, out surface))
@@ -300,7 +325,7 @@ namespace Game
 
             // Natural terrain rarely stays perfectly level over 41x41 blocks.
             // Allow a gentle slope; structures are elevated to the highest sampled ground.
-            if (maxSurface - minSurface > 12 || maxSurface >= 238)
+            if (maxSurface - minSurface > 18 || maxSurface >= 238)
             {
                 baseY = 0;
                 return false;
@@ -342,9 +367,9 @@ namespace Game
         private static bool TryFindSurfaceY(
             SubsystemTerrain terrain, int x, int z, int scanY, out int surfaceY)
         {
-            int minY = Math.Max(1, scanY - 48);
-            // Search a wider vertical band because the cell centre can be above/below the player.
-            int maxY = Math.Min(254, scanY + 24);
+            int minY = Math.Max(1, scanY - 64);
+            // Search above and below the player: grid nodes can be on a different elevation.
+            int maxY = Math.Min(254, scanY + 64);
 
             for (int y = maxY; y >= minY; y--)
             {
