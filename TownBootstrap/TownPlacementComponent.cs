@@ -298,6 +298,42 @@ namespace Game
                 }
             }
 
+            // Last-resort natural-ground search: don't reject an otherwise usable
+            // location just because a tree or a small obstruction intersects a house pad.
+            // Place() still writes only into air, so existing terrain/buildings are preserved.
+            int[,] groundChecks = new int[,]
+            {
+                { 0, 0 }, { -14, -14 }, { 14, -14 }, { -14, 14 }, { 14, 14 },
+                { -14, 0 }, { 14, 0 }
+            };
+            for (int i = 0; i < offsets.GetLength(0); i++)
+            {
+                int x = playerX + offsets[i, 0];
+                int z = playerZ + offsets[i, 1];
+                int minGround = 255;
+                int maxGround = 0;
+                int found = 0;
+                for (int k = 0; k < groundChecks.GetLength(0); k++)
+                {
+                    int surface;
+                    if (!TryFindSurfaceY(subsystemTerrain,
+                        x + groundChecks[k, 0], z + groundChecks[k, 1], playerY, out surface))
+                        continue;
+                    found++;
+                    if (surface < minGround) minGround = surface;
+                    if (surface > maxGround) maxGround = surface;
+                }
+                if (found >= 5 && maxGround - minGround <= 24 && maxGround < 238)
+                {
+                    centerX = x;
+                    centerZ = z;
+                    baseY = maxGround;
+                    Log.Information("[TownBootstrap] Using relaxed terrain site at X=" + x +
+                        ", Z=" + z + ", surface range=" + minGround + "-" + maxGround + ".");
+                    return true;
+                }
+            }
+
             centerX = centerZ = baseY = 0;
             return false;
         }
