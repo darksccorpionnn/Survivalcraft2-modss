@@ -51,7 +51,7 @@ namespace Game
             int scanY = (int)Math.Floor(playerPosition.Y);
             int centerX = (int)Math.Floor(playerPosition.X) + 2;
             int centerZ = (int)Math.Floor(playerPosition.Z) + 2;
-            int stoneContents = BlocksManager.GetBlockIndex<StoneBlock>();
+            const int stoneContents = 1; // Vanilla Granite block content ID.
             int stoneValue = Terrain.MakeBlockValue(stoneContents);
 
             // Detect the marker after a world is reopened; do not stack another copy.
