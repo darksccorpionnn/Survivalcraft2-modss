@@ -26,6 +26,7 @@ namespace Game
         {
             public int Stone;
             public int Cobble;
+            public int StoneBricks;
             public int Planks;
             public int Log;
             public int Glass;
@@ -143,7 +144,9 @@ namespace Game
 
             if (palette == null || palette.Stone <= 0 || palette.Planks <= 0 || palette.Log <= 0 || palette.Cobble <= 0)
             {
-                Log.Information("[TownBootstrap] Required stone/wood blocks could not be resolved. No terrain was changed.");
+                Log.Information("[TownBootstrap] Required stone/wood blocks could not be resolved (planks=" +
+                    (palette == null ? 0 : palette.Planks) + ", log=" + (palette == null ? 0 : palette.Log) +
+                    "). No terrain was changed.");
                 return false;
             }
 
@@ -179,8 +182,9 @@ namespace Game
         {
             Palette p = new Palette();
             p.Stone = ResolveBlockIndex("granite", "GraniteBlock", "StoneBlock");
-            p.Cobble = ResolveBlockIndex("cobblestone", "CobblestoneBlock", "RoughStoneBlock");
-            p.Planks = ResolveBlockIndex("planks", "PlanksBlock", "WoodPlanksBlock");
+            p.Cobble = ResolveBlockIndex("cobblestone", "CobblestoneBlock", "CobbleStoneBlock", "RoughStoneBlock");
+            p.StoneBricks = ResolveBlockIndex("stone bricks", "StoneBricksBlock", "StoneBrickBlock", "StoneBrick");
+            p.Planks = ResolveBlockIndex("wooden planks", "PlanksBlock", "WoodPlanksBlock", "WoodenPlanksBlock");
             p.Log = ResolveBlockIndex("oak log", "OakWoodBlock", "WoodBlock", "Log1Block", "OakLogBlock");
             p.Glass = ResolveBlockIndex("glass", "GlassBlock");
             p.Door = ResolveBlockIndex("wooden door", "WoodenDoorBlock", "WoodDoorBlock");
@@ -193,15 +197,14 @@ namespace Game
             p.Fence = ResolveBlockIndex("wooden fence", "WoodenFenceBlock", "FenceBlock");
             p.Workbench = ResolveBlockIndex("workbench", "CraftingTableBlock", "WorkbenchBlock");
 
-            // Do not guess numeric IDs: a wrong ID can silently become sand/soil.
-            // Granite ID 1 is verified; use it as a safe stone fallback for core materials.
-            if (p.Stone <= 0) p.Stone = 1;
+            // No guessed numeric IDs and no dirt/sand substitutes for house materials.
+            // If a wood class cannot be resolved, keep retrying instead of building ugly houses.
+            if (p.Stone <= 0) p.Stone = 1; // verified granite fallback only
             if (p.Cobble <= 0) p.Cobble = p.Stone;
-            if (p.Planks <= 0) p.Planks = p.Stone;
-            if (p.Log <= 0) p.Log = p.Stone;
+            if (p.StoneBricks <= 0) p.StoneBricks = p.Cobble;
 
             Log.Information("[TownBootstrap] Palette: stone=" + p.Stone + ", cobble=" + p.Cobble +
-                ", planks=" + p.Planks + ", log=" + p.Log + ", glass=" + p.Glass +
+                ", stoneBricks=" + p.StoneBricks + ", planks=" + p.Planks + ", log=" + p.Log + ", glass=" + p.Glass +
                 ", torch=" + p.Torch + ", chest=" + p.Chest + ", door=" + p.Door + ".");
             return p;
         }
@@ -526,7 +529,7 @@ namespace Game
                 for (int dz = -4; dz <= 4; dz++)
                 {
                     FillSupport(terrain, p, cx + dx, cz + dz, baseY, ref placed);
-                    int floor = (Math.Abs(dx) == 4 || Math.Abs(dz) == 4) ? p.Cobble : p.Planks;
+                    int floor = (Math.Abs(dx) == 4 || Math.Abs(dz) == 4) ? p.StoneBricks : p.Planks;
                     Place(terrain, cx + dx, baseY + 1, cz + dz, floor, ref placed);
                 }
             }
@@ -654,10 +657,10 @@ namespace Game
             {
                 for (int y = baseY + 8; y <= baseY + 11; y++)
                 {
-                    Place(terrain, cx + 3, y, cz - 3, p.Cobble, ref placed);
-                    Place(terrain, cx + 3, y, cz - 2, p.Cobble, ref placed);
+                    Place(terrain, cx + 3, y, cz - 3, p.StoneBricks, ref placed);
+                    Place(terrain, cx + 3, y, cz - 2, p.StoneBricks, ref placed);
                 }
-                Place(terrain, cx + 2, baseY + 2, cz - 3, p.Stone, ref placed);
+                Place(terrain, cx + 2, baseY + 2, cz - 3, p.StoneBricks, ref placed);
             }
 
             // A modest inn sign-like timber frame and extra upper-floor detail.
@@ -699,9 +702,9 @@ namespace Game
                 return;
             }
 
-            int wallContents = (y == baseY + 2) ? p.Cobble : p.Planks;
+            int wallContents = (y == baseY + 2) ? p.StoneBricks : p.Planks;
             if (style == 2 && y <= baseY + 3)
-                wallContents = p.Cobble;
+                wallContents = p.StoneBricks;
             Place(terrain, x, y, z, wallContents, ref placed);
         }
 
