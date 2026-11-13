@@ -7,3 +7,5 @@
 - Job route failures use the existing progress watchdog and do not invoke random path recovery into obstacles.
 - Build workflow compiles the assembly and packages a directly installable .scmod artifact.
 - Build validation is compile/package validation; actual Android in-game behavior still requires testing in the user's world.
+
+Build target branch: `livingtowns-0.4.32-villager-ai`.
