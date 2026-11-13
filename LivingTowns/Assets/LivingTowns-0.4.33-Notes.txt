@@ -1,0 +1,12 @@
+Living Towns 0.4.33 — sleep routing stability
+
+Root cause fixed:
+The named sleep-cell assignment expired after 8 seconds even when its floor cell was still valid. When the male villager or farmer needed longer to navigate through the registered door, the controller discarded the bed, stopped the active route, then repeatedly rescanned and restarted. The female villager could appear to work when her route completed sooner.
+
+Change:
+- A valid and unclaimed named sleep cell now remains assigned.
+- The retry timer is used only when no valid named sleep cell can be found.
+- If the assigned cell becomes invalid or is claimed by another villager, the controller clears and searches again.
+
+Build target: Survivalcraft 2.4.0.0 / API 1.9.5.1.
+Build validation does not replace an in-game test on the target Android device.
