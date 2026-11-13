@@ -112,6 +112,14 @@ namespace Game
         private float m_managedProgressDistance;
         private double m_managedNoProgressTime;
         private bool m_hasManagedProgressSample;
+        private double m_workRouteNoProgressTime;
+        private float m_workRouteBestDistance;
+        private Vector3 m_workRouteTrackedTarget;
+        private bool m_hasWorkRouteSample;
+        private double m_homeReturnNoProgressTime;
+        private float m_homeReturnBestDistance;
+        private Vector3 m_homeReturnTrackedTarget;
+        private bool m_hasHomeReturnSample;
         private bool m_wasNight;
         private bool m_hasFallbackRestPosition;
         private Vector3 m_fallbackRestPosition;
@@ -228,6 +236,7 @@ namespace Game
             if (m_destinationRetryCooldown < 0.0)
                 m_destinationRetryCooldown = 0.0;
             UpdateManagedPathProgress(dt);
+            UpdateWorkRouteProgress(dt);
             TryJumpAtBlockingStep(dt);
             UpdateFailedWorkPositions(dt);
 
@@ -263,6 +272,7 @@ namespace Game
                     m_nextFallbackRestSearchTime = 0.0;
                     m_hasLumberTreeLock = false;
                     ResetLumberSearch();
+                    ResetHomeReturnProgress();
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
                 }
                 TickSleepRoutine(dt);
@@ -290,6 +300,8 @@ namespace Game
                     m_bedAssignmentFailureTime = 0.0;
                     m_hasFallbackRestPosition = false;
                     m_nextFallbackRestSearchTime = 0.0;
+                    m_sleepDoorRouteBypassed = false;
+                    ResetHomeReturnProgress();
                     Log.Information("[LivingTowns] Dusk started; villager is returning home while remaining awake.");
                 }
                 TickHomeReturnRoutine(dt);
@@ -399,6 +411,8 @@ namespace Game
             m_nextWorkSearchTime = 0.0;
             m_hasLumberTreeLock = false;
             ResetLumberSearch();
+            ResetWorkRouteProgress();
+            ResetHomeReturnProgress();
             m_patrolPause = 0.0;
             EndConversation(false);
             m_chatCooldown = 12.0;
@@ -850,43 +864,40 @@ namespace Game
 
         private void TickRestRoutine(float dt, bool sleepOnArrival)
         {
-            // Prefer the villager's exact named wall sign. If it cannot be resolved
-            // after repeated scans (for example, a sign is outside the old scan height),
-            // use a safe indoor position near this home rather than leaving the villager
-            // frozen outside all night.
             if (!EnsureAssignedBed(dt))
             {
                 m_bedAssignmentFailureTime += dt;
-                if (!m_hasFallbackRestPosition && m_bedAssignmentFailureTime >= 8.0
-                    && m_nextFallbackRestSearchTime <= 0.0)
+                m_nextFallbackRestSearchTime -= dt;
+
+                // A missing/misread wall sign is not a reason to stand still.
+                // Immediately look for a room position, then widen to safe ground
+                // cells around the registered home door.
+                if (!m_hasFallbackRestPosition && m_nextFallbackRestSearchTime <= 0.0)
                 {
-                    m_nextFallbackRestSearchTime = 4.0;
-                    if (TryFindHomeRestPosition(out Vector3 fallbackPosition))
+                    m_nextFallbackRestSearchTime = 2.0;
+                    if (TryFindHomeRestPosition(out Vector3 fallbackPosition)
+                        || TryFindSafeHomeRestPosition(out fallbackPosition))
                     {
                         m_fallbackRestPosition = fallbackPosition;
                         m_hasFallbackRestPosition = true;
+                        ResetHomeReturnProgress();
                         Log.Warning("[LivingTowns] " + m_villagerName
-                            + " could not resolve its named sleep sign; using a safe home rest position at "
+                            + " could not resolve its named sign; returning to a safe fallback position at "
                             + fallbackPosition.X.ToString("0.0") + ","
                             + fallbackPosition.Y.ToString("0.0") + ","
                             + fallbackPosition.Z.ToString("0.0") + ".");
                     }
                 }
-                else if (!m_hasFallbackRestPosition)
-                    m_nextFallbackRestSearchTime -= dt;
 
                 if (m_hasFallbackRestPosition)
                 {
-                    RestAtPosition(m_fallbackRestPosition, sleepOnArrival);
+                    RestAtPosition(m_fallbackRestPosition, sleepOnArrival, dt);
                     return;
                 }
 
-                StopManagedPath();
-                if (m_sleepPhysicsSaved)
-                {
-                    m_body.IsGravityEnabled = m_wasGravityEnabled;
-                    m_sleepPhysicsSaved = false;
-                }
+                // Keep retrying rather than repeatedly stopping movement. If the
+                // terrain around the door is temporarily unavailable, the next
+                // two-second scan can recover once its chunk becomes ready.
                 SetSleepingAnimation(false);
                 return;
             }
@@ -894,11 +905,12 @@ namespace Game
             m_bedAssignmentFailureTime = 0.0;
             m_hasFallbackRestPosition = false;
             m_nextFallbackRestSearchTime = 0.0;
-            RestAtPosition(GetBedSleepPosition(), sleepOnArrival);
+            RestAtPosition(GetBedSleepPosition(), sleepOnArrival, dt);
         }
 
-        private void RestAtPosition(Vector3 target, bool sleepOnArrival)
+        private void RestAtPosition(Vector3 target, bool sleepOnArrival, float dt)
         {
+            UpdateHomeReturnProgress(target, dt);
             float dx = m_body.Position.X - target.X;
             float dz = m_body.Position.Z - target.Z;
             // Different villager models can have slightly different body origins.
@@ -909,6 +921,7 @@ namespace Game
             {
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
+                ResetHomeReturnProgress();
                 StopManagedPath();
                 CloseDoorsForSleep();
                 DepositCollectedItemsIntoPersonalChest();
@@ -946,21 +959,31 @@ namespace Game
                 // If the waypoint route is genuinely stuck, release its door lock and
                 // let pathfinding find a direct route to the assigned rest cell. This is
                 // a one-time-per-night fallback, not random wandering.
-                if (!m_sleepDoorRouteBypassed && m_homeDoorRouteActive
-                    && m_pathfinding?.Destination.HasValue == true
-                    && (m_pathfinding.IsStuck || m_managedNoProgressTime >= 6.0))
+                if (m_homeReturnNoProgressTime >= 5.0)
                 {
-                    Log.Warning("[LivingTowns] " + m_villagerName
-                        + " sleep doorway route stalled; retrying directly to the assigned rest cell.");
-                    ReleaseHomeDoorPassage();
-                    m_homeDoorRouteActive = false;
-                    m_sleepDoorRouteBypassed = true;
+                    if (!m_sleepDoorRouteBypassed && m_homeDoorRouteActive)
+                    {
+                        Log.Warning("[LivingTowns] " + m_villagerName
+                            + " home doorway route made no progress; bypassing the waypoint sequence.");
+                        ReleaseHomeDoorPassage();
+                        m_homeDoorRouteActive = false;
+                        m_sleepDoorRouteBypassed = true;
+                        StopManagedPath();
+                        ResetHomeReturnProgress();
+                    }
+                    else if (m_homeReturnNoProgressTime >= 9.0)
+                    {
+                        // Force a clean direct-route retry even if the pathfinder
+                        // silently cleared Destination while the villager was stalled.
+                        StopManagedPath();
+                        ResetHomeReturnProgress();
+                    }
                 }
                 if (!m_sleepDoorRouteBypassed)
                     TryGetHomeDoorRouteDestination(target, true, out routeTarget);
                 // Random recovery is intentionally disabled: the direct fallback keeps
                 // the named resting target and avoids wandering through the house.
-                SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
+                SetManagedDestination(routeTarget, 2.2f, 0.65f, 2200, false, false, false, null, false);
             }
         }
 
@@ -1116,7 +1139,7 @@ namespace Game
         {
             doorCenter = Vector3.Zero;
             inward = Vector3.Zero;
-            if (m_terrain == null || !m_hasHomeDoor || !m_hasBedCell)
+            if (m_terrain == null || !m_hasHomeDoor || (!m_hasBedCell && !m_hasFallbackRestPosition))
                 return false;
 
             int value = m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
@@ -1129,7 +1152,9 @@ namespace Game
             int rotation = DoorBlock.GetRotation(Terrain.ExtractData(value));
             Vector3 axis = (rotation & 1) == 0 ? Vector3.UnitZ : Vector3.UnitX;
             doorCenter = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f);
-            Vector3 bedPosition = new Vector3(m_bedCell.X + 0.5f, m_bedCell.Y + 1f, m_bedCell.Z + 0.5f);
+            Vector3 bedPosition = m_hasBedCell
+                ? new Vector3(m_bedCell.X + 0.5f, m_bedCell.Y + 1f, m_bedCell.Z + 0.5f)
+                : m_fallbackRestPosition;
             float side = Vector3.Dot(bedPosition - doorCenter, axis);
             if (Math.Abs(side) < 0.45f)
                 return false;
@@ -1359,6 +1384,66 @@ namespace Game
 
             SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
             return true;
+        }
+
+        private bool TryFindSafeHomeRestPosition(out Vector3 restPosition)
+        {
+            restPosition = Vector3.Zero;
+            if (m_terrain == null || !m_hasHomeDoor)
+                return false;
+
+            float bestScore = float.MaxValue;
+            bool found = false;
+            Vector3 bestPosition = Vector3.Zero;
+            for (int radius = 0; radius <= 12; radius++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                for (int dz = -radius; dz <= radius; dz++)
+                {
+                    if (radius > 0 && Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                        continue;
+
+                    int x = m_homeDoor.X + dx;
+                    int z = m_homeDoor.Z + dz;
+                    int topY = m_terrain.Terrain.GetTopHeight(x, z);
+                    for (int yOffset = -2; yOffset <= 2; yOffset++)
+                    {
+                        int floorY = topY + yOffset;
+                        if (!IsValidStandingCell(x, floorY, z))
+                            continue;
+
+                        Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                        float score = Vector3.DistanceSquared(candidate,
+                            new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f))
+                            + Math.Abs(candidate.Y - m_homeDoor.Y) * 2f;
+                        if (!found || score < bestScore)
+                        {
+                            found = true;
+                            bestScore = score;
+                            bestPosition = candidate;
+                        }
+                    }
+                }
+            }
+
+            if (found)
+            {
+                restPosition = bestPosition;
+                return true;
+            }
+
+            // The villager was spawned on a valid cell adjacent to its door.
+            // Keep that verified cell as the final fallback instead of freezing.
+            int bodyX = Terrain.ToCell(m_body.Position.X);
+            int bodyY = Terrain.ToCell(m_body.Position.Y);
+            int bodyZ = Terrain.ToCell(m_body.Position.Z);
+            if (Math.Abs(bodyX - m_homeDoor.X) <= 12 && Math.Abs(bodyZ - m_homeDoor.Z) <= 12
+                && IsValidStandingCell(bodyX, bodyY - 1, bodyZ))
+            {
+                restPosition = new Vector3(bodyX + 0.5f, bodyY, bodyZ + 0.5f);
+                return true;
+            }
+            return false;
         }
 
         private bool TryFindHomeRestPosition(out Vector3 restPosition)
@@ -1845,6 +1930,88 @@ namespace Game
             m_nextObstacleJumpTime = 1.15;
         }
 
+        private void UpdateWorkRouteProgress(float dt)
+        {
+            if (!m_hasWorkTarget || !m_hasWorkApproach || m_body == null)
+            {
+                ResetWorkRouteProgress();
+                return;
+            }
+
+            float distance = Vector3.Distance(m_body.Position, m_workApproachPosition);
+            if (!m_hasWorkRouteSample
+                || Vector3.DistanceSquared(m_workRouteTrackedTarget, m_workApproachPosition) > 0.25f)
+            {
+                m_workRouteTrackedTarget = m_workApproachPosition;
+                m_workRouteBestDistance = distance;
+                m_workRouteNoProgressTime = 0.0;
+                m_hasWorkRouteSample = true;
+                return;
+            }
+
+            if (distance <= 0.95f)
+            {
+                m_workRouteBestDistance = distance;
+                m_workRouteNoProgressTime = 0.0;
+                return;
+            }
+
+            if (distance < m_workRouteBestDistance - 0.15f)
+            {
+                m_workRouteBestDistance = distance;
+                m_workRouteNoProgressTime = 0.0;
+            }
+            else
+            {
+                // Sideways circling is not progress. This timer continues even when
+                // ComponentPathfinding temporarily clears Destination.
+                m_workRouteNoProgressTime += dt;
+            }
+        }
+
+        private void ResetWorkRouteProgress()
+        {
+            m_workRouteNoProgressTime = 0.0;
+            m_workRouteBestDistance = 0f;
+            m_workRouteTrackedTarget = Vector3.Zero;
+            m_hasWorkRouteSample = false;
+        }
+
+        private void UpdateHomeReturnProgress(Vector3 target, float dt)
+        {
+            if (m_body == null)
+                return;
+
+            float distance = Vector3.Distance(m_body.Position, target);
+            if (!m_hasHomeReturnSample
+                || Vector3.DistanceSquared(m_homeReturnTrackedTarget, target) > 0.25f)
+            {
+                m_homeReturnTrackedTarget = target;
+                m_homeReturnBestDistance = distance;
+                m_homeReturnNoProgressTime = 0.0;
+                m_hasHomeReturnSample = true;
+                return;
+            }
+
+            if (distance <= 0.95f || distance < m_homeReturnBestDistance - 0.15f)
+            {
+                m_homeReturnBestDistance = distance;
+                m_homeReturnNoProgressTime = 0.0;
+            }
+            else
+            {
+                m_homeReturnNoProgressTime += dt;
+            }
+        }
+
+        private void ResetHomeReturnProgress()
+        {
+            m_homeReturnNoProgressTime = 0.0;
+            m_homeReturnBestDistance = 0f;
+            m_homeReturnTrackedTarget = Vector3.Zero;
+            m_hasHomeReturnSample = false;
+        }
+
         private void UpdateManagedPathProgress(float dt)
         {
             if (m_pathfinding?.Destination.HasValue != true || m_body == null)
@@ -2053,7 +2220,8 @@ namespace Game
             // Destination can briefly be cleared during the pathfinder's Stuck ->
             // MovingDirect transition. Check IsStuck and the progress watchdog even
             // when Destination is null so a blocked villager cannot retry forever.
-            return m_pathfinding.IsStuck || m_managedNoProgressTime >= 6.0;
+            return m_pathfinding.IsStuck || m_workRouteNoProgressTime >= 5.0
+                || m_managedNoProgressTime >= 6.0;
         }
 
         private bool TryRetryWorkApproach(string jobName)
@@ -2335,15 +2503,22 @@ namespace Game
                 {
                     m_hasWorkTarget = false;
                     m_hasWorkApproach = false;
+                    ResetWorkRouteProgress();
                     StopManagedPath();
                 }
             }
 
-            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(2.45f))
+            // Fail based on actual distance-to-waypoint progress, not only the
+            // pathfinder's transient IsStuck / Destination values.
+            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(0.95f))
             {
                 if (TryRetryWorkApproach("Lumberjack"))
+                {
+                    ResetWorkRouteProgress();
                     return;
+                }
                 AbandonCurrentWorkTarget("Lumberjack");
+                ResetWorkRouteProgress();
                 return;
             }
 
@@ -2356,8 +2531,7 @@ namespace Game
                         return;
                 }
 
-                // TickJob itself runs on a 0.35-second think interval, so keep
-                // the incremental 100-block scan advancing once per job tick.
+                // TickJob runs every 0.35 seconds; keep the incremental tree scan moving.
                 m_nextWorkSearchTime = 0.35;
                 if (m_hasLumberTreeLock)
                 {
@@ -2378,6 +2552,7 @@ namespace Game
                     m_hasWorkApproach = m_hasWorkTarget;
                 }
                 m_workApproachRetryCount = 0;
+                ResetWorkRouteProgress();
             }
 
             if (!m_hasWorkTarget || !m_hasWorkApproach)
@@ -2388,9 +2563,10 @@ namespace Game
 
             if (!IsAtLumberjackWorkRange())
             {
-                // Larger models should not have to squeeze beside the trunk to chop it.
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 2.25f, 2400,
-                    false, false, false, null, true);
+                // Do not allow random recovery movement around the trunk. Move to
+                // one verified standing cell, then re-evaluate after a no-progress timeout.
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.75f, 2600,
+                    false, false, false, null, false);
             }
             else
             {
@@ -2398,6 +2574,7 @@ namespace Game
                 HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
                 m_hasWorkApproach = false;
+                ResetWorkRouteProgress();
                 m_nextWorkSearchTime = 0.35;
             }
         }
@@ -2631,7 +2808,7 @@ namespace Game
             float dx = m_body.Position.X - m_workApproachPosition.X;
             float dz = m_body.Position.Z - m_workApproachPosition.Z;
             float dy = Math.Abs(m_body.Position.Y - m_workApproachPosition.Y);
-            return dx * dx + dz * dz <= 2.45f * 2.45f && dy <= 2.0f;
+            return dx * dx + dz * dz <= 0.95f * 0.95f && dy <= 1.1f;
         }
 
         private bool TryFindNextLockedTreePart(out Point3 target, out Vector3 approach)
@@ -2724,7 +2901,7 @@ namespace Game
             // Look for a clear standing cell around the trunk, not only the four
             // immediately adjacent cells. Leaves, dropped blocks and neighboring
             // trunks can occupy those cells; a 2-3 block perimeter often has a route.
-            for (int radius = 2; radius <= 4; radius++)
+            for (int radius = 1; radius <= 3; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++)

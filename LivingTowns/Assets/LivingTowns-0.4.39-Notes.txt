@@ -1,0 +1,16 @@
+Living Towns 0.4.39
+Survivalcraft 2.4.0.0 / API 1.9.5.1
+
+Corrective fixes based on the reported male villager behavior:
+- Lumberjack navigation no longer uses random recovery movement near trees.
+- The work route watchdog measures real distance to the selected standing waypoint, even while the pathfinder clears Destination.
+- If the lumberjack cannot approach after five seconds, it rejects that side and tries another route.
+- The lumberjack must reach the selected safe standing position before harvesting; waypoint range and arrival tolerance now match.
+- The lumberjack chooses a closer standing position around the trunk.
+- Dusk/night bed-sign lookup failure no longer waits eight seconds before searching for a fallback.
+- If the named sign is not resolved, the villager immediately searches indoor rest cells and then safe terrain cells around its home door.
+- Home-return progress is tracked independently from pathfinder Destination; stalled doorway routes are bypassed and direct routes are retried.
+- Doorway geometry can use a safe fallback rest position when the named bed sign is missing.
+- Personal chest changes from 0.4.38 are retained.
+
+Build verification required. This package has not been tested inside the game by the developer.
