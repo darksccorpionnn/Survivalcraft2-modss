@@ -129,6 +129,7 @@ namespace Game
         private bool m_sleepDoorRouteBypassed;
         private bool m_homeDoorRouteActive;
         private bool m_homeDoorRouteEntering;
+        private bool m_waitingForHomeDoorPassage;
         private int m_homeDoorRouteStage;
         private Vector3 m_homeDoorRouteFinalTarget;
         private bool m_isLeavingHome;
@@ -910,7 +911,6 @@ namespace Game
 
         private void RestAtPosition(Vector3 target, bool sleepOnArrival, float dt)
         {
-            UpdateHomeReturnProgress(target, dt);
             float dx = m_body.Position.X - target.X;
             float dz = m_body.Position.Z - target.Z;
             // Different villager models can have slightly different body origins.
@@ -956,20 +956,28 @@ namespace Game
             {
                 SetSleepingAnimation(false);
                 Vector3 routeTarget = target;
-                // If the waypoint route is genuinely stuck, release its door lock and
-                // let pathfinding find a direct route to the assigned rest cell. This is
-                // a one-time-per-night fallback, not random wandering.
+                // Measure progress against the active waypoint (outside door, threshold,
+                // inside door or final bed), not always against the bed. A doorway route
+                // can initially move sideways or away from the bed and must not be
+                // misclassified as stuck while it is following a valid waypoint.
+                if (!m_sleepDoorRouteBypassed)
+                    TryGetHomeDoorRouteDestination(target, true, out routeTarget);
+                UpdateHomeReturnProgress(routeTarget, dt);
+
+                // Waiting for another villager to clear the shared doorway is intentional,
+                // not a failed path. The progress tracker pauses during that reservation.
                 if (m_homeReturnNoProgressTime >= 5.0)
                 {
                     if (!m_sleepDoorRouteBypassed && m_homeDoorRouteActive)
                     {
                         Log.Warning("[LivingTowns] " + m_villagerName
-                            + " home doorway route made no progress; bypassing the waypoint sequence.");
+                            + " home doorway waypoint made no progress; bypassing the waypoint sequence.");
                         ReleaseHomeDoorPassage();
                         m_homeDoorRouteActive = false;
                         m_sleepDoorRouteBypassed = true;
                         StopManagedPath();
                         ResetHomeReturnProgress();
+                        routeTarget = target;
                     }
                     else if (m_homeReturnNoProgressTime >= 9.0)
                     {
@@ -977,10 +985,9 @@ namespace Game
                         // silently cleared Destination while the villager was stalled.
                         StopManagedPath();
                         ResetHomeReturnProgress();
+                        routeTarget = target;
                     }
                 }
-                if (!m_sleepDoorRouteBypassed)
-                    TryGetHomeDoorRouteDestination(target, true, out routeTarget);
                 // Random recovery is intentionally disabled: the direct fallback keeps
                 // the named resting target and avoids wandering through the house.
                 SetManagedDestination(routeTarget, 2.2f, 0.65f, 2200, false, false, false, null, false);
@@ -1199,6 +1206,7 @@ namespace Game
 
         private void ReleaseHomeDoorPassage()
         {
+            m_waitingForHomeDoorPassage = false;
             if (!m_hasHomeDoor)
                 return;
 
@@ -1257,11 +1265,13 @@ namespace Game
             // villager waits safely away from the threshold until the passage is free.
             if (!TryAcquireHomeDoorPassage())
             {
+                m_waitingForHomeDoorPassage = true;
                 routeTarget = entering
                     ? outsidePoint - inward * 1.10f
                     : insidePoint + inward * 1.10f;
                 return true;
             }
+            m_waitingForHomeDoorPassage = false;
 
             // Use horizontal distance and threshold-plane crossing for doorway
             // waypoints. Full 3D distance to the door center is unreliable for
@@ -1996,6 +2006,15 @@ namespace Game
             float dy = Math.Abs(m_body.Position.Y - target.Y);
             float distance = Vector3.Distance(m_body.Position, target);
             bool reached = dx * dx + dz * dz <= 0.90f * 0.90f && dy <= 1.75f;
+
+            if (m_waitingForHomeDoorPassage)
+            {
+                m_homeReturnTrackedTarget = target;
+                m_homeReturnBestDistance = distance;
+                m_homeReturnNoProgressTime = 0.0;
+                m_hasHomeReturnSample = true;
+                return;
+            }
 
             if (!m_hasHomeReturnSample
                 || Vector3.DistanceSquared(m_homeReturnTrackedTarget, target) > 0.25f)
@@ -2916,7 +2935,7 @@ namespace Game
             // Look for a clear standing cell around the trunk, not only the four
             // immediately adjacent cells. Leaves, dropped blocks and neighboring
             // trunks can occupy those cells; a 2-3 block perimeter often has a route.
-            for (int radius = 2; radius <= 4; radius++)
+            for (int radius = 3; radius <= 5; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++)
@@ -2935,7 +2954,7 @@ namespace Game
                         Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
                         float score = Vector3.DistanceSquared(m_body.Position, candidate)
                             + Math.Abs(candidate.Y - m_body.Position.Y) * 4f
-                            + (radius - 1) * 0.35f;
+                            + (5 - radius) * 0.20f;
                         if (score < bestDistance)
                         {
                             bestDistance = score;
