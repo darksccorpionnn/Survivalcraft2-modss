@@ -1253,8 +1253,15 @@ namespace Game
                 m_patrolPause -= 0.35;
                 return;
             }
-            if (m_pathfinding.Destination.HasValue && Vector3.Distance(m_body.Position, m_pathfinding.Destination.Value) > 1.25f)
+            if (m_pathfinding.Destination.HasValue
+                && Vector3.Distance(m_body.Position, m_pathfinding.Destination.Value) > 1.25f
+                && !m_pathfinding.IsStuck
+                && m_managedNoProgressTime < 10.0)
                 return;
+
+            // Patrol has no persistent work target to preserve. If its current
+            // destination is blocked or has stopped getting closer, choose a new
+            // patrol point instead of waiting forever on the old destination.
 
             int cx = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
             int cz = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
