@@ -558,9 +558,13 @@ namespace Game
                 if (other == null || !other.m_hasBedCell)
                     continue;
 
-                if (Math.Abs(other.m_bedCell.X - candidate.X) <= 1
-                    && Math.Abs(other.m_bedCell.Y - candidate.Y) <= 1
-                    && Math.Abs(other.m_bedCell.Z - candidate.Z) <= 1)
+                // Only the exact same standing cell is a conflict. Adjacent named
+                // sleep cells are valid: the old 3x3x3 check incorrectly blocked
+                // separate beds placed next to each other in the same small house.
+                int dx = other.m_bedCell.X - candidate.X;
+                int dy = other.m_bedCell.Y - candidate.Y;
+                int dz = other.m_bedCell.Z - candidate.Z;
+                if (dx * dx + dy * dy + dz * dz < 1)
                     return true;
             }
             return false;
@@ -844,9 +848,12 @@ namespace Game
                 if (m_homeDoorRouteActive)
                     ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
+                // Start a doorway route only while clearly on the opposite
+                // side. Once the villager has crossed the threshold, do not re-enter
+                // the route state on the next frame.
                 bool shouldRoute = entering
-                    ? targetSide > 0.45f && currentSide < 0.60f
-                    : targetSide < -0.45f && currentSide > -0.60f;
+                    ? targetSide > 0.45f && currentSide < 0.45f
+                    : targetSide < -0.45f && currentSide > -0.45f;
                 if (!shouldRoute)
                 {
                     ReleaseHomeDoorPassage();
@@ -872,28 +879,35 @@ namespace Game
                 return true;
             }
 
+            // Use horizontal distance and threshold-plane crossing for doorway
+            // waypoints. Full 3D distance to the door center is unreliable for
+            // different villager body origins and can leave larger models oscillating
+            // at the doorway forever.
+            float outsideDx = m_body.Position.X - outsidePoint.X;
+            float outsideDz = m_body.Position.Z - outsidePoint.Z;
+            float insideDx = m_body.Position.X - insidePoint.X;
+            float insideDz = m_body.Position.Z - insidePoint.Z;
+            float outsideDistanceSquared = outsideDx * outsideDx + outsideDz * outsideDz;
+            float insideDistanceSquared = insideDx * insideDx + insideDz * insideDz;
+
             if (entering)
             {
-                if (m_homeDoorRouteStage == 0
-                    && Vector3.Distance(m_body.Position, outsidePoint) <= 0.60f)
+                if (m_homeDoorRouteStage == 0 && outsideDistanceSquared <= 0.72f * 0.72f)
                     m_homeDoorRouteStage = 1;
-                if (m_homeDoorRouteStage == 1
-                    && Vector3.Distance(m_body.Position, doorCenter) <= 0.60f)
+                if (m_homeDoorRouteStage == 1 && currentSide >= -0.10f)
                     m_homeDoorRouteStage = 2;
                 if (m_homeDoorRouteStage == 2
-                    && (Vector3.Distance(m_body.Position, insidePoint) <= 0.60f || currentSide >= 0.75f))
+                    && (insideDistanceSquared <= 0.60f * 0.60f || currentSide >= 0.50f))
                     m_homeDoorRouteStage = 3;
             }
             else
             {
-                if (m_homeDoorRouteStage == 0
-                    && Vector3.Distance(m_body.Position, insidePoint) <= 0.60f)
+                if (m_homeDoorRouteStage == 0 && insideDistanceSquared <= 0.72f * 0.72f)
                     m_homeDoorRouteStage = 1;
-                if (m_homeDoorRouteStage == 1
-                    && Vector3.Distance(m_body.Position, doorCenter) <= 0.60f)
+                if (m_homeDoorRouteStage == 1 && currentSide <= 0.10f)
                     m_homeDoorRouteStage = 2;
                 if (m_homeDoorRouteStage == 2
-                    && (Vector3.Distance(m_body.Position, outsidePoint) <= 0.60f || currentSide <= -0.75f))
+                    && (outsideDistanceSquared <= 0.60f * 0.60f || currentSide <= -0.50f))
                     m_homeDoorRouteStage = 3;
             }
 
