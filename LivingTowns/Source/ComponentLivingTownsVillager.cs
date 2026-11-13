@@ -812,7 +812,7 @@ namespace Game
                 Vector3 routeTarget = target;
                 // If the waypoint route is genuinely stuck, release its door lock and
                 // let pathfinding find a direct route to the assigned rest cell. This is
-                // a one-time fallback for the current night, not random wandering.
+                // a one-time-per-night fallback, not random wandering.
                 if (!m_sleepDoorRouteBypassed && m_homeDoorRouteActive
                     && m_pathfinding?.Destination.HasValue == true
                     && (m_pathfinding.IsStuck || m_managedNoProgressTime >= 6.0))
