@@ -123,6 +123,25 @@ namespace Game
             }
         }
 
+        public static bool GenerateFromEgg(SubsystemTerrain terrain, int x, int y, int z)
+        {
+            if (terrain == null)
+                return false;
+
+            Palette palette = ResolvePalette();
+            if (!IsPaletteReady(palette))
+                return false;
+
+            int centerX, centerZ, baseY;
+            if (!TryFindVillageSite(terrain, x, y, z, palette, out centerX, out centerZ, out baseY))
+            {
+                Log.Information("[TownBootstrap] Egg used, but no suitable ground site was found nearby.");
+                return false;
+            }
+
+            return GenerateTown(terrain, centerX, baseY, centerZ, palette);
+        }
+
         private static bool IsPaletteReady(Palette p)
         {
             if (p == null) return false;
