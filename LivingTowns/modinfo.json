@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Living Towns - Villagers, Jobs and Celtic Beds",
-  "Version": "0.4.21",
+  "Name": "Living Towns - Crash-safe Job Assignment",
+  "Version": "0.4.22",
   "ApiVersion": "1.9.5.1",
-  "Description": "Stable job movement, guarded farmer kit assignment, player-prepared farm plots, work-block approach routing, automatic doors and persistent Celtic beds.",
+  "Description": "Crash-safe job menu, stable villager job routing, guarded farmer kit assignment, player-prepared farm plots, automatic doors and persistent Celtic beds.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

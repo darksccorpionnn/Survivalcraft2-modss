@@ -215,16 +215,24 @@ namespace Game
 
         private void HandleMenuChoice(ComponentPlayer player, string choice)
         {
-            switch (choice.Trim())
+            try
             {
-                case "Meslek: İşsiz (ev çevresinde dolaş)": SetJob(LivingTownsJob.Unemployed, player); break;
-                case "Meslek: Çiftçi (otomatik tarım)": SetJob(LivingTownsJob.Farmer, player); break;
-                case "Meslek: Oduncu (ağaç kes)": SetJob(LivingTownsJob.Lumberjack, player); break;
-                case "Meslek: Muhafız (devriye gez)": SetJob(LivingTownsJob.Guard, player); break;
-                case "Meslek: Madenci (cevher çıkar)": SetJob(LivingTownsJob.Miner, player); break;
-                case "Meslek: Demirci (fırın yanında çalış)": SetJob(LivingTownsJob.Blacksmith, player); break;
-                case "Meslek: Tüccar (köylülerle buluş)": SetJob(LivingTownsJob.Merchant, player); break;
-                case "Eldeki eşyayı NPC'ye ver": GiveHeldItems(player); break;
+                switch ((choice ?? string.Empty).Trim())
+                {
+                    case "Meslek: İşsiz (ev çevresinde dolaş)": SetJob(LivingTownsJob.Unemployed, player); break;
+                    case "Meslek: Çiftçi (otomatik tarım)": SetJob(LivingTownsJob.Farmer, player); break;
+                    case "Meslek: Oduncu (ağaç kes)": SetJob(LivingTownsJob.Lumberjack, player); break;
+                    case "Meslek: Muhafız (devriye gez)": SetJob(LivingTownsJob.Guard, player); break;
+                    case "Meslek: Madenci (cevher çıkar)": SetJob(LivingTownsJob.Miner, player); break;
+                    case "Meslek: Demirci (fırın yanında çalış)": SetJob(LivingTownsJob.Blacksmith, player); break;
+                    case "Meslek: Tüccar (köylülerle buluş)": SetJob(LivingTownsJob.Merchant, player); break;
+                    case "Eldeki eşyayı NPC'ye ver": GiveHeldItems(player); break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[LivingTowns] Villager job menu action failed safely: " + ex);
+                player?.ComponentGui?.DisplaySmallMessage("Meslek atanırken hata oluştu; ayrıntı günlüğe yazıldı.", Color.White, true, false);
             }
         }
 
