@@ -1265,10 +1265,13 @@ namespace Game
             // villager waits safely away from the threshold until the passage is free.
             if (!TryAcquireHomeDoorPassage())
             {
-                m_waitingForHomeDoorPassage = true;
                 routeTarget = entering
                     ? outsidePoint - inward * 1.10f
                     : insidePoint + inward * 1.10f;
+                float waitDx = m_body.Position.X - routeTarget.X;
+                float waitDz = m_body.Position.Z - routeTarget.Z;
+                m_waitingForHomeDoorPassage = waitDx * waitDx + waitDz * waitDz <= 0.80f * 0.80f
+                    && Math.Abs(m_body.Position.Y - routeTarget.Y) <= 1.75f;
                 return true;
             }
             m_waitingForHomeDoorPassage = false;
