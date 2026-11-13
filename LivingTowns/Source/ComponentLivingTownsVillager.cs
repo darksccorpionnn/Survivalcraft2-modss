@@ -868,7 +868,7 @@ namespace Game
                 if (creature.Entity == Entity || creature.Entity.FindComponent<ComponentLivingTownsVillager>() == null)
                     continue;
                 ComponentBody body = creature.Entity.FindComponent<ComponentBody>();
-                if (body != null && Vector3.Distance(body.Position, center) < 2.2f)
+                if (body != null && Vector3.Distance(body.Position, center) < 3.5f)
                     return true;
             }
             return false;
