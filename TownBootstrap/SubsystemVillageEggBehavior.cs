@@ -24,18 +24,23 @@ namespace Game
 
         public override void OnBlockAdded(int value, int oldValue, int x, int y, int z)
         {
-            if (Terrain.ExtractContents(oldValue) == BlocksManager.GetBlockIndex<VillageEggBlock>())
+            int eggContent = BlocksManager.GetBlockIndex<VillageEggBlock>();
+            if (Terrain.ExtractContents(value) != eggContent ||
+                Terrain.ExtractContents(oldValue) == eggContent)
                 return;
 
+            // Temporarily remove the placed egg so the flat-site clearance test
+            // does not mistake the trigger block for an obstruction.
+            m_terrain.ChangeCell(x, y, z, 0);
             if (TownPlacementComponent.GenerateFromEgg(m_terrain, x, y, z))
             {
-                // Consume the placed egg block only after successful generation.
-                m_terrain.ChangeCell(x, y, z, 0);
                 Log.Information("[TownBootstrap] Village Egg consumed; village generated.");
             }
             else
             {
-                Log.Information("[TownBootstrap] Village Egg was not consumed because generation did not succeed.");
+                // Keep the egg in the world on failure; the player can pick it up.
+                m_terrain.ChangeCell(x, y, z, value);
+                Log.Information("[TownBootstrap] No suitable site; Village Egg restored.");
             }
         }
     }
