@@ -11,3 +11,4 @@ Additional audit fixes over 0.4.39:
 - All 0.4.38/0.4.39 chest, no-random-recovery, no-progress watchdog and fallback retry changes are retained.
 
 Build verification required. In-game behavior still requires confirmation in Survivalcraft 2.
+Build workflow trigger: verify version 0.4.40.
