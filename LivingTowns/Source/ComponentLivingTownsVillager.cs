@@ -596,6 +596,7 @@ namespace Game
             if (Vector3.Distance(m_body.Position, target) <= 1.05f)
             {
                 StopManagedPath();
+                CloseDoorsForSleep();
                 if (!m_sleepPhysicsSaved)
                 {
                     m_wasGravityEnabled = m_body.IsGravityEnabled;
@@ -757,11 +758,12 @@ namespace Game
                     int cy = Terrain.ToCell(m_body.Position.Y + 0.5f);
                     int cz = Terrain.ToCell(m_body.Position.Z);
 
-                    // Scan a wider corridor in front of the villager. Open only doors
-                    // that lie close to the current travel direction, not doors behind it.
-                    for (int dx = -3; dx <= 3; dx++)
-                    for (int dz = -3; dz <= 3; dz++)
-                    for (int dy = -2; dy <= 2; dy++)
+                    // Open only the door the villager is actually approaching.
+                    // The old 7x7 scan opened side doors too early and repeatedly
+                    // when the destination direction changed around nearby obstacles.
+                    for (int dx = -2; dx <= 2; dx++)
+                    for (int dz = -2; dz <= 2; dz++)
+                    for (int dy = -1; dy <= 2; dy++)
                     {
                         int x = cx + dx;
                         int y = cy + dy;
@@ -776,13 +778,13 @@ namespace Game
                         Vector3 toDoor = new Vector3(x + 0.5f - m_body.Position.X, 0f,
                             z + 0.5f - m_body.Position.Z);
                         float distance = toDoor.Length();
-                        if (distance < 0.05f || distance > 3.8f)
+                        if (distance < 0.25f || distance > 2.35f)
                             continue;
 
                         float forwardDistance = Vector3.Dot(toDoor, direction);
                         float lateralDistance = Math.Abs(toDoor.X * direction.Z - toDoor.Z * direction.X);
-                        if (forwardDistance < 0.1f || forwardDistance > 3.6f || lateralDistance > 1.15f
-                            || Math.Abs((y + 0.5f) - m_body.Position.Y) > 2.0f)
+                        if (forwardDistance < 0.25f || forwardDistance > 2.2f || lateralDistance > 0.72f
+                            || Math.Abs((y + 0.5f) - m_body.Position.Y) > 1.65f)
                             continue;
 
                         int currentValue = m_terrain.Terrain.GetCellValue(x, y, z);
@@ -799,21 +801,59 @@ namespace Game
             CloseDoorsFarBehind();
         }
 
+        private void CloseDoorsForSleep()
+        {
+            if (m_doorBehavior == null || m_terrain == null)
+                return;
+
+            // Close doors opened by this villager even if it is standing near the
+            // doorway. The previous distance-only rule deliberately kept these open,
+            // so a villager could go to sleep with its own house door still open.
+            for (int i = m_autoOpenedDoors.Count - 1; i >= 0; i--)
+            {
+                Point3 p = m_autoOpenedDoors[i];
+                if (IsAnotherVillagerNearDoor(p))
+                    continue;
+                CloseDoorIfOpen(p.X, p.Y, p.Z);
+                m_autoOpenedDoors.RemoveAt(i);
+            }
+
+            // The home door may have been opened by another villager or already been
+            // open when this villager arrived, so it might not be in the local list.
+            if (!IsAnotherVillagerNearDoor(m_homeDoor))
+                CloseDoorIfOpen(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
+        }
+
+        private void CloseDoorIfOpen(int x, int y, int z)
+        {
+            if (m_doorBehavior == null || m_terrain == null)
+                return;
+            int value = m_terrain.Terrain.GetCellValue(x, y, z);
+            int content = Terrain.ExtractContents(value);
+            if (content <= 0 || content >= BlocksManager.Blocks.Length
+                || !(BlocksManager.Blocks[content] is DoorBlock)
+                || !DoorBlock.IsBottomPart(m_terrain.Terrain, x, y, z)
+                || !DoorBlock.GetOpen(Terrain.ExtractData(value))
+                || m_doorBehavior.IsDoorElectricallyConnected(x, y, z))
+                return;
+
+            // OpenCloseDoor always emits a sound, even if asked for the current state.
+            // Guard it with GetOpen so a sleeping villager cannot spam close sounds.
+            m_doorBehavior.OpenCloseDoor(x, y, z, false);
+        }
+
         private void CloseDoorsFarBehind()
         {
             for (int i = m_autoOpenedDoors.Count - 1; i >= 0; i--)
             {
                 Point3 p = m_autoOpenedDoors[i];
                 Vector3 center = new Vector3(p.X + 0.5f, p.Y, p.Z + 0.5f);
-                if (Vector3.Distance(m_body.Position, center) <= 2.2f || IsAnotherVillagerNearDoor(p))
+                // Keep a door open while the villager is still passing through it.
+                // A little hysteresis prevents open/close chatter near the threshold.
+                if (Vector3.Distance(m_body.Position, center) <= 2.8f || IsAnotherVillagerNearDoor(p))
                     continue;
 
-                int value = m_terrain.Terrain.GetCellValue(p.X, p.Y, p.Z);
-                int content = Terrain.ExtractContents(value);
-                if (content > 0 && content < BlocksManager.Blocks.Length &&
-                    BlocksManager.Blocks[content] is DoorBlock &&
-                    DoorBlock.GetOpen(Terrain.ExtractData(value)))
-                    m_doorBehavior?.OpenCloseDoor(p.X, p.Y, p.Z, false);
+                CloseDoorIfOpen(p.X, p.Y, p.Z);
                 m_autoOpenedDoors.RemoveAt(i);
             }
         }
