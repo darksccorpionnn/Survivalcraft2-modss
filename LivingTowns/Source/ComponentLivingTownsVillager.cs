@@ -68,10 +68,13 @@ namespace Game
         private int m_farmSearchRadius;
         private int m_farmSearchDx;
         private int m_farmSearchDz;
+        private Vector3 m_managedDestination;
+        private bool m_hasManagedDestination;
+        private double m_destinationRetryCooldown;
 
         private const float VillagerWalkSpeed = 1.85f;
         private const float WorkMoveSpeed = 1.55f;
-        private const int FarmerWorkRadius = 32;
+        private const int FarmerWorkRadius = 60;
         private const int FarmCellsPerScan = 512;
 
         public UpdateOrder UpdateOrder => UpdateOrder.Default;
@@ -142,6 +145,10 @@ namespace Game
         {
             if (m_body == null)
                 return;
+
+            m_destinationRetryCooldown -= dt;
+            if (m_destinationRetryCooldown < 0.0)
+                m_destinationRetryCooldown = 0.0;
 
             m_nextDoorCheckTime -= dt;
             if (m_nextDoorCheckTime <= 0.0)
@@ -228,10 +235,24 @@ namespace Game
             m_hasWorkApproach = false;
             m_nextWorkSearchTime = 0.0;
             m_patrolPause = 0.0;
-            m_pathfinding?.Stop();
+            EndConversation(false);
+            m_chatCooldown = 12.0;
+            m_nextThinkTime = 0.0;
+            m_hasManagedDestination = false;
+            m_destinationRetryCooldown = 0.0;
+            StopManagedPath();
 
             if (job == LivingTownsJob.Farmer)
-                EnsureFarmerKit();
+            {
+                try
+                {
+                    EnsureFarmerKit();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("[LivingTowns] Farmer job assigned, but starter kit failed safely: " + ex);
+                }
+            }
 
             string message = "NPC görevi: " + JobName(job);
             if (job == LivingTownsJob.Farmer)
@@ -445,7 +466,7 @@ namespace Game
             Vector3 target = GetBedSleepPosition();
             if (Vector3.Distance(m_body.Position, target) <= 1.15f)
             {
-                m_pathfinding?.Stop();
+                StopManagedPath();
                 if (!m_sleepPhysicsSaved)
                 {
                     m_wasGravityEnabled = m_body.IsGravityEnabled;
@@ -459,7 +480,7 @@ namespace Game
             else
             {
                 SetSleepingAnimation(false);
-                m_pathfinding?.SetDestination(target, 1.35f, 0.7f, 180, false, false, false, null);
+                SetManagedDestination(target, 1.35f, 0.7f, 180, false, false, false, null);
             }
         }
 
@@ -577,7 +598,7 @@ namespace Game
 
         private bool TryStartConversation()
         {
-            if (m_isTalking || m_chatCooldown > 0.0 || m_creatureSpawn == null || IsNight() || s_random.NextDouble() > 0.18)
+            if (m_job != LivingTownsJob.Unemployed || m_isTalking || m_chatCooldown > 0.0 || m_creatureSpawn == null || IsNight() || s_random.NextDouble() > 0.18)
                 return false;
 
             foreach (ComponentCreature creature in m_creatureSpawn.Creatures)
@@ -585,7 +606,7 @@ namespace Game
                 if (creature.Entity == Entity || creature.Entity.Id <= 0 || Entity.Id <= 0 || Entity.Id > creature.Entity.Id)
                     continue;
                 ComponentLivingTownsVillager other = creature.Entity.FindComponent<ComponentLivingTownsVillager>();
-                if (other == null || other.m_isTalking || other.m_chatCooldown > 0.0 || other.m_body == null)
+                if (other == null || other.m_job != LivingTownsJob.Unemployed || other.m_isTalking || other.m_chatCooldown > 0.0 || other.m_body == null)
                     continue;
                 if (Vector3.Distance(m_body.Position, other.m_body.Position) > 3.6f)
                     continue;
@@ -603,7 +624,7 @@ namespace Game
             m_chatPartner = partner;
             m_isTalking = true;
             m_chatTimeRemaining = duration;
-            m_pathfinding?.Stop();
+            StopManagedPath();
             SetTalkingAnimation(true);
             FaceChatPartner();
         }
@@ -642,18 +663,27 @@ namespace Game
         {
             if (m_inventory == null || m_farmerKitGranted)
                 return;
-            int rake = BlocksManager.GetBlockIndex<IronRakeBlock>();
-            if (rake > 0 && FindItemSlot(rake, null) < 0)
-                AddItemToInventory(Terrain.MakeBlockValue(rake), 1);
 
-            int seedContent = BlocksManager.GetBlockIndex<SeedsBlock>();
-            int seedSlot = FindItemSlot(seedContent, 5);
-            if (seedContent > 0 && seedSlot < 0)
-                AddItemToInventory(Terrain.MakeBlockValue(seedContent, 0, 5), 32);
-            int rakeSlot = FindItemSlot(rake, null);
-            if (rakeSlot >= 0)
-                m_inventory.ActiveSlotIndex = rakeSlot;
-            m_farmerKitGranted = true;
+            try
+            {
+                int rake = BlocksManager.GetBlockIndex<IronRakeBlock>();
+                if (rake > 0 && FindItemSlot(rake, null) < 0)
+                    AddItemToInventory(Terrain.MakeBlockValue(rake), 1);
+
+                int seedContent = BlocksManager.GetBlockIndex<SeedsBlock>();
+                int seedSlot = FindItemSlot(seedContent, 5);
+                if (seedContent > 0 && seedSlot < 0)
+                    AddItemToInventory(Terrain.MakeBlockValue(seedContent, 0, 5), 32);
+
+                // Do not change ActiveSlotIndex from the menu callback. The inventory
+                // can contain non-visible slots; TickFarmer selects a checked visible slot.
+                m_farmerKitGranted = true;
+            }
+            catch (Exception ex)
+            {
+                m_farmerKitGranted = false;
+                Log.Error("[LivingTowns] Could not grant farmer starter kit: " + ex);
+            }
         }
 
         private void AddItemToInventory(int value, int count)
@@ -718,31 +748,67 @@ namespace Game
             return 0;
         }
 
+        private void SetManagedDestination(Vector3 destination, float speed, float range, int maxPathfindingIterations,
+            bool useRandomRange, bool useCurrentPosition, bool useTerrainHeight, object callback)
+        {
+            if (m_pathfinding == null)
+                return;
+
+            Vector3? current = m_pathfinding.Destination;
+            if (current.HasValue && Vector3.DistanceSquared(current.Value, destination) <= 0.0625f)
+                return;
+
+            bool sameRequestedTarget = m_hasManagedDestination &&
+                Vector3.DistanceSquared(m_managedDestination, destination) <= 0.0625f;
+            if (!current.HasValue && sameRequestedTarget && m_destinationRetryCooldown > 0.0)
+                return;
+
+            m_pathfinding.SetDestination(destination, speed, range, maxPathfindingIterations,
+                useRandomRange, useCurrentPosition, useTerrainHeight, callback);
+            m_managedDestination = destination;
+            m_hasManagedDestination = true;
+            m_destinationRetryCooldown = 2.5;
+        }
+
+        private void StopManagedPath()
+        {
+            if (m_pathfinding != null && m_pathfinding.Destination.HasValue)
+                m_pathfinding.Stop();
+            m_hasManagedDestination = false;
+            m_destinationRetryCooldown = 0.0;
+        }
+
         private bool TryGetWorkApproach(int x, int y, int z, out Vector3 approach)
         {
             approach = Vector3.Zero;
             float bestDistance = float.MaxValue;
             bool found = false;
             Point3[] sides = { new Point3(1, 0, 0), new Point3(-1, 0, 0), new Point3(0, 0, 1), new Point3(0, 0, -1) };
+
             for (int i = 0; i < sides.Length; i++)
             {
                 int sx = x + sides[i].X;
                 int sz = z + sides[i].Z;
-                int feet = m_terrain.Terrain.GetCellValue(sx, y, sz);
-                int head = m_terrain.Terrain.GetCellValue(sx, y + 1, sz);
-                int floor = m_terrain.Terrain.GetCellValue(sx, y - 1, sz);
-                int floorContent = Terrain.ExtractContents(floor);
-                if (!IsAir(feet) || !IsAir(head) || floorContent <= 0 || floorContent >= BlocksManager.Blocks.Length
-                    || !BlocksManager.Blocks[floorContent].IsCollidable_(floor))
-                    continue;
-
-                Vector3 candidate = new Vector3(sx + 0.5f, y, sz + 0.5f);
-                float distance = Vector3.DistanceSquared(m_body.Position, candidate);
-                if (distance < bestDistance)
+                // Tree trunks and ores can be several blocks above the walkable floor.
+                // Search the adjacent column downward instead of requiring a floor at target Y.
+                for (int standY = Math.Max(1, y - 4); standY <= Math.Min(250, y + 1); standY++)
                 {
-                    bestDistance = distance;
-                    approach = candidate;
-                    found = true;
+                    int feet = m_terrain.Terrain.GetCellValue(sx, standY, sz);
+                    int head = m_terrain.Terrain.GetCellValue(sx, standY + 1, sz);
+                    int floor = m_terrain.Terrain.GetCellValue(sx, standY - 1, sz);
+                    int floorContent = Terrain.ExtractContents(floor);
+                    if (!IsAir(feet) || !IsAir(head) || floorContent <= 0 || floorContent >= BlocksManager.Blocks.Length
+                        || !BlocksManager.Blocks[floorContent].IsCollidable_(floor))
+                        continue;
+
+                    Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
+                    float distance = Vector3.DistanceSquared(m_body.Position, candidate);
+                    if (distance < bestDistance)
+                    {
+                        bestDistance = distance;
+                        approach = candidate;
+                        found = true;
+                    }
                 }
             }
             return found;
@@ -756,12 +822,12 @@ namespace Game
             int seedsSlot = FindItemSlot(BlocksManager.GetBlockIndex<SeedsBlock>(), 5);
             if (rakeSlot < 0 || seedsSlot < 0)
             {
-                m_pathfinding.Stop();
+                TickPatrol(2.5f, 4.0f);
                 return;
             }
             if (!TryFindFarmTask(out Point3 target, out int task))
             {
-                m_pathfinding.Stop();
+                TickPatrol(2.5f, 4.0f);
                 return;
             }
 
@@ -770,11 +836,11 @@ namespace Game
                 : new Vector3(target.X + 0.5f, target.Y + 1f, target.Z + 0.5f);
             if (Vector3.Distance(m_body.Position, targetPosition) > 1.45f)
             {
-                m_pathfinding.SetDestination(targetPosition, WorkMoveSpeed, 1.2f, 220, false, false, false, null);
+                SetManagedDestination(targetPosition, WorkMoveSpeed, 1.2f, 220, false, false, false, null);
                 return;
             }
 
-            m_pathfinding.Stop();
+            StopManagedPath();
             SelectInventorySlot(task == 3 ? seedsSlot : rakeSlot);
             m_miner?.Poke(true);
             if (task == 1)
@@ -845,14 +911,6 @@ namespace Game
                 {
                     target = new Point3(x, y, z); task = 3; return true;
                 }
-                if (above == 0 && ground == 2)
-                {
-                    target = new Point3(x, y, z); task = 1; return true;
-                }
-                if (above == 0 && ground == 8)
-                {
-                    target = new Point3(x, y, z); task = 2; return true;
-                }
             }
             return false;
         }
@@ -900,10 +958,10 @@ namespace Game
             }
 
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
-                m_pathfinding.SetDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 220, false, false, false, null);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 220, false, false, false, null);
             else
             {
-                m_pathfinding.Stop();
+                StopManagedPath();
                 HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
                 m_hasWorkApproach = false;
@@ -937,10 +995,10 @@ namespace Game
             }
 
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
-                m_pathfinding.SetDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 240, false, false, false, null);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 240, false, false, false, null);
             else
             {
-                m_pathfinding.Stop();
+                StopManagedPath();
                 HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
                 m_hasWorkApproach = false;
@@ -1027,7 +1085,7 @@ namespace Game
             int z = cz + Terrain.ToCell(MathF.Sin(angle) * radius);
             int y = m_terrain.Terrain.GetTopHeight(x, z);
             Vector3 destination = new Vector3(x + 0.5f, y + 1f, z + 0.5f);
-            m_pathfinding.SetDestination(destination, WorkMoveSpeed, 1.1f, 180, false, false, false, null);
+            SetManagedDestination(destination, WorkMoveSpeed, 1.1f, 180, false, false, false, null);
             m_patrolPause = 0.5 + s_random.NextDouble() * 1.0;
         }
 
@@ -1053,10 +1111,10 @@ namespace Game
             }
             Vector3 target = new Vector3(m_workTarget.X + 1.5f, m_workTarget.Y, m_workTarget.Z + 0.5f);
             if (Vector3.Distance(m_body.Position, target) > 1.45f)
-                m_pathfinding.SetDestination(target, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
+                SetManagedDestination(target, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
             else
             {
-                m_pathfinding.Stop();
+                StopManagedPath();
                 ComponentFurnace furnace = FindFurnaceAt(m_workTarget);
                 if (furnace != null)
                     TendFurnace(furnace);
@@ -1208,11 +1266,11 @@ namespace Game
                 if (direction.LengthSquared() < 0.01f)
                     direction = Vector3.UnitX;
                 direction = Vector3.Normalize(direction);
-                m_pathfinding.SetDestination(nearest.m_body.Position + direction * 1.8f, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
+                SetManagedDestination(nearest.m_body.Position + direction * 1.8f, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
                 return;
             }
 
-            m_pathfinding.Stop();
+            StopManagedPath();
             if (m_nextTradeTime <= 0.0)
             {
                 bool gave = TransferTradeItem(m_inventory, nearest.m_inventory);
@@ -1267,7 +1325,7 @@ namespace Game
         {
             if (content <= 0 || m_inventory == null)
                 return -1;
-            for (int i = 0; i < m_inventory.SlotsCount; i++)
+            for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
             {
                 int value = m_inventory.GetSlotValue(i);
                 if (m_inventory.GetSlotCount(i) > 0 && Terrain.ExtractContents(value) == content &&
