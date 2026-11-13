@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Named Villager Sleep",
-  "Version": "0.4.30",
+  "Version": "0.4.31",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers have persistent unique names and sleep only at safe indoor positions marked by their matching wall-mounted wooden sign. Villagers sharing a home door take turns crossing it; sleep cells are exclusive.",
+  "Description": "Villagers have persistent unique names and sleep only at safe indoor positions marked by their matching wall-mounted wooden sign. Villagers sharing a home door take turns crossing it; adjacent named sleep cells are supported without overlap.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
