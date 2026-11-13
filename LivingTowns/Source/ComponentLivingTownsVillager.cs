@@ -76,9 +76,12 @@ namespace Game
         private double m_managedNoProgressTime;
         private bool m_hasManagedProgressSample;
         private bool m_wasNight;
+        private bool m_hasFallbackRestPosition;
+        private Vector3 m_fallbackRestPosition;
+        private double m_nextFallbackRestSearchTime;
 
-        private const float VillagerWalkSpeed = 1.85f;
-        private const float WorkMoveSpeed = 1.55f;
+        private const float VillagerWalkSpeed = 2.2f;
+        private const float WorkMoveSpeed = 2.2f;
         private const int FarmerWorkRadius = 60;
         private const int FarmCellsPerScan = 512;
 
@@ -143,7 +146,9 @@ namespace Game
             m_homeDoor = new Point3(x, y, z);
             m_hasHomeDoor = true;
             m_hasBedCell = false;
+            m_hasFallbackRestPosition = false;
             m_nextBedTryTime = 0.0;
+            m_nextFallbackRestSearchTime = 0.0;
         }
 
         public void Update(float dt)
@@ -176,7 +181,7 @@ namespace Game
                     StopManagedPath();
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
                 }
-                TickSleepRoutine();
+                TickSleepRoutine(dt);
                 return;
             }
 
@@ -356,7 +361,7 @@ namespace Game
             player.ComponentGui?.DisplaySmallMessage("NPC'ye " + amount + " adet eşya verildi; eline aldı.", Color.White, true, false);
         }
 
-        private bool EnsureAssignedBed()
+        private bool EnsureAssignedBed(float dt)
         {
             if (!m_hasHomeDoor)
             {
@@ -391,7 +396,7 @@ namespace Game
 
             }
 
-            m_nextBedTryTime -= 0.35;
+            m_nextBedTryTime -= dt;
             if (m_nextBedTryTime > 0.0)
                 return false;
             m_nextBedTryTime = 4.0;
@@ -553,16 +558,42 @@ namespace Game
             return IntervalUtils.IsBetween(m_timeOfDay.TimeOfDay, m_timeOfDay.NightStart, m_timeOfDay.DawnStart);
         }
 
-        private void TickSleepRoutine()
+        private void TickSleepRoutine(float dt)
         {
-            if (!EnsureAssignedBed())
+            if (!EnsureAssignedBed(dt))
             {
-                StopManagedPath();
-                SetSleepingAnimation(false);
+                // A villager must still return to its home at night even when the
+                // room is too small for a Celtic bed. Older code stopped navigation
+                // here, leaving the villager standing still outside all night.
+                m_nextFallbackRestSearchTime -= dt;
+                if (!m_hasFallbackRestPosition && m_nextFallbackRestSearchTime <= 0.0)
+                {
+                    m_nextFallbackRestSearchTime = 4.0;
+                    m_hasFallbackRestPosition = TryFindHomeRestPosition(out m_fallbackRestPosition);
+                    if (m_hasFallbackRestPosition)
+                        Log.Information("[LivingTowns] No bed fit; using an indoor home rest position.");
+                    else
+                        Log.Warning("[LivingTowns] No indoor rest cell found near home door; villager will keep retrying.");
+                }
+
+                if (!m_hasFallbackRestPosition)
+                {
+                    StopManagedPath();
+                    SetSleepingAnimation(false);
+                    return;
+                }
+
+                RestAtPosition(m_fallbackRestPosition);
                 return;
             }
+            m_hasFallbackRestPosition = false;
             Vector3 target = GetBedSleepPosition();
-            if (Vector3.Distance(m_body.Position, target) <= 1.15f)
+            RestAtPosition(target);
+        }
+
+        private void RestAtPosition(Vector3 target)
+        {
+            if (Vector3.Distance(m_body.Position, target) <= 1.05f)
             {
                 StopManagedPath();
                 if (!m_sleepPhysicsSaved)
@@ -578,8 +609,113 @@ namespace Game
             else
             {
                 SetSleepingAnimation(false);
-                SetManagedDestination(target, 1.35f, 0.7f, 700, false, false, false, null);
+                SetManagedDestination(target, 2.2f, 0.85f, 1200, true, false, false, null);
             }
+        }
+
+        private bool TryFindHomeRestPosition(out Vector3 restPosition)
+        {
+            restPosition = Vector3.Zero;
+            if (m_terrain == null || !m_hasHomeDoor)
+                return false;
+
+            bool foundIndoor = false;
+            float bestScore = float.NegativeInfinity;
+            Vector3 bestPosition = Vector3.Zero;
+
+            // First prefer a real indoor standing cell close to this villager's door.
+            // Search a wider vertical range because houses are often built above/below
+            // the door's lower half, and rooms need not be directly beside the entrance.
+            for (int radius = 1; radius <= 9; radius++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                for (int dz = -radius; dz <= radius; dz++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                        continue;
+
+                    int x = m_homeDoor.X + dx;
+                    int z = m_homeDoor.Z + dz;
+                    for (int yOffset = -4; yOffset <= 3; yOffset++)
+                    {
+                        int floorY = m_homeDoor.Y - 1 + yOffset;
+                        if (!IsValidStandingCell(x, floorY, z))
+                            continue;
+
+                        bool indoor = IsIndoorBedSpot(x, floorY, z, out int walls);
+                        if (!indoor)
+                            continue;
+
+                        float distance = Vector3.Distance(m_body.Position,
+                            new Vector3(x + 0.5f, floorY + 1f, z + 0.5f));
+                        float score = 1000f + walls * 35f - radius * 8f
+                            - Math.Abs(yOffset) * 12f - distance;
+                        if (!foundIndoor || score > bestScore)
+                        {
+                            foundIndoor = true;
+                            bestScore = score;
+                            bestPosition = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                        }
+                    }
+                }
+                // Once we have indoor candidates in this ring, farther rings cannot
+                // beat the distance preference unless they have substantially more walls.
+                if (foundIndoor && radius >= 4)
+                    break;
+            }
+
+            if (foundIndoor)
+            {
+                restPosition = bestPosition;
+                return true;
+            }
+
+            // Last-resort home return: if no roofed cell exists, at least route to a
+            // safe, walkable cell immediately beside the registered home door.
+            float nearest = float.MaxValue;
+            for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++)
+            for (int yOffset = -2; yOffset <= 2; yOffset++)
+            {
+                if (dx == 0 && dz == 0)
+                    continue;
+                int x = m_homeDoor.X + dx;
+                int z = m_homeDoor.Z + dz;
+                int floorY = m_homeDoor.Y - 1 + yOffset;
+                if (!IsValidStandingCell(x, floorY, z))
+                    continue;
+                float distance = Vector3.DistanceSquared(m_body.Position,
+                    new Vector3(x + 0.5f, floorY + 1f, z + 0.5f));
+                if (distance < nearest)
+                {
+                    nearest = distance;
+                    bestPosition = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                }
+            }
+
+            if (nearest == float.MaxValue)
+                return false;
+            restPosition = bestPosition;
+            return true;
+        }
+
+        private bool IsValidStandingCell(int x, int floorY, int z)
+        {
+            if (floorY < 1 || floorY > 251)
+                return false;
+            int floorValue = m_terrain.Terrain.GetCellValue(x, floorY, z);
+            int feetValue = m_terrain.Terrain.GetCellValue(x, floorY + 1, z);
+            int headValue = m_terrain.Terrain.GetCellValue(x, floorY + 2, z);
+            int floorContent = Terrain.ExtractContents(floorValue);
+            int feetContent = Terrain.ExtractContents(feetValue);
+            int headContent = Terrain.ExtractContents(headValue);
+            if (floorContent <= 0 || floorContent >= BlocksManager.Blocks.Length
+                || !BlocksManager.Blocks[floorContent].IsCollidable_(floorValue))
+                return false;
+            if (feetContent >= BlocksManager.Blocks.Length || headContent >= BlocksManager.Blocks.Length)
+                return false;
+            return !BlocksManager.Blocks[feetContent].IsCollidable_(feetValue)
+                && !BlocksManager.Blocks[headContent].IsCollidable_(headValue);
         }
 
         private void WakeFromBedIfNeeded()
@@ -966,7 +1102,7 @@ namespace Game
                 int sz = z + sides[i].Z;
                 // Tree trunks and ores can be several blocks above the walkable floor.
                 // Search the adjacent column downward instead of requiring a floor at target Y.
-                for (int standY = Math.Max(1, y - 4); standY <= Math.Min(250, y + 1); standY++)
+                for (int standY = Math.Max(1, y - 12); standY <= Math.Min(250, y + 1); standY++)
                 {
                     int feet = m_terrain.Terrain.GetCellValue(sx, standY, sz);
                     int head = m_terrain.Terrain.GetCellValue(sx, standY + 1, sz);
@@ -977,10 +1113,11 @@ namespace Game
                         continue;
 
                     Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
-                    float distance = Vector3.DistanceSquared(m_body.Position, candidate);
-                    if (distance < bestDistance)
+                    float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 5f;
+                    float score = Vector3.DistanceSquared(m_body.Position, candidate) + verticalPenalty;
+                    if (score < bestDistance)
                     {
-                        bestDistance = distance;
+                        bestDistance = score;
                         approach = candidate;
                         found = true;
                     }
@@ -1265,14 +1402,38 @@ namespace Game
 
             int cx = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
             int cz = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
-            float angle = (float)(s_random.NextDouble() * Math.PI * 2.0);
-            float radius = minRadius + (float)s_random.NextDouble() * (maxRadius - minRadius);
-            int x = cx + Terrain.ToCell(MathF.Cos(angle) * radius);
-            int z = cz + Terrain.ToCell(MathF.Sin(angle) * radius);
-            int y = m_terrain.Terrain.GetTopHeight(x, z);
-            Vector3 destination = new Vector3(x + 0.5f, y + 1f, z + 0.5f);
-            SetManagedDestination(destination, WorkMoveSpeed, 1.1f, 180, false, false, false, null);
-            m_patrolPause = 0.5 + s_random.NextDouble() * 1.0;
+            Vector3 destination = Vector3.Zero;
+            float bestScore = float.NegativeInfinity;
+            bool found = false;
+
+            // Native WalkAroundBehavior samples many positions and scores them.
+            // Do the same here, but reject holes, walls and cells without headroom.
+            for (int attempt = 0; attempt < 24; attempt++)
+            {
+                float angle = (float)(s_random.NextDouble() * Math.PI * 2.0);
+                float radius = minRadius + (float)s_random.NextDouble() * (maxRadius - minRadius);
+                int x = cx + Terrain.ToCell(MathF.Cos(angle) * radius);
+                int z = cz + Terrain.ToCell(MathF.Sin(angle) * radius);
+                int y = m_terrain.Terrain.GetTopHeight(x, z);
+                if (!IsValidStandingCell(x, y, z))
+                    continue;
+
+                Vector3 candidate = new Vector3(x + 0.5f, y + 1f, z + 0.5f);
+                float score = 100f - Vector3.DistanceSquared(m_body.Position, candidate)
+                    - Math.Abs(candidate.Y - m_body.Position.Y) * 4f;
+                if (!found || score > bestScore)
+                {
+                    found = true;
+                    bestScore = score;
+                    destination = candidate;
+                }
+            }
+
+            if (found)
+                SetManagedDestination(destination, 2.2f, 1.1f, 900, true, false, false, null);
+            else
+                StopManagedPath();
+            m_patrolPause = 1.0 + s_random.NextDouble() * 1.5;
         }
 
         private void TickBlacksmith()
