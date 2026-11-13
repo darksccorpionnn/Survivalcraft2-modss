@@ -13,12 +13,12 @@ namespace Game
         {
             new Harmony(PackageName + ".VillagerInteraction").PatchAll();
             ModsManager.RegisterHook("OnLoadingFinished", this);
-            Log.Information("[LivingTowns] 0.4.25 initialized.");
+            Log.Information("[LivingTowns] 0.4.26 initialized.");
         }
 
         public override void OnLoadingFinished(List<Action> actions)
         {
-            Log.Information("[LivingTowns] 0.4.25 villagers, bedless home-rest fallback, safe patrol targets, obstacle recovery, indoor beds, automatic doors and night routines ready.");
+            Log.Information("[LivingTowns] 0.4.26 villagers, quiet automatic door control, home-door closure before sleep, bedless home-rest fallback and obstacle recovery ready.");
         }
     }
 }
