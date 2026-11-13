@@ -1,0 +1,7 @@
+Living Towns 0.4.34 — Sleep routing recovery
+
+- Expanded the named wall-sign scan to cover larger houses and signs mounted higher above the home door.
+- If a villager cannot resolve its named sign after repeated scans, it uses a safe indoor/home rest position instead of standing still all night.
+- If a doorway waypoint route is marked stuck or makes no progress, the villager releases the doorway reservation and retries directly to its assigned rest cell.
+- The named sign remains the preferred sleep location; the safe home position is only a fallback.
+- Keeps the 0.4.33 persistent bed assignment fix.
