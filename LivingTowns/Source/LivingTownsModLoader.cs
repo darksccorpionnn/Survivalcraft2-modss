@@ -13,12 +13,12 @@ namespace Game
         {
             new Harmony(PackageName + ".VillagerInteraction").PatchAll();
             ModsManager.RegisterHook("OnLoadingFinished", this);
-            Log.Information("[LivingTowns] 0.4.22 initialized.");
+            Log.Information("[LivingTowns] 0.4.23 initialized.");
         }
 
         public override void OnLoadingFinished(List<Action> actions)
         {
-            Log.Information("[LivingTowns] 0.4.22 villagers, working jobs, held items, slower movement, conversations and doors ready.");
+            Log.Information("[LivingTowns] 0.4.23 villagers, route recovery, indoor beds, door navigation and night routines ready.");
         }
     }
 }

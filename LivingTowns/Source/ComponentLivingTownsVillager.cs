@@ -71,6 +71,11 @@ namespace Game
         private Vector3 m_managedDestination;
         private bool m_hasManagedDestination;
         private double m_destinationRetryCooldown;
+        private Vector3 m_managedProgressPosition;
+        private Vector3 m_managedProgressTarget;
+        private double m_managedNoProgressTime;
+        private bool m_hasManagedProgressSample;
+        private bool m_wasNight;
 
         private const float VillagerWalkSpeed = 1.85f;
         private const float WorkMoveSpeed = 1.55f;
@@ -149,6 +154,7 @@ namespace Game
             m_destinationRetryCooldown -= dt;
             if (m_destinationRetryCooldown < 0.0)
                 m_destinationRetryCooldown = 0.0;
+            UpdateManagedPathProgress(dt);
 
             m_nextDoorCheckTime -= dt;
             if (m_nextDoorCheckTime <= 0.0)
@@ -157,13 +163,29 @@ namespace Game
                 TickAutomaticDoors();
             }
 
-            if (IsNight())
+            bool night = IsNight();
+            if (night)
             {
-                EndConversation(false);
+                if (!m_wasNight)
+                {
+                    m_wasNight = true;
+                    EndConversation(false);
+                    m_hasWorkTarget = false;
+                    m_hasWorkApproach = false;
+                    m_nextWorkSearchTime = 0.0;
+                    StopManagedPath();
+                    Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
+                }
                 TickSleepRoutine();
                 return;
             }
 
+            if (m_wasNight)
+            {
+                m_wasNight = false;
+                StopManagedPath();
+                Log.Information("[LivingTowns] Dawn routine started; villager leaving bed.");
+            }
             WakeFromBedIfNeeded();
             m_chatCooldown -= dt;
 
@@ -350,10 +372,23 @@ namespace Game
                 ComponentFrame frame = entity.FindComponent<ComponentFrame>();
                 if (frame == null)
                     continue;
-                m_bedFramePosition = frame.Position;
-                m_bedCell = new Point3(Terrain.ToCell(frame.Position.X), Terrain.ToCell(frame.Position.Y - 1.736f), Terrain.ToCell(frame.Position.Z));
-                m_hasBedCell = true;
-                return true;
+                Point3 existingFloor = new Point3(
+                    Terrain.ToCell(frame.Position.X),
+                    Terrain.ToCell(frame.Position.Y - 1.736f),
+                    Terrain.ToCell(frame.Position.Z));
+                if (IsIndoorBedSpot(existingFloor.X, existingFloor.Y, existingFloor.Z, out _))
+                {
+                    m_bedFramePosition = frame.Position;
+                    m_bedCell = existingFloor;
+                    m_hasBedCell = true;
+                    return true;
+                }
+
+                // Older builds could assign a bed outside the house. Release that
+                // assignment so this villager can receive an indoor bed instead.
+                bed.SetOwnerDoor(new Point3(int.MinValue, int.MinValue, int.MinValue));
+                Log.Information("[LivingTowns] Replacing an outdoor bed assignment with an indoor bed.");
+
             }
 
             m_nextBedTryTime -= 0.35;
@@ -416,11 +451,10 @@ namespace Game
                             continue;
 
                         Vector3 candidate = new Vector3(x + 0.5f, y + 1.736f, z + 0.5f);
-                        if (IsBedTooClose(candidate))
+                        if (IsBedTooClose(candidate) || !IsIndoorBedSpot(x, y, z, out int wallDirections))
                             continue;
-                        int score = 100 - (Math.Abs(dx) + Math.Abs(dz)) * 3 - Math.Abs(yOffset) * 4;
-                        if (Terrain.ExtractContents(m_terrain.Terrain.GetCellValue(x, y + 3, z)) != 0)
-                            score += 24;
+                        int score = 220 - (Math.Abs(dx) + Math.Abs(dz)) * 3 - Math.Abs(yOffset) * 4;
+                        score += wallDirections * 18;
                         for (int nx = -1; nx <= 1; nx++)
                         for (int nz = -1; nz <= 1; nz++)
                         {
@@ -442,11 +476,63 @@ namespace Game
             return found;
         }
 
+        private bool IsIndoorBedSpot(int x, int y, int z, out int wallDirections)
+        {
+            wallDirections = 0;
+            if (m_terrain == null || y < 1 || y > 248)
+                return false;
+
+            bool hasRoof = false;
+            for (int roofY = y + 3; roofY <= y + 5; roofY++)
+            {
+                int roofValue = m_terrain.Terrain.GetCellValue(x, roofY, z);
+                int roofContent = Terrain.ExtractContents(roofValue);
+                if (roofContent > 0 && roofContent < BlocksManager.Blocks.Length
+                    && BlocksManager.Blocks[roofContent].IsCollidable_(roofValue))
+                {
+                    hasRoof = true;
+                    break;
+                }
+            }
+            if (!hasRoof)
+                return false;
+
+            Point3[] directions =
+            {
+                new Point3(1, 0, 0), new Point3(-1, 0, 0),
+                new Point3(0, 0, 1), new Point3(0, 0, -1)
+            };
+            for (int i = 0; i < directions.Length; i++)
+            {
+                bool hasWall = false;
+                for (int distance = 1; distance <= 4 && !hasWall; distance++)
+                {
+                    int wx = x + directions[i].X * distance;
+                    int wz = z + directions[i].Z * distance;
+                    for (int wy = y + 1; wy <= y + 2; wy++)
+                    {
+                        int wallValue = m_terrain.Terrain.GetCellValue(wx, wy, wz);
+                        int wallContent = Terrain.ExtractContents(wallValue);
+                        if (wallContent > 0 && wallContent < BlocksManager.Blocks.Length
+                            && BlocksManager.Blocks[wallContent].IsCollidable_(wallValue))
+                        {
+                            hasWall = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasWall)
+                    wallDirections++;
+            }
+            return wallDirections >= 1;
+        }
+
         private bool IsBedTooClose(Vector3 candidate)
         {
             foreach (Entity entity in Project.Entities)
             {
-                if (entity.FindComponent<ComponentLivingTownsBed>() == null)
+                ComponentLivingTownsBed bed = entity.FindComponent<ComponentLivingTownsBed>();
+                if (bed == null || bed.IsUnassigned())
                     continue;
                 ComponentFrame frame = entity.FindComponent<ComponentFrame>();
                 if (frame != null && Vector3.Distance(frame.Position, candidate) < 2.1f)
@@ -470,7 +556,11 @@ namespace Game
         private void TickSleepRoutine()
         {
             if (!EnsureAssignedBed())
+            {
+                StopManagedPath();
+                SetSleepingAnimation(false);
                 return;
+            }
             Vector3 target = GetBedSleepPosition();
             if (Vector3.Distance(m_body.Position, target) <= 1.15f)
             {
@@ -488,7 +578,7 @@ namespace Game
             else
             {
                 SetSleepingAnimation(false);
-                SetManagedDestination(target, 1.35f, 0.7f, 180, false, false, false, null);
+                SetManagedDestination(target, 1.35f, 0.7f, 700, false, false, false, null);
             }
         }
 
@@ -514,7 +604,7 @@ namespace Game
 
         private void TickAutomaticDoors()
         {
-            if (m_doorBehavior == null || m_terrain == null)
+            if (m_doorBehavior == null || m_terrain == null || m_body == null)
             {
                 CloseDoorsFarBehind();
                 return;
@@ -531,30 +621,40 @@ namespace Game
                     int cy = Terrain.ToCell(m_body.Position.Y + 0.5f);
                     int cz = Terrain.ToCell(m_body.Position.Z);
 
-                    for (int dy = -1; dy <= 1; dy++)
-                    for (int i = 0; i < s_doorScanOffsets.Length; i++)
+                    // Scan a wider corridor in front of the villager. Open only doors
+                    // that lie close to the current travel direction, not doors behind it.
+                    for (int dx = -3; dx <= 3; dx++)
+                    for (int dz = -3; dz <= 3; dz++)
+                    for (int dy = -2; dy <= 2; dy++)
                     {
-                        int x = cx + s_doorScanOffsets[i].X;
+                        int x = cx + dx;
                         int y = cy + dy;
-                        int z = cz + s_doorScanOffsets[i].Z;
+                        int z = cz + dz;
                         int value = m_terrain.Terrain.GetCellValue(x, y, z);
                         int content = Terrain.ExtractContents(value);
-                        if (content <= 0 || content >= BlocksManager.Blocks.Length || !(BlocksManager.Blocks[content] is DoorBlock))
-                            continue;
-                        if (!DoorBlock.IsBottomPart(m_terrain.Terrain, x, y, z))
+                        if (content <= 0 || content >= BlocksManager.Blocks.Length
+                            || !(BlocksManager.Blocks[content] is DoorBlock)
+                            || !DoorBlock.IsBottomPart(m_terrain.Terrain, x, y, z))
                             continue;
 
-                        Vector3 toDoor = new Vector3(x + 0.5f, m_body.Position.Y, z + 0.5f) - m_body.Position;
-                        toDoor.Y = 0f;
+                        Vector3 toDoor = new Vector3(x + 0.5f - m_body.Position.X, 0f,
+                            z + 0.5f - m_body.Position.Z);
                         float distance = toDoor.Length();
-                        if (distance > 1.8f || distance < 0.01f || Vector3.Dot(toDoor, direction) <= 0.05f)
+                        if (distance < 0.05f || distance > 3.8f)
+                            continue;
+
+                        float forwardDistance = Vector3.Dot(toDoor, direction);
+                        float lateralDistance = Math.Abs(toDoor.X * direction.Z - toDoor.Z * direction.X);
+                        if (forwardDistance < 0.1f || forwardDistance > 3.6f || lateralDistance > 1.15f
+                            || Math.Abs((y + 0.5f) - m_body.Position.Y) > 2.0f)
                             continue;
 
                         int currentValue = m_terrain.Terrain.GetCellValue(x, y, z);
-                        if (!DoorBlock.GetOpen(Terrain.ExtractData(currentValue)) &&
-                            !m_doorBehavior.IsDoorElectricallyConnected(x, y, z))
+                        if (!DoorBlock.GetOpen(Terrain.ExtractData(currentValue))
+                            && !m_doorBehavior.IsDoorElectricallyConnected(x, y, z))
                         {
-                            if (m_doorBehavior.OpenCloseDoor(x, y, z, true) && !ContainsDoor(m_autoOpenedDoors, x, y, z))
+                            if (m_doorBehavior.OpenCloseDoor(x, y, z, true)
+                                && !ContainsDoor(m_autoOpenedDoors, x, y, z))
                                 m_autoOpenedDoors.Add(new Point3(x, y, z));
                         }
                     }
@@ -584,6 +684,8 @@ namespace Game
 
         private bool IsAnotherVillagerNearDoor(Point3 door)
         {
+            if (m_creatureSpawn == null)
+                return false;
             Vector3 center = new Vector3(door.X + 0.5f, door.Y, door.Z + 0.5f);
             foreach (ComponentCreature creature in m_creatureSpawn.Creatures)
             {
@@ -756,6 +858,41 @@ namespace Game
             return 0;
         }
 
+        private void UpdateManagedPathProgress(float dt)
+        {
+            if (m_pathfinding?.Destination.HasValue != true || m_body == null)
+            {
+                m_managedNoProgressTime = 0.0;
+                m_hasManagedProgressSample = false;
+                return;
+            }
+
+            Vector3 target = m_pathfinding.Destination.Value;
+            if (!m_hasManagedProgressSample
+                || Vector3.DistanceSquared(target, m_managedProgressTarget) > 0.25f)
+            {
+                m_managedProgressTarget = target;
+                m_managedProgressPosition = m_body.Position;
+                m_managedNoProgressTime = 0.0;
+                m_hasManagedProgressSample = true;
+                return;
+            }
+
+            if (Vector3.DistanceSquared(m_body.Position, m_managedProgressPosition) > 0.09f)
+            {
+                m_managedProgressPosition = m_body.Position;
+                m_managedNoProgressTime = 0.0;
+            }
+            else if (Vector3.DistanceSquared(m_body.Position, target) > 2.25f)
+            {
+                m_managedNoProgressTime += dt;
+            }
+            else
+            {
+                m_managedNoProgressTime = 0.0;
+            }
+        }
+
         private void SetManagedDestination(Vector3 destination, float speed, float range, int maxPathfindingPositions,
             bool useRandomMovements, bool ignoreHeightDifference, bool raycastDestination, ComponentBody doNotAvoidBody)
         {
@@ -763,19 +900,35 @@ namespace Game
                 return;
 
             Vector3? current = m_pathfinding.Destination;
-            if (current.HasValue && Vector3.DistanceSquared(current.Value, destination) <= 0.0625f)
+            bool sameRequestedTarget = m_hasManagedDestination
+                && Vector3.DistanceSquared(m_managedDestination, destination) <= 0.0625f;
+            bool sameCurrentTarget = current.HasValue
+                && Vector3.DistanceSquared(current.Value, destination) <= 0.0625f;
+            bool stuck = m_pathfinding.IsStuck;
+            bool stalled = sameRequestedTarget && m_managedNoProgressTime >= 7.0;
+
+            // Important: a stuck pathfinder keeps Destination set. Never treat that as
+            // proof that the route is still working; explicitly restart the route search.
+            if (sameCurrentTarget && !stuck && !stalled)
+                return;
+            if (!current.HasValue && sameRequestedTarget && m_destinationRetryCooldown > 0.0
+                && !stuck && !stalled)
                 return;
 
-            bool sameRequestedTarget = m_hasManagedDestination &&
-                Vector3.DistanceSquared(m_managedDestination, destination) <= 0.0625f;
-            if (!current.HasValue && sameRequestedTarget && m_destinationRetryCooldown > 0.0)
-                return;
+            if (stuck || stalled)
+                m_pathfinding.Stop();
 
-            m_pathfinding.SetDestination(destination, speed, range, maxPathfindingPositions,
-                useRandomMovements, ignoreHeightDifference, raycastDestination, doNotAvoidBody);
+            bool allowRandomRecovery = useRandomMovements || stuck || stalled;
+            int pathBudget = Math.Max(maxPathfindingPositions, 700);
+            m_pathfinding.SetDestination(destination, speed, range, pathBudget,
+                allowRandomRecovery, ignoreHeightDifference, raycastDestination, doNotAvoidBody);
             m_managedDestination = destination;
             m_hasManagedDestination = true;
-            m_destinationRetryCooldown = 2.5;
+            m_destinationRetryCooldown = 3.0;
+            m_managedNoProgressTime = 0.0;
+            m_managedProgressTarget = destination;
+            m_managedProgressPosition = m_body.Position;
+            m_hasManagedProgressSample = true;
         }
 
         private void StopManagedPath()
@@ -784,6 +937,8 @@ namespace Game
                 m_pathfinding.Stop();
             m_hasManagedDestination = false;
             m_destinationRetryCooldown = 0.0;
+            m_managedNoProgressTime = 0.0;
+            m_hasManagedProgressSample = false;
         }
 
         private bool TryGetWorkApproach(int x, int y, int z, out Vector3 approach)
@@ -839,9 +994,13 @@ namespace Game
                 return;
             }
 
-            Vector3 targetPosition = task == 4
-                ? new Vector3(target.X + 1.5f, target.Y, target.Z + 0.5f)
-                : new Vector3(target.X + 0.5f, target.Y + 1f, target.Z + 0.5f);
+            Vector3 targetPosition;
+            int approachY = task == 4 ? target.Y : target.Y + 1;
+            if (!TryGetWorkApproach(target.X, approachY, target.Z, out targetPosition))
+            {
+                StopManagedPath();
+                return;
+            }
             if (Vector3.Distance(m_body.Position, targetPosition) > 1.45f)
             {
                 SetManagedDestination(targetPosition, WorkMoveSpeed, 1.2f, 220, false, false, false, null);

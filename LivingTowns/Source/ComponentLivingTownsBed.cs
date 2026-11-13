@@ -35,5 +35,10 @@ namespace Game
         {
             return m_ownerDoorX == door.X && m_ownerDoorY == door.Y && m_ownerDoorZ == door.Z;
         }
+
+        public bool IsUnassigned()
+        {
+            return m_ownerDoorX == int.MinValue && m_ownerDoorY == int.MinValue && m_ownerDoorZ == int.MinValue;
+        }
     }
 }
