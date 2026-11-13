@@ -1,0 +1,33 @@
+name: Living Towns 0.4.0 build
+
+on:
+  push:
+    branches: [ livingtowns-0.4.0-dev ]
+    paths:
+      - 'LivingTowns/**'
+      - '.github/workflows/livingtowns-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.config
+      - name: Build
+        run: dotnet build LivingTowns/LivingTowns.csproj --configuration Release --no-restore
+      - name: Upload compiled assembly
+        uses: actions/upload-artifact@v4
+        with:
+          name: LivingTowns-0.4.0-assembly
+          path: LivingTowns/bin/Release/net10.0/LivingTowns.dll
+          if-no-files-found: error
