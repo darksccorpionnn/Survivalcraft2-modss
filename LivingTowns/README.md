@@ -1,4 +1,4 @@
-# Living Towns 0.4.26
+# Living Towns 0.4.27
 
 - Door-created villagers, one villager per lower door half.
 - Automatic opening and closing of normal (non-electrically controlled) doors while pathfinding.
@@ -12,10 +12,10 @@
 
 Build validation uses the public Survivalcraft API source mirror with its optional FLAC codec stubbed only in the temporary compile-reference checkout. Android in-game runtime still needs testing.
 
-Latest build: 0.4.26 — reduced door toggling and forced home-door closure before sleep.
+Latest build: 0.4.27 — reduced door toggling and forced home-door closure before sleep.
 
 
-## Version 0.4.26 door control fixes
+## Version 0.4.27 door control fixes
 
 - When no bed can be placed, the villager now searches for a safe indoor rest cell near its registered home door and navigates there instead of stopping outside all night.
 - Indoor fallback positions require a solid floor and two clear body cells; roofed cells are preferred, with a nearby safe door-area cell as a last resort.
@@ -34,7 +34,7 @@ Latest build: 0.4.26 — reduced door toggling and forced home-door closure befo
 - Farmer approaches prepared soil and crops from a validated adjacent standing cell.
 
 
-## Version 0.4.26 door control fixes
+## Version 0.4.27 door control fixes
 
 - Narrows automatic door detection to a close forward corridor, reducing accidental opening of nearby side doors.
 - Adds closing hysteresis: doors opened by a villager stay open until it is clearly away from the doorway.
@@ -42,3 +42,15 @@ Latest build: 0.4.26 — reduced door toggling and forced home-door closure befo
 - When a villager reaches its bed or night rest position, it closes doors it opened and explicitly checks its registered home door, even if that door was opened by another villager.
 - Electrically connected doors are not forced shut.
 - Door close calls are guarded by the actual open bit because the game's OpenCloseDoor method plays a sound even when asked to close an already-closed door.
+
+
+## Version 0.4.27 — named wall-sign sleeping
+
+- Every villager receives a unique persistent name (for example, Köylü-001). The name appears in the villager's job menu title.
+- Place a wall-mounted wooden sign inside the villager's home and write the exact villager name on one line.
+- At night, the villager searches for its own sign and selects a safe, roofed standing cell immediately in front of that wall.
+- A sleep cell already reserved by another villager is rejected, preventing two villagers from using the same sleeping point.
+- Automatic door-based bed assignment and the random indoor/door-front fallback are disabled. If the matching sign is missing or no safe cell fits, the villager waits and retries instead of sleeping in the wrong place.
+- Older auto-assigned bed positions are discarded on upgrade; add matching signs to give each villager a new sleep position.
+
+Build validation checks compilation and packages the mod as a .scmod archive. Actual Android in-game behavior still needs testing.
