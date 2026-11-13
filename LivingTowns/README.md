@@ -1,8 +1,8 @@
-# Living Towns 0.4.23
+# Living Towns 0.4.24
 
 - Door-created villagers, one villager per lower door half.
 - Automatic opening and closing of normal (non-electrically controlled) doors while pathfinding.
-- 3.15 m/s villager walk speed.
+- 1.85 m/s villager walk speed.
 - Farmer gets an initial private Iron Rake + Rye Seeds kit once, then tills, seeds, grows and harvests Rye.
 - Lumberjack fells WoodBlock trees; Miner harvests nearby ore blocks; Guard patrols; Blacksmith seeks a furnace; Merchant approaches villagers.
 - Villagers stop near each other and play the configured social animation.
@@ -12,12 +12,14 @@
 
 Build validation uses the public Survivalcraft API source mirror with its optional FLAC codec stubbed only in the temporary compile-reference checkout. Android in-game runtime still needs testing.
 
-Latest test build: 0.4.4 — job control, visible held items, and slower walking.
+Latest build: 0.4.24 — target-distance navigation watchdog and stuck-route recovery.
 
 
-## Version 0.4.23 navigation fixes
+## Version 0.4.24 navigation fixes
 
-- Detects a pathfinder that is stuck while its destination is still populated and restarts the route search after a no-progress timeout.
+- Measures progress by decreasing distance to the destination, not by raw body movement; circular movement around trees or obstacles no longer counts as progress.
+- Restarts a route after 10 seconds without meaningful approach to the target, including when the villager keeps moving sideways or circles an obstacle.
+- Retains the engine pathfinder's route-search and random-movement recovery as a fallback.
 - Raises path search budget and permits the engine's random-movement recovery after a stuck result.
 - Opens doors earlier in a wider forward travel corridor and only closes them after villagers clear the doorway.
 - Night transition cancels work destinations before bed navigation starts.
