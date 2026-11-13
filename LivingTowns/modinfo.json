@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.35",
+  "Version": "0.4.36",
   "ApiVersion": "1.9.5.1",
-  "Description": "Improves villager obstacle traversal, targeted step jumping, alternate work approaches and lumberjack tree access; retains sleep-route stability fixes.",
+  "Description": "Lumberjack locks trees within 100 blocks of home, cuts logs and leaves up to 25 blocks high, and villagers return home at dusk but sleep only at night.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
