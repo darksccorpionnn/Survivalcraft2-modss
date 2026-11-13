@@ -61,6 +61,9 @@ namespace Game
         private Point3 m_workTarget;
         private bool m_hasWorkTarget;
         private bool m_farmerKitGranted;
+        private int m_farmSearchRadius;
+        private int m_farmSearchDx;
+        private int m_farmSearchDz;
 
         private const float VillagerWalkSpeed = 3.15f;
         private const float WorkMoveSpeed = 2.8f;
@@ -241,6 +244,20 @@ namespace Game
                 case LivingTownsJob.Blacksmith: return "Demirci";
                 case LivingTownsJob.Merchant: return "Tüccar";
                 default: return "İşsiz";
+            }
+        }
+
+        private void TickJob()
+        {
+            switch (m_job)
+            {
+                case LivingTownsJob.Farmer: TickFarmer(); break;
+                case LivingTownsJob.Lumberjack: TickLumberjack(); break;
+                case LivingTownsJob.Guard: TickPatrol(7f, 12f); break;
+                case LivingTownsJob.Miner: TickMiner(); break;
+                case LivingTownsJob.Blacksmith: TickBlacksmith(); break;
+                case LivingTownsJob.Merchant: TickMerchant(); break;
+                default: TickPatrol(2.5f, 5.0f); break;
             }
         }
 
