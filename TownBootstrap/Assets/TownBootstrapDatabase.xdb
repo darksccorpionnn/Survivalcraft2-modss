@@ -6,4 +6,11 @@
       <Parameter Name="Class" Guid="4c2c7d83-b5b2-4a4e-9e83-51b0e4a8a002" Value="Game.SubsystemVillageEggBehavior" Type="string"/>
     </MemberSubsystemTemplate>
   </ProjectTemplate>
+  <EntityTemplate Name="Player" Guid="4be6c1c5-d65d-4537-8a8b-a391969e6dc2">
+    <MemberComponentTemplate Name="VillageEggGrant" Guid="9b7a4c3e-9d21-4c88-9d6b-1e7a0b2c3d4e" InheritanceParent="a2c31d54-7a11-4f02-8d31-4b6c9f0e2a55"/>
+  </EntityTemplate>
+  <ComponentTemplate Name="VillageEggGrant" Guid="a2c31d54-7a11-4f02-8d31-4b6c9f0e2a55" InheritanceParent="b05700ed-7e4e-4679-98f5-b597f421496b">
+    <Parameter Name="Class" Guid="c8d8a2a1-7e33-4e0f-8f4a-2b3c4d5e6f70" Value="Game.ComponentVillageEggGrant" Type="string"/>
+    <Parameter Name="LoadOrder" Guid="d8d8a2a1-7e33-4e0f-8f4a-2b3c4d5e6f71" Value="2147483647" Type="int"/>
+  </ComponentTemplate>
 </Mod>
