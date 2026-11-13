@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Living Towns - Navigation and Indoor Sleep Fix",
-  "Version": "0.4.24",
+  "Name": "Living Towns - Home Return and Obstacle Navigation Fix",
+  "Version": "0.4.25",
   "ApiVersion": "1.9.5.1",
-  "Description": "Target-distance route watchdog, stuck-route recovery, indoor Celtic beds, automatic doors and night-priority routines.",
+  "Description": "Home return with bedless indoor rest fallback, safe patrol points, wider work approaches, jump and ladder movement, stuck-route recovery and automatic doors.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
