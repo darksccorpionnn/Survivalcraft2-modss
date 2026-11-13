@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Town Bootstrap - Two-Storey Village",
-  "Version": "0.5.4",
+  "Version": "0.5.5",
   "ApiVersion": "1.9.5.1",
-  "Description": "Player-centred town placement with resilient terrain fallback; Minecraft-style village palette: wooden plank walls and floors, log corner beams, cobblestone paths and stone-brick foundations. No sand or dirt substitutes are used for house materials.",
+  "Description": "Village generated at near-level natural ground using only spruce wood, planks, cobblestone, framed glass, wooden stairs, wooden doors and wicker lamps. No granite, bedrock or stone fallback; existing terrain is not overwritten.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": true,
