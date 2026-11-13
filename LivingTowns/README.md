@@ -11,3 +11,5 @@
 - Blacksmith currently seeks and waits at a furnace; it does not smelt or craft. Merchant approaches and chats but does not exchange inventory.
 
 Build validation uses the public Survivalcraft API source mirror with its optional FLAC codec stubbed only in the temporary compile-reference checkout. Android in-game runtime still needs testing.
+
+Latest test build: 0.4.4 — job control, visible held items, and slower walking.
