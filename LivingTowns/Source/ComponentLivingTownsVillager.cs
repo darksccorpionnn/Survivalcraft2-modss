@@ -2145,10 +2145,13 @@ namespace Game
             {
                 if (m_nextWorkSearchTime > 0.0)
                 {
-                    m_nextWorkSearchTime -= dt;
-                    return;
+                    m_nextWorkSearchTime -= 0.35;
+                    if (m_nextWorkSearchTime > 0.0)
+                        return;
                 }
 
+                // TickJob itself runs on a 0.35-second think interval, so keep
+                // the incremental 100-block scan advancing once per job tick.
                 m_nextWorkSearchTime = 0.35;
                 if (m_hasLumberTreeLock)
                 {
@@ -2273,6 +2276,13 @@ namespace Game
             return bestDistance != float.MaxValue;
         }
 
+        private bool IsAtPossibleLumberjackHeightCap(int x, int y, int centerY)
+        {
+            // This is only a cheap prefilter. Ground-relative height is validated
+            // after the trunk base has been located.
+            return y >= centerY + LumberjackTreeMaxHeight - 1;
+        }
+
         private void ResetLumberSearch()
         {
             m_lumberSearchRadius = 0;
@@ -2375,14 +2385,20 @@ namespace Game
                         || IsFailedWorkPosition(x, y, z))
                         continue;
 
-                    if (!TryGetGroundedTrunkBaseY(x, y, z, out int baseY)
-                        || y > baseY + LumberjackTreeMaxHeight)
-                        continue;
-
                     int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
                     int aboveContent = Terrain.ExtractContents(aboveValue);
                     bool woodAbove = aboveContent > 0 && aboveContent < BlocksManager.Blocks.Length
                         && BlocksManager.Blocks[aboveContent] is WoodBlock;
+
+                    // Ignore lower trunk logs before doing the more expensive
+                    // grounded-base lookup; the top log is enough to identify a tree.
+                    if (woodAbove && !IsAtPossibleLumberjackHeightCap(x, y, centerY))
+                        continue;
+
+                    if (!TryGetGroundedTrunkBaseY(x, y, z, out int baseY)
+                        || y > baseY + LumberjackTreeMaxHeight)
+                        continue;
+
                     if (woodAbove && y < baseY + LumberjackTreeMaxHeight)
                         continue;
 
