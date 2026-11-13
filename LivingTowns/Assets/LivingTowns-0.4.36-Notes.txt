@@ -1,0 +1,10 @@
+Living Towns 0.4.36 — Lumberjack harvesting range and dusk schedule
+
+- Lumberjack tree search is centered on the villager's registered home door and covers a 100-block horizontal radius.
+- The search advances in bounded slices of terrain columns instead of performing the whole area scan in one update.
+- A selected tree is locked until its trunk/branch wood and its nearby LeavesBlock canopy have been harvested or dropped from inventory.
+- The locked tree work area covers the tree's 25-block height and a 7-block horizontal canopy radius.
+- The grounded-trunk check prevents the lumberjack from treating detached floating log remnants as separate trees.
+- Villagers start returning home at SubsystemTimeOfDay.DuskStart.
+- They wait indoors awake during dusk and only set IsSleeping / disable gravity at NightStart.
+- Existing 0.4.35 obstacle recovery and 0.4.34 sleep routing fixes are retained.
