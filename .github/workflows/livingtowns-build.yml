@@ -1,4 +1,4 @@
-name: Living Towns 0.4.0 build
+name: Living Towns 0.4.1 build
 
 on:
   push:
@@ -46,6 +46,10 @@ jobs:
       - name: Upload compiled assembly
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.0-assembly
-          path: LivingTowns/bin/Release/net10.0/LivingTowns.dll
+          name: LivingTowns-0.4.1-build
+          path: |
+            LivingTowns/bin/Release/net10.0/LivingTowns.dll
+            LivingTowns/Source/**
+            LivingTowns/modinfo.json
+            LivingTowns/LivingTowns.csproj
           if-no-files-found: error
