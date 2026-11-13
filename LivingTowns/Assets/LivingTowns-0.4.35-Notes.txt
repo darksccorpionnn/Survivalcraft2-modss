@@ -1,0 +1,9 @@
+Living Towns 0.4.35 — Obstacle and work-route recovery
+
+- Villagers now try a controlled jump when a single collidable block blocks the current route and there is two-block headroom.
+- Farmer, Miner and Lumberjack search eight directions for standing positions around work targets.
+- Lumberjack searches a 3-block perimeter around the grounded trunk base so nearby leaves, trunks and remnants do not seal every approach cell.
+- Work routes use a larger path search budget and enable the pathfinder's random recovery after a failed direct route.
+- If an approach still fails, the villager blacklists that position and retries up to four alternate approaches before abandoning the target.
+- Work-route failure detection also handles the short interval when the pathfinder temporarily clears its destination.
+- Keeps the 0.4.34 sleep routing and persistent named-bed fixes.
