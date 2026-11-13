@@ -21,6 +21,14 @@ namespace Game
     public sealed class ComponentLivingTownsVillager : Component, IUpdateable
     {
         private static readonly System.Random s_random = new System.Random();
+        private sealed class HomeDoorPassageReservation
+        {
+            public ComponentLivingTownsVillager Owner;
+            public DateTime LastTouchedUtc;
+        }
+        private static readonly object s_homeDoorReservationSync = new object();
+        private static readonly Dictionary<string, HomeDoorPassageReservation> s_homeDoorReservations =
+            new Dictionary<string, HomeDoorPassageReservation>();
         private static readonly Point3[] s_doorScanOffsets =
         {
             new Point3(-1,0,-1), new Point3(0,0,-1), new Point3(1,0,-1),
@@ -156,6 +164,7 @@ namespace Game
 
         public void SetHomeDoor(int x, int y, int z)
         {
+            ReleaseHomeDoorPassage();
             m_homeDoor = new Point3(x, y, z);
             m_hasHomeDoor = true;
             m_hasBedCell = false;
@@ -192,6 +201,7 @@ namespace Game
                     m_hasWorkApproach = false;
                     m_nextWorkSearchTime = 0.0;
                     StopManagedPath();
+                    ReleaseHomeDoorPassage();
                     m_homeDoorRouteActive = false;
                     m_isLeavingHome = false;
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
@@ -204,6 +214,7 @@ namespace Game
             {
                 m_wasNight = false;
                 StopManagedPath();
+                ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 m_isLeavingHome = TryBeginHomeExit();
                 Log.Information("[LivingTowns] Dawn routine started; villager will leave through its home door.");
@@ -712,6 +723,7 @@ namespace Game
         {
             if (Vector3.Distance(m_body.Position, target) <= 1.05f)
             {
+                ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 StopManagedPath();
                 CloseDoorsForSleep();
@@ -763,11 +775,60 @@ namespace Game
             return true;
         }
 
+        private string GetHomeDoorReservationKey()
+        {
+            return m_homeDoor.X + ":" + m_homeDoor.Y + ":" + m_homeDoor.Z;
+        }
+
+        private bool TryAcquireHomeDoorPassage()
+        {
+            string key = GetHomeDoorReservationKey();
+            DateTime now = DateTime.UtcNow;
+            lock (s_homeDoorReservationSync)
+            {
+                if (s_homeDoorReservations.TryGetValue(key, out HomeDoorPassageReservation reservation))
+                {
+                    // Recover a reservation left behind if an entity was removed while crossing.
+                    if (reservation.Owner == null || (now - reservation.LastTouchedUtc).TotalSeconds > 30.0)
+                        s_homeDoorReservations.Remove(key);
+                    else if (object.ReferenceEquals(reservation.Owner, this))
+                    {
+                        reservation.LastTouchedUtc = now;
+                        return true;
+                    }
+                    else
+                        return false;
+                }
+
+                s_homeDoorReservations[key] = new HomeDoorPassageReservation
+                {
+                    Owner = this,
+                    LastTouchedUtc = now
+                };
+                return true;
+            }
+        }
+
+        private void ReleaseHomeDoorPassage()
+        {
+            if (!m_hasHomeDoor)
+                return;
+
+            string key = GetHomeDoorReservationKey();
+            lock (s_homeDoorReservationSync)
+            {
+                if (s_homeDoorReservations.TryGetValue(key, out HomeDoorPassageReservation reservation)
+                    && object.ReferenceEquals(reservation.Owner, this))
+                    s_homeDoorReservations.Remove(key);
+            }
+        }
+
         private bool TryGetHomeDoorRouteDestination(Vector3 finalTarget, bool entering, out Vector3 routeTarget)
         {
             routeTarget = finalTarget;
             if (m_body == null || !TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
             {
+                ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 return false;
             }
@@ -780,12 +841,17 @@ namespace Game
 
             if (!sameRoute)
             {
+                if (m_homeDoorRouteActive)
+                    ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 bool shouldRoute = entering
                     ? targetSide > 0.45f && currentSide < 0.60f
                     : targetSide < -0.45f && currentSide > -0.60f;
                 if (!shouldRoute)
+                {
+                    ReleaseHomeDoorPassage();
                     return false;
+                }
 
                 m_homeDoorRouteActive = true;
                 m_homeDoorRouteEntering = entering;
@@ -795,6 +861,16 @@ namespace Game
 
             Vector3 outsidePoint = doorCenter - inward * 1.10f;
             Vector3 insidePoint = doorCenter + inward * 1.10f;
+
+            // Only one villager may occupy the doorway route at a time. A second
+            // villager waits safely away from the threshold until the passage is free.
+            if (!TryAcquireHomeDoorPassage())
+            {
+                routeTarget = entering
+                    ? outsidePoint - inward * 1.10f
+                    : insidePoint + inward * 1.10f;
+                return true;
+            }
 
             if (entering)
             {
@@ -823,6 +899,7 @@ namespace Game
 
             if (m_homeDoorRouteStage >= 3)
             {
+                ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 return false;
             }
@@ -881,6 +958,7 @@ namespace Game
 
             if (!TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
             {
+                ReleaseHomeDoorPassage();
                 m_isLeavingHome = false;
                 m_homeDoorRouteActive = false;
                 return false;
@@ -889,6 +967,7 @@ namespace Game
             Vector3 exitTarget = doorCenter - inward * 1.10f;
             if (Vector3.Distance(m_body.Position, exitTarget) <= 0.70f)
             {
+                ReleaseHomeDoorPassage();
                 m_isLeavingHome = false;
                 m_homeDoorRouteActive = false;
                 StopManagedPath();
@@ -899,6 +978,7 @@ namespace Game
             TryGetHomeDoorRouteDestination(exitTarget, false, out routeTarget);
             if (!m_homeDoorRouteActive)
             {
+                ReleaseHomeDoorPassage();
                 m_isLeavingHome = false;
                 StopManagedPath();
                 return false;
