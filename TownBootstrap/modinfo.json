@@ -1,13 +1,13 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Town Bootstrap - Two-Storey Village",
-  "Version": "0.5.5",
+  "Version": "0.6.0",
   "ApiVersion": "1.9.5.1",
-  "Description": "Village generated at near-level natural ground using only spruce wood, planks, cobblestone, framed glass, wooden stairs, wooden doors and wicker lamps. No granite, bedrock or stone fallback; existing terrain is not overwritten.",
+  "Description": "Place a Village Egg to generate a village at a nearby suitable site. The player receives one egg on spawn. Village uses spruce wood, planks, cobblestone, framed glass, wooden stairs, wooden door and wicker lamp.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
-  "NonPersistentMod": true,
-  "GameplayImpactLevel": "Cosmetic",
+  "NonPersistentMod": false,
+  "GameplayImpactLevel": "Assist",
   "Author": "DARK SCORPION",
   "PackageName": "darksccorpionnn.TownBootstrap",
   "Dependencies": {}
