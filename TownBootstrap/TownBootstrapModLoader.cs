@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Engine;
+using Engine;\nusing HarmonyLib;
 
 namespace Game
 {
@@ -14,7 +14,7 @@ namespace Game
 
         public override void __ModInitialize()
         {
-            ModsManager.RegisterHook("OnLoadingFinished", this);
+            ModsManager.RegisterHook("OnLoadingFinished", this);\n            new Harmony(PackageName).PatchAll();
             Log.Information("[TownBootstrap] Mod initialized. Package: " + PackageName);
         }
 
