@@ -35,7 +35,7 @@ namespace Game
             public HashSet<int> NonGroundContents = new HashSet<int>();
         }
 
-                public UpdateOrder UpdateOrder => UpdateOrder.Default;
+        public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
         public override void Load(ValuesDictionary valuesDictionary, IdToEntityMap idToEntityMap)
         {
@@ -207,7 +207,7 @@ namespace Game
             }
         }
 
-                private static int ResolveBlockIndex(string label, params string[] typeNames)
+        private static int ResolveBlockIndex(string label, params string[] typeNames)
         {
             MethodInfo getIndex = null;
             MethodInfo[] methods = typeof(BlocksManager).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
