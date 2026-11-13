@@ -431,8 +431,8 @@ namespace Game
         private static bool HasTownMarker(SubsystemTerrain terrain, int searchX, int playerY, int searchZ)
         {
             // On re-entry, look around the player's saved position for the well marker.
-            int minY = 1;
-            int maxY = 248;
+            int minY = Math.Max(1, playerY - 48);
+            int maxY = Math.Min(248, playerY + 24);
             for (int x = searchX - 48; x <= searchX + 48; x++)
             {
                 for (int z = searchZ - 48; z <= searchZ + 48; z++)
