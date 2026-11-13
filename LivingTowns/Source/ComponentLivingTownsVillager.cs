@@ -61,6 +61,11 @@ namespace Game
         private bool m_hasHomeDoor;
         private Point3 m_bedCell;
         private bool m_hasBedCell;
+        private Point3 m_namedSignCell;
+        private bool m_hasNamedSignCell;
+        private double m_nextNamedSignLookupTime;
+        private double m_nextPersonalChestDepositTime;
+        private bool m_personalChestMissingWarningShown;
         private Vector3 m_bedFramePosition;
         private double m_nextBedTryTime;
         private double m_nextThinkTime;
@@ -163,6 +168,8 @@ namespace Game
             // Old releases assigned beds by home door, which allowed roommates to share one spot.
             // Force a fresh lookup of this villager's own named wall sign.
             m_hasBedCell = false;
+            m_hasNamedSignCell = false;
+            m_personalChestMissingWarningShown = false;
             EnsureVillagerName();
             m_farmerKitGranted = valuesDictionary.GetValue<bool>("FarmerKitGranted", false);
 
@@ -195,6 +202,8 @@ namespace Game
             m_homeDoor = new Point3(x, y, z);
             m_hasHomeDoor = true;
             m_hasBedCell = false;
+            m_hasNamedSignCell = false;
+            m_personalChestMissingWarningShown = false;
             m_hasFallbackRestPosition = false;
             m_nextBedTryTime = 0.0;
             m_nextFallbackRestSearchTime = 0.0;
@@ -206,6 +215,13 @@ namespace Game
         {
             if (m_body == null)
                 return;
+
+            m_nextPersonalChestDepositTime -= dt;
+            if (m_nextPersonalChestDepositTime < 0.0)
+                m_nextPersonalChestDepositTime = 0.0;
+            m_nextNamedSignLookupTime -= dt;
+            if (m_nextNamedSignLookupTime < 0.0)
+                m_nextNamedSignLookupTime = 0.0;
 
             m_destinationRetryCooldown -= dt;
             if (m_destinationRetryCooldown < 0.0)
@@ -488,7 +504,20 @@ namespace Game
             {
                 if (IsValidStandingCell(m_bedCell.X, m_bedCell.Y, m_bedCell.Z)
                     && !IsSleepCellClaimed(m_bedCell))
+                {
+                    // On older saves the bed cell may exist without the in-memory
+                    // sign locator. Resolve it lazily for the personal chest link.
+                    if (!m_hasNamedSignCell && m_nextNamedSignLookupTime <= 0.0)
+                    {
+                        m_nextNamedSignLookupTime = 10.0;
+                        if (TryFindNamedSignSleepPosition(out Point3 savedSignCell, out Point3 ignoredFloor))
+                        {
+                            m_namedSignCell = savedSignCell;
+                            m_hasNamedSignCell = true;
+                        }
+                    }
                     return true;
+                }
 
                 // Only discard an assignment when its floor/clearance is no longer valid
                 // or another villager owns the exact same cell.
@@ -509,6 +538,9 @@ namespace Game
             }
 
             m_bedCell = floorCell;
+            m_namedSignCell = signCell;
+            m_hasNamedSignCell = true;
+            m_personalChestMissingWarningShown = false;
             // GetBedSleepPosition subtracts 1.28 from the frame origin. Offset it
             // so the resulting body position is exactly centered above the floor cell.
             m_bedFramePosition = new Vector3(floorCell.X + 0.5f, floorCell.Y + 2.28f, floorCell.Z + 0.5f);
@@ -875,6 +907,7 @@ namespace Game
                 m_homeDoorRouteActive = false;
                 StopManagedPath();
                 CloseDoorsForSleep();
+                DepositCollectedItemsIntoPersonalChest();
 
                 if (sleepOnArrival)
                 {
@@ -925,6 +958,154 @@ namespace Game
                 // the named resting target and avoids wandering through the house.
                 SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
             }
+        }
+
+        private ComponentChest FindPersonalChest()
+        {
+            if (m_terrain == null)
+                return null;
+
+            if (!m_hasNamedSignCell)
+            {
+                if (m_nextNamedSignLookupTime > 0.0
+                    || !TryFindNamedSignSleepPosition(out Point3 signCell, out Point3 ignoredFloor))
+                    return null;
+                m_namedSignCell = signCell;
+                m_hasNamedSignCell = true;
+            }
+
+            ComponentChest bestChest = null;
+            float bestScore = float.MaxValue;
+            int signValue = m_terrain.Terrain.GetCellValue(
+                m_namedSignCell.X, m_namedSignCell.Y, m_namedSignCell.Z);
+            int signContent = Terrain.ExtractContents(signValue);
+            Point3 outward = new Point3(0, 0, 0);
+            if (signContent > 0 && signContent < BlocksManager.Blocks.Length
+                && BlocksManager.Blocks[signContent] is AttachedSignBlock)
+                outward = CellFace.FaceToPoint3(AttachedSignBlock.GetFace(Terrain.ExtractData(signValue)));
+
+            // The personal chest must be close to this villager's own name sign.
+            // A small room-side search allows the chest to sit below or beside it.
+            foreach (Entity entity in Project.Entities)
+            {
+                if (entity == null)
+                    continue;
+                ComponentChest chest = entity.FindComponent<ComponentChest>();
+                ComponentBlockEntity blockEntity = entity.FindComponent<ComponentBlockEntity>();
+                if (chest == null || blockEntity == null)
+                    continue;
+
+                Point3 cell = blockEntity.Coordinates;
+                int dx = cell.X - m_namedSignCell.X;
+                int dy = cell.Y - m_namedSignCell.Y;
+                int dz = cell.Z - m_namedSignCell.Z;
+                if (Math.Abs(dx) > 4 || Math.Abs(dz) > 4 || Math.Abs(dy) > 3)
+                    continue;
+                if (dx * dx + dz * dz > 16)
+                    continue;
+
+                // Prefer the room-facing side of the attached sign. A chest behind
+                // the wall is not considered this villager's personal container.
+                int side = dx * outward.X + dz * outward.Z;
+                if (side < -1)
+                    continue;
+
+                int value = m_terrain.Terrain.GetCellValue(cell.X, cell.Y, cell.Z);
+                int content = Terrain.ExtractContents(value);
+                if (content <= 0 || content >= BlocksManager.Blocks.Length
+                    || !(BlocksManager.Blocks[content] is ChestBlock))
+                    continue;
+
+                float score = dx * dx + dz * dz + dy * dy * 1.25f
+                    + (side < 0 ? 1.5f : 0f);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestChest = chest;
+                }
+            }
+
+            return bestChest;
+        }
+
+        private bool IsPersonalChestProtectedItem(int value)
+        {
+            int content = Terrain.ExtractContents(value);
+            if (content <= 0 || content >= BlocksManager.Blocks.Length)
+                return true;
+
+            Block block = BlocksManager.Blocks[content];
+            string typeName = block.GetType().Name;
+            string category = block.GetCategory(value) ?? string.Empty;
+
+            // Keep work tools and farmer supplies in the villager's inventory.
+            if (block.GetToolLevel(value) > 0
+                || category.IndexOf("Tool", StringComparison.OrdinalIgnoreCase) >= 0
+                || category.IndexOf("Weapon", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Seed", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Axe", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Pickaxe", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Rake", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Shovel", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Hammer", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Spear", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Bow", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Machete", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("Firestarter", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            return false;
+        }
+
+        private void DepositCollectedItemsIntoPersonalChest()
+        {
+            if (m_inventory == null || m_nextPersonalChestDepositTime > 0.0)
+                return;
+
+            m_nextPersonalChestDepositTime = 4.0;
+            ComponentChest chest = FindPersonalChest();
+            if (chest == null)
+            {
+                if (!m_personalChestMissingWarningShown)
+                {
+                    Log.Warning("[LivingTowns] No personal chest found near the name sign for "
+                        + m_villagerName + "; collected items remain in the villager inventory.");
+                    m_personalChestMissingWarningShown = true;
+                }
+                return;
+            }
+
+            m_personalChestMissingWarningShown = false;
+            int movedItems = 0;
+            for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
+            {
+                int value = m_inventory.GetSlotValue(i);
+                int remaining = m_inventory.GetSlotCount(i);
+                if (value == 0 || remaining <= 0 || IsPersonalChestProtectedItem(value))
+                    continue;
+
+                while (remaining > 0)
+                {
+                    int targetSlot = ComponentInventoryBase.FindAcquireSlotForItem(chest, value);
+                    if (targetSlot < 0)
+                        break;
+
+                    int capacity = chest.GetSlotCapacity(targetSlot, value);
+                    int free = capacity - chest.GetSlotCount(targetSlot);
+                    if (free <= 0)
+                        break;
+
+                    int amount = Math.Min(remaining, free);
+                    chest.AddSlotItems(targetSlot, value, amount);
+                    m_inventory.RemoveSlotItems(i, amount);
+                    remaining -= amount;
+                    movedItems += amount;
+                }
+            }
+
+            if (movedItems > 0)
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " deposited " + movedItems + " collected items into its personal chest.");
         }
 
         private bool TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward)
