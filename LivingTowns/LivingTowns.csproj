@@ -12,6 +12,6 @@
     <Deterministic>true</Deterministic>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SurvivalcraftAPI.Survivalcraft" Version="1.9.5.1" />
+    <ProjectReference Include="..\api\Survivalcraft\Survivalcraft.csproj" />
   </ItemGroup>
 </Project>

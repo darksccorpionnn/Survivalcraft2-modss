@@ -15,14 +15,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout mod source
         uses: actions/checkout@v4
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Fetch matching Survivalcraft API source
+        run: git clone --depth 1 --branch SCAPI1.9 https://github.com/GGigHub/SurvivalcraftApi.git api
       - name: Restore
-        run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.config
+        run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.org.config
       - name: Build
         run: dotnet build LivingTowns/LivingTowns.csproj --configuration Release --no-restore
       - name: Upload compiled assembly
