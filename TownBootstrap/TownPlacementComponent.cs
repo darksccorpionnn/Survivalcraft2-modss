@@ -84,34 +84,23 @@ namespace Game
                 int playerY = (int)Math.Floor(playerPosition.Y);
                 int playerZ = (int)Math.Floor(playerPosition.Z);
 
-                // One town per 256x256 world-grid cell. Towns are centred on each cell,
-                // so neighbouring town centres are exactly 256 blocks apart.
-                // Grid nodes are multiples of 256. This puts the first town at/near
-                // the usual world origin instead of leaving the spawn stranded 181 blocks
-                // from the centre of cell (0,0).
+                // One town per 256x256 world-grid cell. Generate around the player's
+                // actual position the first time that cell is visited. Using a fixed
+                // cell centre can point at unloaded terrain or keep spawn outside range.
                 int cellX = (int)Math.Floor((playerX + 128.0) / 256.0);
                 int cellZ = (int)Math.Floor((playerZ + 128.0) / 256.0);
                 string cellKey = cellX + ":" + cellZ;
                 if (s_processedCells.Contains(cellKey))
                     return;
 
-                int anchorX = cellX * 256;
-                int anchorZ = cellZ * 256;
-                int dx = playerX - anchorX;
-                int dz = playerZ - anchorZ;
-
-                // Generate only when near the selected grid node, where its terrain is loaded.
-                if (dx * dx + dz * dz > 112 * 112)
-                    return;
-
                 if (!m_runtimeLogged)
                 {
                     Log.Information("[TownBootstrap] Runtime active. Player=" + playerX + "," + playerY + "," + playerZ +
-                        "; grid cell=" + cellKey + "; town anchor=" + anchorX + "," + anchorZ + ".");
+                        "; grid cell=" + cellKey + "; generator will search around the player's loaded area.");
                     m_runtimeLogged = true;
                 }
 
-                if (HasTownMarker(terrain, anchorX, playerY, anchorZ))
+                if (HasTownMarker(terrain, playerX, playerY, playerZ))
                 {
                     Log.Information("[TownBootstrap] Town already exists in grid cell " + cellKey + ".");
                     s_processedCells.Add(cellKey);
@@ -121,7 +110,7 @@ namespace Game
                 if (m_palette == null)
                     m_palette = ResolvePalette();
 
-                if (GenerateTown(terrain, anchorX, playerY, anchorZ, m_palette))
+                if (GenerateTown(terrain, playerX, playerY, playerZ, m_palette))
                 {
                     s_processedCells.Add(cellKey);
                     return;
@@ -139,6 +128,7 @@ namespace Game
 
         private static bool GenerateTown(SubsystemTerrain terrain, int anchorX, int playerY, int anchorZ, Palette palette)
         {
+            // The search origin is the player's current location, not the grid centre.
             int playerX = anchorX;
             int playerZ = anchorZ;
 
@@ -324,7 +314,7 @@ namespace Game
                     if (surface < minGround) minGround = surface;
                     if (surface > maxGround) maxGround = surface;
                 }
-                if (found >= 5 && maxGround - minGround <= 24 && maxGround < 238)
+                if (found >= 4 && maxGround - minGround <= 32 && maxGround < 238)
                 {
                     centerX = x;
                     centerZ = z;
@@ -335,7 +325,22 @@ namespace Game
                 }
             }
 
+            // Final fallback: a single valid ground column is enough to start building.
+            // Place() still refuses to replace terrain, so obstacles remain untouched.
+            int fallbackY;
+            if (TryFindSurfaceY(subsystemTerrain, playerX, playerZ, playerY, out fallbackY) &&
+                fallbackY < 238)
+            {
+                centerX = playerX;
+                centerZ = playerZ;
+                baseY = fallbackY;
+                Log.Information("[TownBootstrap] Using last-resort player-site at X=" + playerX +
+                    ", Y=" + fallbackY + ", Z=" + playerZ + ".");
+                return true;
+            }
+
             centerX = centerZ = baseY = 0;
+            Log.Information("[TownBootstrap] No terrain column found near the player; generation will retry.");
             return false;
         }
 
@@ -404,9 +409,10 @@ namespace Game
         private static bool TryFindSurfaceY(
             SubsystemTerrain terrain, int x, int z, int scanY, out int surfaceY)
         {
-            int minY = Math.Max(1, scanY - 64);
-            // Search above and below the player: grid nodes can be on a different elevation.
-            int maxY = Math.Min(254, scanY + 64);
+            int minY = 1;
+            // Scan the full buildable vertical range. This avoids missing ground when
+            // the grid search origin or player is significantly above/below the surface.
+            int maxY = 254;
 
             for (int y = maxY; y >= minY; y--)
             {
@@ -422,14 +428,14 @@ namespace Game
             return false;
         }
 
-        private static bool HasTownMarker(SubsystemTerrain terrain, int anchorX, int playerY, int anchorZ)
+        private static bool HasTownMarker(SubsystemTerrain terrain, int searchX, int playerY, int searchZ)
         {
-            // Search the central 112x112 area of this grid cell for the well's granite marker.
-            int minY = Math.Max(1, playerY - 48);
-            int maxY = Math.Min(248, playerY + 24);
-            for (int x = anchorX - 56; x <= anchorX + 56; x++)
+            // On re-entry, look around the player's saved position for the well marker.
+            int minY = 1;
+            int maxY = 248;
+            for (int x = searchX - 48; x <= searchX + 48; x++)
             {
-                for (int z = anchorZ - 56; z <= anchorZ + 56; z++)
+                for (int z = searchZ - 48; z <= searchZ + 48; z++)
                 {
                     for (int y = minY; y <= maxY; y++)
                     {
