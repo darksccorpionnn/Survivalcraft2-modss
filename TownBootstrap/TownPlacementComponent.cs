@@ -24,24 +24,18 @@ namespace Game
 
         private sealed class Palette
         {
-            public int Stone;
-            public int Cobble;
-            public int StoneBricks;
+            public int SpruceWood;
             public int Planks;
-            public int Log;
-            public int Glass;
-            public int Door;
-            public int Chest;
-            public int Torch;
-            public int Carpet;
-            public int Stairs;
+            public int Cobblestone;
+            public int FramedGlass;
+            public int WoodenStairs;
+            public int WoodenDoor;
+            public int WickerLamp;
             public int Water;
-            public int Soil;
-            public int Fence;
-            public int Workbench;
+            public HashSet<int> NonGroundContents = new HashSet<int>();
         }
 
-        public UpdateOrder UpdateOrder => UpdateOrder.Default;
+                public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
         public override void Load(ValuesDictionary valuesDictionary, IdToEntityMap idToEntityMap)
         {
@@ -100,15 +94,18 @@ namespace Game
                     m_runtimeLogged = true;
                 }
 
-                if (HasTownMarker(terrain, playerX, playerY, playerZ))
+                if (m_palette == null)
+                    m_palette = ResolvePalette();
+
+                if (!IsPaletteReady(m_palette))
+                    return;
+
+                if (HasTownMarker(terrain, playerX, playerY, playerZ, m_palette.SpruceWood))
                 {
                     Log.Information("[TownBootstrap] Town already exists in grid cell " + cellKey + ".");
                     s_processedCells.Add(cellKey);
                     return;
                 }
-
-                if (m_palette == null)
-                    m_palette = ResolvePalette();
 
                 if (GenerateTown(terrain, playerX, playerY, playerZ, m_palette))
                 {
@@ -126,86 +123,91 @@ namespace Game
             }
         }
 
+        private static bool IsPaletteReady(Palette p)
+        {
+            if (p == null) return false;
+            bool ready = p.SpruceWood > 0 && p.Planks > 0 && p.Cobblestone > 0 &&
+                         p.FramedGlass > 0 && p.WoodenStairs > 0 &&
+                         p.WoodenDoor > 0 && p.WickerLamp > 0;
+            if (!ready)
+                Log.Information("[TownBootstrap] Required village blocks are missing. SpruceWood=" + p.SpruceWood +
+                    ", Planks=" + p.Planks + ", Cobblestone=" + p.Cobblestone +
+                    ", FramedGlass=" + p.FramedGlass + ", WoodenStairs=" + p.WoodenStairs +
+                    ", WoodenDoor=" + p.WoodenDoor + ", WickerLamp=" + p.WickerLamp +
+                    ". Generation stopped; no stone/bedrock fallback will be used.");
+            return ready;
+        }
+
         private static bool GenerateTown(SubsystemTerrain terrain, int anchorX, int playerY, int anchorZ, Palette palette)
         {
-            // The search origin is the player's current location, not the grid centre.
-            int playerX = anchorX;
-            int playerZ = anchorZ;
+            int townX = anchorX;
+            int townZ = anchorZ;
 
-            if (palette == null || palette.Stone <= 0 || palette.Cobble <= 0)
-            {
-                Log.Information("[TownBootstrap] Essential stone blocks could not be resolved. No terrain was changed.");
+            if (!IsPaletteReady(palette))
                 return false;
-            }
 
-            int townX, townZ, baseY;
-            if (!TryFindVillageSite(terrain, playerX, playerY, playerZ, out townX, out townZ, out baseY))
+            int baseY;
+            if (!TryFindVillageSite(terrain, townX, playerY, townZ, palette, out townX, out townZ, out baseY))
             {
-                Log.Information("[TownBootstrap] No suitable site was found in this pass. No terrain was changed.");
+                Log.Information("[TownBootstrap] No near-level natural-ground site found near the player. No blocks placed; retrying.");
                 return false;
             }
 
             int placed = 0;
-
-            // A compact 41x41 village: six two-storey homes around a central square.
             BuildRoads(terrain, palette, townX, townZ, baseY, ref placed);
 
-            BuildHouse(terrain, palette, townX - 14, townZ - 14, baseY, 1, 0, ref placed); // Northwest cottage
-            BuildHouse(terrain, palette, townX + 14, townZ - 14, baseY, 0, 0, ref placed); // Northeast cottage
-            BuildHouse(terrain, palette, townX - 14, townZ + 14, baseY, 0, 1, ref placed); // Southwest cottage
-            BuildHouse(terrain, palette, townX + 14, townZ + 14, baseY, 1, 1, ref placed); // Southeast cottage
-            BuildHouse(terrain, palette, townX - 14, townZ, baseY, 2, 2, ref placed);      // Blacksmith
-            BuildHouse(terrain, palette, townX + 14, townZ, baseY, 3, 3, ref placed);      // Inn / larger home
+            BuildHouse(terrain, palette, townX - 14, townZ - 14, baseY, 0, ref placed);
+            BuildHouse(terrain, palette, townX + 14, townZ - 14, baseY, 1, ref placed);
+            BuildHouse(terrain, palette, townX - 14, townZ + 14, baseY, 1, ref placed);
+            BuildHouse(terrain, palette, townX + 14, townZ + 14, baseY, 0, ref placed);
+            BuildHouse(terrain, palette, townX - 14, townZ, baseY, 2, ref placed);
+            BuildHouse(terrain, palette, townX + 14, townZ, baseY, 3, ref placed);
 
-            BuildSmallGarden(terrain, palette, townX, townZ, baseY, ref placed);
             BuildCentralSquare(terrain, palette, townX, townZ, baseY, ref placed);
             BuildTownLights(terrain, palette, townX, townZ, baseY, ref placed);
 
             Log.Information("[TownBootstrap] Village created at X=" + townX + ", Y=" + baseY + ", Z=" + townZ +
-                ". Blocks placed: " + placed + ". Six two-storey houses, central well, market and paths.");
+                ". Blocks placed: " + placed + ". Palette: spruce wood, planks, cobblestone, framed glass, wooden stairs, wooden door and wicker lamp.");
             return placed > 0;
         }
 
         private static Palette ResolvePalette()
         {
             Palette p = new Palette();
-            p.Stone = ResolveBlockIndex("granite", "GraniteBlock", "StoneBlock");
-            p.Cobble = ResolveBlockIndex("cobblestone", "CobblestoneBlock", "CobbleStoneBlock", "RoughStoneBlock");
-            p.StoneBricks = ResolveBlockIndex("stone bricks", "StoneBricksBlock", "StoneBrickBlock", "StoneBrick");
-            p.Planks = ResolveBlockIndex("wooden planks", "PlanksBlock", "WoodPlanksBlock", "WoodenPlanksBlock");
-            p.Log = ResolveBlockIndex("oak log", "OakWoodBlock", "WoodBlock", "Log1Block", "OakLogBlock");
-            p.Glass = ResolveBlockIndex("glass", "GlassBlock");
-            p.Door = ResolveBlockIndex("wooden door", "WoodenDoorBlock", "WoodDoorBlock");
-            p.Chest = ResolveBlockIndex("chest", "ChestBlock");
-            p.Torch = ResolveBlockIndex("torch", "TorchBlock");
-            p.Carpet = ResolveBlockIndex("carpet", "CarpetBlock");
-            p.Stairs = ResolveBlockIndex("wooden stairs", "WoodenStairsBlock", "WoodStairsBlock");
+            p.SpruceWood = ResolveBlockIndex("spruce wood", "SpruceWoodBlock");
+            p.Planks = ResolveBlockIndex("planks", "PlanksBlock");
+            p.Cobblestone = ResolveBlockIndex("cobblestone", "CobblestoneBlock");
+            p.FramedGlass = ResolveBlockIndex("framed glass", "FramedGlassBlock");
+            p.WoodenStairs = ResolveBlockIndex("wooden stairs", "WoodenStairsBlock");
+            p.WoodenDoor = ResolveBlockIndex("wooden door", "WoodenDoorBlock");
+            p.WickerLamp = ResolveBlockIndex("wicker lamp", "WickerLampBlock");
             p.Water = ResolveBlockIndex("water", "WaterBlock");
-            p.Soil = ResolveBlockIndex("soil", "SoilBlock", "FarmlandBlock");
-            p.Fence = ResolveBlockIndex("wooden fence", "WoodenFenceBlock", "FenceBlock");
-            p.Workbench = ResolveBlockIndex("workbench", "CraftingTableBlock", "WorkbenchBlock");
 
-            // No guessed numeric IDs and no dirt/sand substitutes for house materials.
-            // If a wood class cannot be resolved, keep retrying instead of building ugly houses.
-            if (p.Stone <= 0) p.Stone = 1; // verified granite fallback only
-            if (p.Cobble <= 0) p.Cobble = p.Stone;
-            if (p.StoneBricks <= 0) p.StoneBricks = p.Cobble;
-            // Never block village generation when optional wood classes differ between API builds.
-            // Use the known-safe stone palette as a last-resort fallback; the generator remains active.
-            if (p.Planks <= 0) p.Planks = p.Stone;
-            if (p.Log <= 0) p.Log = p.Stone;
+            // These contents are only excluded from terrain-height detection.
+            // They are never used as building materials.
+            AddNonGround(p, "SpruceWoodBlock", "OakWoodBlock", "BirchWoodBlock",
+                "SpruceLeavesBlock", "OakLeavesBlock", "BirchLeavesBlock",
+                "TallSpruceLeavesBlock", "LeavesBlock", "BedrockBlock",
+                "TallGrassBlock", "GrassBlock", "FlowerBlock");
 
-            Log.Information("[TownBootstrap] Palette: stone=" + p.Stone + ", cobble=" + p.Cobble +
-                ", stoneBricks=" + p.StoneBricks + ", planks=" + p.Planks + ", log=" + p.Log + ", glass=" + p.Glass +
-                ", torch=" + p.Torch + ", chest=" + p.Chest + ", door=" + p.Door + ".");
+            Log.Information("[TownBootstrap] Exact palette: spruce wood=" + p.SpruceWood +
+                ", planks=" + p.Planks + ", cobblestone=" + p.Cobblestone +
+                ", framed glass=" + p.FramedGlass + ", wooden stairs=" + p.WoodenStairs +
+                ", wooden door=" + p.WoodenDoor + ", wicker lamp=" + p.WickerLamp + ".");
             return p;
         }
 
-        /// <summary>
-        /// Uses the API's own block registry rather than guessing numeric content IDs.
-        /// Reflection keeps this mod compatible with API builds where concrete block types differ.
-        /// </summary>
-        private static int ResolveBlockIndex(string label, params string[] typeNames)
+        private static void AddNonGround(Palette p, params string[] typeNames)
+        {
+            for (int i = 0; i < typeNames.Length; i++)
+            {
+                int index = ResolveBlockIndex(typeNames[i], typeNames[i]);
+                if (index > 0)
+                    p.NonGroundContents.Add(index);
+            }
+        }
+
+                private static int ResolveBlockIndex(string label, params string[] typeNames)
         {
             MethodInfo getIndex = null;
             MethodInfo[] methods = typeof(BlocksManager).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
@@ -262,16 +264,14 @@ namespace Game
         }
 
         private static bool TryFindVillageSite(
-            SubsystemTerrain subsystemTerrain, int playerX, int playerY, int playerZ,
+            SubsystemTerrain terrain, int playerX, int playerY, int playerZ, Palette p,
             out int centerX, out int centerZ, out int baseY)
         {
-            // Candidate sites stay near the 256-block grid-cell centre.
             int[,] offsets = new int[,]
             {
                 { 0, 0 }, { 16, 0 }, { -16, 0 }, { 0, 16 }, { 0, -16 },
-                { 24, 24 }, { -24, 24 }, { 24, -24 }, { -24, -24 },
-                { 32, 0 }, { -32, 0 }, { 0, 32 }, { 0, -32 },
-                { 32, 16 }, { -32, 16 }, { 32, -16 }, { -32, -16 }
+                { 24, 16 }, { -24, 16 }, { 24, -16 }, { -24, -16 },
+                { 32, 0 }, { -32, 0 }, { 0, 32 }, { 0, -32 }
             };
 
             for (int i = 0; i < offsets.GetLength(0); i++)
@@ -279,83 +279,36 @@ namespace Game
                 int x = playerX + offsets[i, 0];
                 int z = playerZ + offsets[i, 1];
                 int candidateY;
-
-                if (IsSafeFlatSite(subsystemTerrain, x, z, playerY, out candidateY))
+                if (IsSafeFlatSite(terrain, x, z, playerY, p, out candidateY))
                 {
                     centerX = x;
                     centerZ = z;
                     baseY = candidateY;
+                    Log.Information("[TownBootstrap] Natural ground site selected at X=" + x +
+                        ", Y=" + candidateY + ", Z=" + z + ".");
                     return true;
                 }
-            }
-
-            // Last-resort natural-ground search: don't reject an otherwise usable
-            // location just because a tree or a small obstruction intersects a house pad.
-            // Place() still writes only into air, so existing terrain/buildings are preserved.
-            int[,] groundChecks = new int[,]
-            {
-                { 0, 0 }, { -14, -14 }, { 14, -14 }, { -14, 14 }, { 14, 14 },
-                { -14, 0 }, { 14, 0 }
-            };
-            for (int i = 0; i < offsets.GetLength(0); i++)
-            {
-                int x = playerX + offsets[i, 0];
-                int z = playerZ + offsets[i, 1];
-                int minGround = 255;
-                int maxGround = 0;
-                int found = 0;
-                for (int k = 0; k < groundChecks.GetLength(0); k++)
-                {
-                    int surface;
-                    if (!TryFindSurfaceY(subsystemTerrain,
-                        x + groundChecks[k, 0], z + groundChecks[k, 1], playerY, out surface))
-                        continue;
-                    found++;
-                    if (surface < minGround) minGround = surface;
-                    if (surface > maxGround) maxGround = surface;
-                }
-                if (found >= 4 && maxGround - minGround <= 32 && maxGround < 238)
-                {
-                    centerX = x;
-                    centerZ = z;
-                    baseY = maxGround;
-                    Log.Information("[TownBootstrap] Using relaxed terrain site at X=" + x +
-                        ", Z=" + z + ", surface range=" + minGround + "-" + maxGround + ".");
-                    return true;
-                }
-            }
-
-            // Final fallback: a single valid ground column is enough to start building.
-            // Place() still refuses to replace terrain, so obstacles remain untouched.
-            int fallbackY;
-            if (TryFindSurfaceY(subsystemTerrain, playerX, playerZ, playerY, out fallbackY) &&
-                fallbackY < 238)
-            {
-                centerX = playerX;
-                centerZ = playerZ;
-                baseY = fallbackY;
-                Log.Information("[TownBootstrap] Using last-resort player-site at X=" + playerX +
-                    ", Y=" + fallbackY + ", Z=" + playerZ + ".");
-                return true;
             }
 
             centerX = centerZ = baseY = 0;
-            Log.Information("[TownBootstrap] No terrain column found near the player; generation will retry.");
             return false;
         }
 
-        private static bool IsSafeFlatSite(SubsystemTerrain terrain, int centerX, int centerZ, int scanY, out int baseY)
+        private static bool IsSafeFlatSite(
+            SubsystemTerrain terrain, int centerX, int centerZ, int playerY,
+            Palette p, out int baseY)
         {
             int minSurface = 255;
             int maxSurface = 0;
 
-            // Check the entire footprint in a two-block grid for height consistency.
+            // Sample the full 41x41 village footprint. A site must be almost level;
+            // never lift an entire village to match a distant tree or mountain top.
             for (int x = -20; x <= 20; x += 4)
             {
                 for (int z = -20; z <= 20; z += 4)
                 {
                     int surface;
-                    if (!TryFindSurfaceY(terrain, centerX + x, centerZ + z, scanY, out surface))
+                    if (!TryFindSurfaceY(terrain, centerX + x, centerZ + z, playerY, p, out surface))
                     {
                         baseY = 0;
                         return false;
@@ -365,16 +318,16 @@ namespace Game
                 }
             }
 
-            // Natural terrain rarely stays perfectly level over 41x41 blocks.
-            // Allow a gentle slope; structures are elevated to the highest sampled ground.
-            if (maxSurface - minSurface > 18 || maxSurface >= 238)
+            if (maxSurface - minSurface > 2 ||
+                maxSurface >= 238 ||
+                maxSurface > playerY + 12 ||
+                minSurface < playerY - 48)
             {
                 baseY = 0;
                 return false;
             }
 
-            // Check the actual house footprints and square, not every tree in the whole 41x41 area.
-            // A blocked site is skipped; the placement routine itself still writes only into air.
+            // Reject trees, existing buildings and overhangs above all house footprints.
             int[,] footprints = new int[,]
             {
                 { -14, -14 }, { 14, -14 }, { -14, 14 }, { 14, 14 },
@@ -387,7 +340,7 @@ namespace Game
                 {
                     for (int z = -half; z <= half; z += 2)
                     {
-                        for (int y = maxSurface + 1; y <= maxSurface + 13; y++)
+                        for (int y = maxSurface + 1; y <= maxSurface + 12; y++)
                         {
                             int value = terrain.Terrain.GetCellValue(
                                 centerX + footprints[i, 0] + x, y,
@@ -407,44 +360,60 @@ namespace Game
         }
 
         private static bool TryFindSurfaceY(
-            SubsystemTerrain terrain, int x, int z, int scanY, out int surfaceY)
+            SubsystemTerrain terrain, int x, int z, int playerY, Palette p, out int surfaceY)
         {
-            int minY = 1;
-            // Scan the full buildable vertical range. This avoids missing ground when
-            // the grid search origin or player is significantly above/below the surface.
-            int maxY = 254;
+            int maxY = Math.Min(254, playerY + 24);
+            int minY = Math.Max(1, playerY - 64);
+            bool waterSeen = false;
 
             for (int y = maxY; y >= minY; y--)
             {
-                int value = terrain.Terrain.GetCellValue(x, y, z);
-                if (Terrain.ExtractContents(value) != 0)
+                int contents = Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y, z));
+                if (contents == 0)
+                    continue;
+
+                if (p.Water > 0 && contents == p.Water)
                 {
-                    surfaceY = y;
-                    return true;
+                    waterSeen = true;
+                    continue;
                 }
+
+                // Ignore trees, leaves, grass, and bedrock. The first remaining solid
+                // block is the actual ground surface rather than a canopy or world floor.
+                if (p.NonGroundContents.Contains(contents))
+                    continue;
+
+                if (waterSeen)
+                {
+                    surfaceY = 0;
+                    return false;
+                }
+
+                surfaceY = y;
+                return true;
             }
 
             surfaceY = 0;
             return false;
         }
 
-        private static bool HasTownMarker(SubsystemTerrain terrain, int searchX, int playerY, int searchZ)
+                private static bool HasTownMarker(
+            SubsystemTerrain terrain, int searchX, int playerY, int searchZ, int markerContent)
         {
-            // On re-entry, look around the player's saved position for the well marker.
-            int minY = Math.Max(1, playerY - 48);
-            int maxY = Math.Min(248, playerY + 24);
+            int minY = Math.Max(1, playerY - 40);
+            int maxY = Math.Min(248, playerY + 32);
             for (int x = searchX - 48; x <= searchX + 48; x++)
             {
                 for (int z = searchZ - 48; z <= searchZ + 48; z++)
                 {
-                    for (int y = minY; y <= maxY; y++)
+                    for (int y = minY; y <= maxY - 3; y++)
                     {
                         int a = Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y, z));
-                        if (a != 1) continue;
+                        if (a != markerContent) continue;
                         int b = Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y + 1, z));
                         int c = Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y + 2, z));
                         int d = Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y + 3, z));
-                        if (b == 1 && c == 1 && d == 1)
+                        if (b == markerContent && c == markerContent && d == markerContent)
                             return true;
                     }
                 }
@@ -452,7 +421,7 @@ namespace Game
             return false;
         }
 
-        private static bool Place(SubsystemTerrain terrain, int x, int y, int z, int contents, ref int placed)
+                private static bool Place(SubsystemTerrain terrain, int x, int y, int z, int contents, ref int placed)
         {
             if (contents <= 0 || y < 1 || y >= 255)
                 return false;
@@ -464,124 +433,102 @@ namespace Game
             return true;
         }
 
-        private static void FillSupport(SubsystemTerrain terrain, Palette p, int x, int z, int baseY, ref int placed)
+        private static void FillSupport(
+            SubsystemTerrain terrain, Palette p, int x, int z, int baseY, ref int placed)
         {
             int surface;
-            if (!TryFindSurfaceY(terrain, x, z, baseY + 2, out surface))
+            if (!TryFindSurfaceY(terrain, x, z, baseY + 2, p, out surface))
                 return;
 
-            for (int y = surface + 1; y <= baseY + 1; y++)
-                Place(terrain, x, y, z, p.Cobble, ref placed);
+            // Support only the gap beneath the village floor. The floor itself is
+            // placed at baseY+1, so this loop must stop at baseY.
+            for (int y = surface + 1; y <= baseY; y++)
+                Place(terrain, x, y, z, p.Cobblestone, ref placed);
         }
 
-        private static void BuildRoads(SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY, ref int placed)
+        private static void PlaceGrounded(
+            SubsystemTerrain terrain, Palette p, int x, int z, int baseY, int contents, ref int placed)
         {
-            // Four diagonal approaches lead from the corner homes into the square.
-            for (int z = -10; z <= -7; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx - 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            for (int x = -14; x <= -7; x++)
-                for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz - 7 + dz, p.Cobble, ref placed);
-            for (int z = -7; z <= -5; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx - 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-
-            for (int z = -10; z <= -7; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            for (int x = 7; x <= 14; x++)
-                for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz - 7 + dz, p.Cobble, ref placed);
-            for (int z = -7; z <= -5; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-
-            for (int z = 7; z <= 10; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx - 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            for (int x = -14; x <= -7; x++)
-                for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz + 7 + dz, p.Cobble, ref placed);
-            for (int z = 5; z <= 7; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx - 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-
-            for (int z = 7; z <= 10; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + 14 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-            for (int x = 7; x <= 14; x++)
-                for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz + 7 + dz, p.Cobble, ref placed);
-            for (int z = 5; z <= 7; z++)
-                for (int dx = -1; dx <= 1; dx++)
-                    Place(terrain, cx + 7 + dx, baseY + 1, cz + z, p.Cobble, ref placed);
-
-            // Short east/west paths connect the two side homes without running through them.
-            for (int x = -10; x <= -6; x++)
-                for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz + dz, p.Cobble, ref placed);
-            for (int x = 6; x <= 10; x++)
-                for (int dz = -1; dz <= 1; dz++)
-                    Place(terrain, cx + x, baseY + 1, cz + dz, p.Cobble, ref placed);
+            FillSupport(terrain, p, x, z, baseY, ref placed);
+            Place(terrain, x, baseY + 1, z, contents, ref placed);
         }
 
-        // frontSide: 0 = south (+Z), 1 = north (-Z), 2 = east (+X), 3 = west (-X)
-        private static void BuildHouse(
+        private static void BuildRoads(
+            SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY, ref int placed)
+        {
+            // A compact cobblestone cross connects the square to the six houses.
+            for (int x = -10; x <= 10; x++)
+                for (int dz = -1; dz <= 1; dz++)
+                    PlaceGrounded(terrain, p, cx + x, cz + dz, baseY, p.Cobblestone, ref placed);
+
+            for (int z = -10; z <= 10; z++)
+                for (int dx = -1; dx <= 1; dx++)
+                    PlaceGrounded(terrain, p, cx + dx, cz + z, baseY, p.Cobblestone, ref placed);
+
+            for (int signX = -1; signX <= 1; signX += 2)
+            {
+                for (int signZ = -1; signZ <= 1; signZ += 2)
+                {
+                    for (int i = 7; i <= 10; i++)
+                        for (int w = -1; w <= 1; w++)
+                            PlaceGrounded(terrain, p, cx + signX * 14 + w, cz + signZ * i,
+                                baseY, p.Cobblestone, ref placed);
+                }
+            }
+        }
+
+                private static void BuildHouse(
             SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY,
-            int style, int frontSide, ref int placed)
+            int frontSide, ref int placed)
         {
-            // Raised stone plinth and wooden ground floor.
+            // 9x9 cobblestone foundation with a spruce/plank house above it.
             for (int dx = -4; dx <= 4; dx++)
             {
                 for (int dz = -4; dz <= 4; dz++)
                 {
                     FillSupport(terrain, p, cx + dx, cz + dz, baseY, ref placed);
-                    int floor = (Math.Abs(dx) == 4 || Math.Abs(dz) == 4) ? p.StoneBricks : p.Planks;
+                    int floor = (Math.Abs(dx) == 4 || Math.Abs(dz) == 4)
+                        ? p.Cobblestone : p.Planks;
                     Place(terrain, cx + dx, baseY + 1, cz + dz, floor, ref placed);
                 }
             }
 
-            // First-storey walls: stone lower course, warm timber above.
+            // Ground floor walls.
             for (int y = baseY + 2; y <= baseY + 3; y++)
             {
                 for (int side = -4; side <= 4; side++)
                 {
-                    PlaceWallCell(terrain, p, cx, cz, baseY, style, frontSide, side, y, 0, ref placed);
-                    PlaceWallCell(terrain, p, cx, cz, baseY, style, frontSide, side, y, 1, ref placed);
+                    PlaceWallCell(terrain, p, cx, cz, baseY, frontSide, side, y, 0, ref placed);
+                    PlaceWallCell(terrain, p, cx, cz, baseY, frontSide, side, y, 1, ref placed);
                 }
             }
 
-            // Corner timber posts emphasize the half-timbered frame.
+            // Spruce corner beams.
             for (int y = baseY + 2; y <= baseY + 6; y++)
             {
-                Place(terrain, cx - 4, y, cz - 4, p.Log, ref placed);
-                Place(terrain, cx + 4, y, cz - 4, p.Log, ref placed);
-                Place(terrain, cx - 4, y, cz + 4, p.Log, ref placed);
-                Place(terrain, cx + 4, y, cz + 4, p.Log, ref placed);
+                Place(terrain, cx - 4, y, cz - 4, p.SpruceWood, ref placed);
+                Place(terrain, cx + 4, y, cz - 4, p.SpruceWood, ref placed);
+                Place(terrain, cx - 4, y, cz + 4, p.SpruceWood, ref placed);
+                Place(terrain, cx + 4, y, cz + 4, p.SpruceWood, ref placed);
             }
 
-            // Second-storey floor, with an opening for the internal staircase.
+            // Upper floor.
             for (int dx = -3; dx <= 3; dx++)
             {
                 for (int dz = -3; dz <= 3; dz++)
-                {
-                    if (dx == -1 && dz == 2) continue;
                     Place(terrain, cx + dx, baseY + 4, cz + dz, p.Planks, ref placed);
-                }
             }
 
-            // Second-storey walls.
             for (int y = baseY + 5; y <= baseY + 6; y++)
             {
                 for (int side = -4; side <= 4; side++)
                 {
-                    PlaceWallCell(terrain, p, cx, cz, baseY, style, frontSide, side, y, 2, ref placed);
-                    PlaceWallCell(terrain, p, cx, cz, baseY, style, frontSide, side, y, 3, ref placed);
+                    PlaceWallCell(terrain, p, cx, cz, baseY, frontSide, side, y, 2, ref placed);
+                    PlaceWallCell(terrain, p, cx, cz, baseY, frontSide, side, y, 3, ref placed);
                 }
             }
 
-            // Gable ends beneath the pitched timber roof.
+            // Low stepped gables and a wooden roof.
             for (int h = 0; h <= 2; h++)
             {
                 for (int dx = -h; dx <= h; dx++)
@@ -590,101 +537,57 @@ namespace Game
                     Place(terrain, cx + dx, baseY + 7 + h, cz + 4, p.Planks, ref placed);
                 }
             }
-
-            // Pitched roof: the two slopes meet in a long ridge.
             for (int dx = -4; dx <= 4; dx++)
             {
                 int roofY = baseY + 7 + (2 - Math.Abs(dx) / 2);
                 for (int dz = -5; dz <= 5; dz++)
-                    Place(terrain, cx + dx, roofY, cz + dz, p.Planks, ref placed);
+                {
+                    int roofBlock = (Math.Abs(dx) == 4) ? p.WoodenStairs : p.Planks;
+                    Place(terrain, cx + dx, roofY, cz + dz, roofBlock, ref placed);
+                }
             }
 
-            // Front door, two blocks high. A missing door class leaves a clean open doorway.
+            // Two-block wooden door on the chosen front side.
             int doorX = cx;
             int doorZ = cz;
             if (frontSide == 0) doorZ = cz + 4;
             else if (frontSide == 1) doorZ = cz - 4;
             else if (frontSide == 2) doorX = cx + 4;
             else doorX = cx - 4;
+            Place(terrain, doorX, baseY + 2, doorZ, p.WoodenDoor, ref placed);
+            Place(terrain, doorX, baseY + 3, doorZ, p.WoodenDoor, ref placed);
 
-            if (p.Door > 0)
-            {
-                Place(terrain, doorX, baseY + 2, doorZ, p.Door, ref placed);
-                Place(terrain, doorX, baseY + 3, doorZ, p.Door, ref placed);
-            }
+            // Framed-glass windows, not ordinary glass.
+            PlaceWindow(terrain, p, cx - 2, baseY + 3, cz - 4, ref placed);
+            PlaceWindow(terrain, p, cx + 2, baseY + 3, cz - 4, ref placed);
+            PlaceWindow(terrain, p, cx - 2, baseY + 3, cz + 4, ref placed);
+            PlaceWindow(terrain, p, cx + 2, baseY + 3, cz + 4, ref placed);
+            PlaceWindow(terrain, p, cx - 4, baseY + 3, cz - 2, ref placed);
+            PlaceWindow(terrain, p, cx - 4, baseY + 3, cz + 2, ref placed);
+            PlaceWindow(terrain, p, cx + 4, baseY + 3, cz - 2, ref placed);
+            PlaceWindow(terrain, p, cx + 4, baseY + 3, cz + 2, ref placed);
+            PlaceWindow(terrain, p, cx - 2, baseY + 6, cz - 4, ref placed);
+            PlaceWindow(terrain, p, cx + 2, baseY + 6, cz - 4, ref placed);
+            PlaceWindow(terrain, p, cx - 2, baseY + 6, cz + 4, ref placed);
+            PlaceWindow(terrain, p, cx + 2, baseY + 6, cz + 4, ref placed);
 
-            // Glass windows on all facades; gaps are left clear if glass is unavailable.
-            if (p.Glass > 0)
-            {
-                PlaceWindow(terrain, p, cx - 2, baseY + 3, cz - 4, ref placed);
-                PlaceWindow(terrain, p, cx + 2, baseY + 3, cz - 4, ref placed);
-                PlaceWindow(terrain, p, cx - 2, baseY + 3, cz + 4, ref placed);
-                PlaceWindow(terrain, p, cx + 2, baseY + 3, cz + 4, ref placed);
-                PlaceWindow(terrain, p, cx - 4, baseY + 3, cz - 2, ref placed);
-                PlaceWindow(terrain, p, cx - 4, baseY + 3, cz + 2, ref placed);
-                PlaceWindow(terrain, p, cx + 4, baseY + 3, cz - 2, ref placed);
-                PlaceWindow(terrain, p, cx + 4, baseY + 3, cz + 2, ref placed);
-
-                PlaceWindow(terrain, p, cx - 2, baseY + 6, cz - 4, ref placed);
-                PlaceWindow(terrain, p, cx + 2, baseY + 7, cz - 4, ref placed);
-                PlaceWindow(terrain, p, cx - 2, baseY + 6, cz + 4, ref placed);
-                PlaceWindow(terrain, p, cx + 2, baseY + 7, cz + 4, ref placed);
-            }
-
-            // Warm indoor carpets on both floors.
-            if (p.Carpet > 0)
-            {
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    for (int dz = -1; dz <= 1; dz++)
-                    {
-                        Place(terrain, cx + dx, baseY + 2, cz + dz, p.Carpet, ref placed);
-                        Place(terrain, cx + dx, baseY + 5, cz + dz, p.Carpet, ref placed);
-                    }
-                }
-            }
-
-            // Interior storage and a small work corner on the ground floor.
-            Place(terrain, cx - 2, baseY + 2, cz - 2, p.Chest, ref placed);
-            Place(terrain, cx + 2, baseY + 2, cz - 2, p.Workbench, ref placed);
-            Place(terrain, cx - 2, baseY + 5, cz - 2, p.Chest, ref placed);
-
-            // Floor-mounted torches keep the rooms lit without replacing wall blocks.
-            Place(terrain, cx - 3, baseY + 2, cz + 2, p.Torch, ref placed);
-            Place(terrain, cx + 3, baseY + 2, cz + 2, p.Torch, ref placed);
-            Place(terrain, cx - 3, baseY + 5, cz + 2, p.Torch, ref placed);
-            Place(terrain, cx + 3, baseY + 5, cz + 2, p.Torch, ref placed);
-
-            // A compact internal stair run. Wooden stair blocks are preferred; planks are a safe fallback.
-            int stairBlock = p.Stairs > 0 ? p.Stairs : p.Planks;
+            // Interior wooden stair run and warm wicker lighting.
             for (int step = 0; step < 3; step++)
-                Place(terrain, cx + 2 - step, baseY + 2 + step, cz + 2, stairBlock, ref placed);
+                Place(terrain, cx + 2 - step, baseY + 2 + step, cz + 2, p.WoodenStairs, ref placed);
+            Place(terrain, cx - 2, baseY + 3, cz - 2, p.WickerLamp, ref placed);
+            Place(terrain, cx + 2, baseY + 6, cz + 2, p.WickerLamp, ref placed);
 
-            // The blacksmith receives a stone chimney and extra stonework.
-            if (style == 2)
-            {
-                for (int y = baseY + 8; y <= baseY + 11; y++)
-                {
-                    Place(terrain, cx + 3, y, cz - 3, p.StoneBricks, ref placed);
-                    Place(terrain, cx + 3, y, cz - 2, p.StoneBricks, ref placed);
-                }
-                Place(terrain, cx + 2, baseY + 2, cz - 3, p.StoneBricks, ref placed);
-            }
-
-            // A modest inn sign-like timber frame and extra upper-floor detail.
-            if (style == 3)
-            {
-                Place(terrain, cx - 2, baseY + 9, cz + 5, p.Log, ref placed);
-                Place(terrain, cx + 2, baseY + 9, cz + 5, p.Log, ref placed);
-                Place(terrain, cx, baseY + 10, cz + 5, p.Planks, ref placed);
-            }
+            // A wooden stair at the entrance gives a clear step up from the path.
+            if (frontSide == 0) Place(terrain, cx, baseY + 1, cz + 5, p.WoodenStairs, ref placed);
+            else if (frontSide == 1) Place(terrain, cx, baseY + 1, cz - 5, p.WoodenStairs, ref placed);
+            else if (frontSide == 2) Place(terrain, cx + 5, baseY + 1, cz, p.WoodenStairs, ref placed);
+            else Place(terrain, cx - 5, baseY + 1, cz, p.WoodenStairs, ref placed);
         }
 
-        private static void PlaceWallCell(
+                private static void PlaceWallCell(
             SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY,
-            int style, int frontSide, int side, int y, int wallGroup, ref int placed)
+            int frontSide, int side, int y, int wallGroup, ref int placed)
         {
-            // wallGroup identifies the north/south or east/west wall pair.
             int x, z;
             if (wallGroup == 0) { x = cx + side; z = cz - 4; }
             else if (wallGroup == 1) { x = cx + side; z = cz + 4; }
@@ -695,79 +598,58 @@ namespace Game
                                (frontSide == 1 && wallGroup == 0) ||
                                (frontSide == 2 && wallGroup == 3) ||
                                (frontSide == 3 && wallGroup == 2);
-
-            bool doorOpening = isFrontWall && side == 0 && y <= baseY + 3;
-            if (doorOpening)
+            if (isFrontWall && side == 0 && y <= baseY + 3)
                 return;
 
-            // Openings for ground-floor windows.
-            bool windowPosition = (y == baseY + 3 || y == baseY + 6) && (Math.Abs(side) == 2);
-            bool windowOnSide = wallGroup >= 2 && (y == baseY + 3 || y == baseY + 6) && (Math.Abs(side) == 2);
-            if (windowPosition || windowOnSide)
+            bool windowPosition = (y == baseY + 3 || y == baseY + 6) && Math.Abs(side) == 2;
+            if (windowPosition)
             {
-                if (p.Glass > 0)
-                    Place(terrain, x, y, z, p.Glass, ref placed);
+                Place(terrain, x, y, z, p.FramedGlass, ref placed);
                 return;
             }
 
-            int wallContents = (y == baseY + 2) ? p.StoneBricks : p.Planks;
-            if (style == 2 && y <= baseY + 3)
-                wallContents = p.StoneBricks;
+            int wallContents = (y == baseY + 2) ? p.Cobblestone : p.Planks;
             Place(terrain, x, y, z, wallContents, ref placed);
         }
 
-        private static void PlaceWindow(SubsystemTerrain terrain, Palette p, int x, int y, int z, ref int placed)
+                private static void PlaceWindow(SubsystemTerrain terrain, Palette p, int x, int y, int z, ref int placed)
         {
-            if (p.Glass > 0)
-            {
-                // Only air can be replaced; the window helper never cuts through a built wall.
-                if (Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y, z)) != 0)
-                    return;
-                Place(terrain, x, y, z, p.Glass, ref placed);
-            }
+            // The exact framed-glass block is used for every window.
+            if (Terrain.ExtractContents(terrain.Terrain.GetCellValue(x, y, z)) == 0)
+                Place(terrain, x, y, z, p.FramedGlass, ref placed);
         }
 
         private static void BuildCentralSquare(
             SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY, ref int placed)
         {
-            // 11x11 paved square.
             for (int dx = -5; dx <= 5; dx++)
             {
                 for (int dz = -5; dz <= 5; dz++)
-                    Place(terrain, cx + dx, baseY + 1, cz + dz, p.Cobble, ref placed);
+                    PlaceGrounded(terrain, p, cx + dx, cz + dz, baseY, p.Cobblestone, ref placed);
             }
 
-            // Stone well with a four-block centre column that also acts as a one-town marker.
+            // Cobblestone well ring, with a spruce marker column in the centre.
             for (int dx = -2; dx <= 2; dx++)
             {
                 for (int dz = -2; dz <= 2; dz++)
                 {
                     if (Math.Abs(dx) == 2 || Math.Abs(dz) == 2)
                     {
-                        Place(terrain, cx + dx, baseY + 2, cz + dz, p.Cobble, ref placed);
-                        Place(terrain, cx + dx, baseY + 3, cz + dz, p.Cobble, ref placed);
+                        Place(terrain, cx + dx, baseY + 2, cz + dz, p.Cobblestone, ref placed);
+                        Place(terrain, cx + dx, baseY + 3, cz + dz, p.Cobblestone, ref placed);
                     }
                 }
             }
-
             for (int y = baseY + 2; y <= baseY + 5; y++)
-                Place(terrain, cx, y, cz, p.Stone, ref placed);
+                Place(terrain, cx, y, cz, p.SpruceWood, ref placed);
 
-            if (p.Water > 0)
-            {
-                Place(terrain, cx + 1, baseY + 2, cz, p.Water, ref placed);
-                Place(terrain, cx - 1, baseY + 2, cz, p.Water, ref placed);
-                Place(terrain, cx, baseY + 2, cz + 1, p.Water, ref placed);
-                Place(terrain, cx, baseY + 2, cz - 1, p.Water, ref placed);
-            }
-
-            // Market stall: timber posts, counter and a broad wooden canopy.
+            // Small market canopy: spruce supports and plank counter/roof.
             for (int dx = 2; dx <= 4; dx += 2)
             {
                 for (int dz = -4; dz <= -2; dz += 2)
                 {
-                    Place(terrain, cx + dx, baseY + 2, cz + dz, p.Log, ref placed);
-                    Place(terrain, cx + dx, baseY + 3, cz + dz, p.Log, ref placed);
+                    Place(terrain, cx + dx, baseY + 2, cz + dz, p.SpruceWood, ref placed);
+                    Place(terrain, cx + dx, baseY + 3, cz + dz, p.SpruceWood, ref placed);
                 }
             }
             for (int dx = 2; dx <= 4; dx++)
@@ -777,14 +659,6 @@ namespace Game
                 Place(terrain, cx + dx, baseY + 4, cz - 3, p.Planks, ref placed);
                 Place(terrain, cx + dx, baseY + 4, cz - 2, p.Planks, ref placed);
             }
-            Place(terrain, cx + 3, baseY + 2, cz - 2, p.Chest, ref placed);
-            Place(terrain, cx + 3, baseY + 2, cz - 4, p.Chest, ref placed);
-
-            // Short benches around the well.
-            Place(terrain, cx - 4, baseY + 2, cz, p.Planks, ref placed);
-            Place(terrain, cx + 4, baseY + 2, cz, p.Planks, ref placed);
-            Place(terrain, cx, baseY + 2, cz - 4, p.Planks, ref placed);
-            Place(terrain, cx, baseY + 2, cz + 4, p.Planks, ref placed);
         }
 
         private static void BuildTownLights(
@@ -795,42 +669,12 @@ namespace Game
             {
                 int x = cx + positions[i, 0];
                 int z = cz + positions[i, 1];
-                Place(terrain, x, baseY + 2, z, p.Log, ref placed);
-                Place(terrain, x, baseY + 3, z, p.Log, ref placed);
-                Place(terrain, x, baseY + 4, z, p.Log, ref placed);
-                if (p.Torch > 0)
-                    Place(terrain, x, baseY + 5, z, p.Torch, ref placed);
+                PlaceGrounded(terrain, p, x, z, baseY, p.Cobblestone, ref placed);
+                Place(terrain, x, baseY + 2, z, p.SpruceWood, ref placed);
+                Place(terrain, x, baseY + 3, z, p.SpruceWood, ref placed);
+                Place(terrain, x, baseY + 4, z, p.WickerLamp, ref placed);
             }
         }
 
-        private static void BuildSmallGarden(
-            SubsystemTerrain terrain, Palette p, int cx, int cz, int baseY, ref int placed)
-        {
-            // A small fenced planting bed on the south side of the square.
-            for (int dx = -5; dx <= -3; dx++)
-            {
-                for (int dz = 2; dz <= 4; dz++)
-                {
-                    if (p.Soil > 0)
-                        Place(terrain, cx + dx, baseY + 1, cz + dz, p.Soil, ref placed);
-                    else
-                        Place(terrain, cx + dx, baseY + 1, cz + dz, p.Cobble, ref placed);
-                }
             }
-
-            if (p.Fence > 0)
-            {
-                for (int dx = -5; dx <= -3; dx++)
-                {
-                    Place(terrain, cx + dx, baseY + 2, cz + 1, p.Fence, ref placed);
-                    Place(terrain, cx + dx, baseY + 2, cz + 5, p.Fence, ref placed);
-                }
-                for (int dz = 2; dz <= 4; dz++)
-                {
-                    Place(terrain, cx - 6, baseY + 2, cz + dz, p.Fence, ref placed);
-                    Place(terrain, cx - 2, baseY + 2, cz + dz, p.Fence, ref placed);
-                }
-            }
-        }
-    }
 }
