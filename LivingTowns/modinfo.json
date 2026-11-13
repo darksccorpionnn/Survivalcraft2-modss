@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.33",
+  "Version": "0.4.34",
   "ApiVersion": "1.9.5.1",
-  "Description": "Fixes persistent named sleep-bed assignments so slower villagers are not interrupted while navigating home; retains villager job path recovery.",
+  "Description": "Improves male and farmer villager sleep routing with a wider named-sign scan, safe indoor fallback and recovery from stalled doorway routes.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
