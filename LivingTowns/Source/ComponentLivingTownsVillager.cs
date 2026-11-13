@@ -32,6 +32,7 @@ namespace Game
         private ComponentPathfinding m_pathfinding;
         private ComponentInventory m_inventory;
         private ComponentModel m_model;
+        private ComponentMiner m_miner;
         private ComponentLocomotion m_locomotion;
         private SubsystemTerrain m_terrain;
         private SubsystemTimeOfDay m_timeOfDay;
@@ -60,13 +61,16 @@ namespace Game
         private readonly List<Point3> m_autoOpenedDoors = new List<Point3>();
         private Point3 m_workTarget;
         private bool m_hasWorkTarget;
+        private Vector3 m_workApproachPosition;
+        private bool m_hasWorkApproach;
+        private double m_nextTradeTime;
         private bool m_farmerKitGranted;
         private int m_farmSearchRadius;
         private int m_farmSearchDx;
         private int m_farmSearchDz;
 
-        private const float VillagerWalkSpeed = 3.15f;
-        private const float WorkMoveSpeed = 2.8f;
+        private const float VillagerWalkSpeed = 1.85f;
+        private const float WorkMoveSpeed = 1.55f;
         private const int FarmerWorkRadius = 32;
         private const int FarmCellsPerScan = 512;
 
@@ -83,6 +87,7 @@ namespace Game
             m_pathfinding = Entity.FindComponent<ComponentPathfinding>();
             m_inventory = Entity.FindComponent<ComponentInventory>();
             m_model = Entity.FindComponent<ComponentModel>();
+            m_miner = Entity.FindComponent<ComponentMiner>();
             m_locomotion = Entity.FindComponent<ComponentLocomotion>();
             m_terrain = Project.FindSubsystem<SubsystemTerrain>(true);
             m_timeOfDay = Project.FindSubsystem<SubsystemTimeOfDay>(true);
@@ -104,11 +109,11 @@ namespace Game
             m_farmerKitGranted = valuesDictionary.GetValue<bool>("FarmerKitGranted", false);
 
             if (m_locomotion != null)
-                m_locomotion.WalkSpeed = Math.Max(m_locomotion.WalkSpeed, VillagerWalkSpeed);
+                m_locomotion.WalkSpeed = VillagerWalkSpeed;
             if (m_body != null)
                 m_body.IsGravityEnabled = true;
 
-            Log.Information("[LivingTowns] Villager controller loaded; speed=" + VillagerWalkSpeed + ", job=" + m_job);
+            Log.Information("[LivingTowns] Villager controller loaded; speed=" + VillagerWalkSpeed + ", miner=" + (m_miner != null) + ", job=" + m_job);
         }
 
         public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
@@ -220,6 +225,7 @@ namespace Game
         {
             m_job = job;
             m_hasWorkTarget = false;
+            m_hasWorkApproach = false;
             m_nextWorkSearchTime = 0.0;
             m_patrolPause = 0.0;
             m_pathfinding?.Stop();
@@ -292,7 +298,11 @@ namespace Game
 
             source.RemoveSlotItems(active, amount);
             m_inventory.AddSlotItems(targetSlot, value, amount);
-            player.ComponentGui?.DisplaySmallMessage("NPC'ye " + amount + " adet eşya verildi.", Color.White, true, false);
+            // ComponentHumanModel.DrawExtras reads the active slot through ComponentMiner.
+            // Selecting the received slot makes the block/item render with the game's normal hand pose.
+            m_inventory.ActiveSlotIndex = targetSlot;
+            m_miner?.Poke(true);
+            player.ComponentGui?.DisplaySmallMessage("NPC'ye " + amount + " adet eşya verildi; eline aldı.", Color.White, true, false);
         }
 
         private bool EnsureAssignedBed()
@@ -640,6 +650,9 @@ namespace Game
             int seedSlot = FindItemSlot(seedContent, 5);
             if (seedContent > 0 && seedSlot < 0)
                 AddItemToInventory(Terrain.MakeBlockValue(seedContent, 0, 5), 32);
+            int rakeSlot = FindItemSlot(rake, null);
+            if (rakeSlot >= 0)
+                m_inventory.ActiveSlotIndex = rakeSlot;
             m_farmerKitGranted = true;
         }
 
@@ -648,6 +661,91 @@ namespace Game
             int remaining = ComponentInventoryBase.AcquireItems(m_inventory, value, count);
             if (remaining > 0 && m_pickables != null)
                 m_pickables.AddPickable(value, remaining, m_body.Position + new Vector3(0f, 0.5f, 0f), null, null);
+        }
+
+        private void SelectInventorySlot(int slot)
+        {
+            if (m_inventory == null || slot < 0 || slot >= m_inventory.VisibleSlotsCount || m_inventory.GetSlotCount(slot) <= 0)
+                return;
+            m_inventory.ActiveSlotIndex = slot;
+        }
+
+        private int SelectBestToolForBlock(int blockValue)
+        {
+            if (m_inventory == null)
+                return 0;
+
+            int bestValue = m_miner != null ? m_miner.FindBestInventoryToolForDigging(blockValue) : 0;
+            int bestSlot = -1;
+            if (bestValue != 0)
+            {
+                for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
+                    if (m_inventory.GetSlotCount(i) > 0 && m_inventory.GetSlotValue(i) == bestValue)
+                    {
+                        bestSlot = i;
+                        break;
+                    }
+            }
+
+            // Fallback for custom tools/blocks whose dig-time calculation is not finite.
+            if (bestSlot < 0)
+            {
+                Block target = BlocksManager.Blocks[Terrain.ExtractContents(blockValue)];
+                BlockDigMethod method = target.GetBlockDigMethod(blockValue);
+                float bestPower = 0f;
+                for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
+                {
+                    int candidateValue = m_inventory.GetSlotValue(i);
+                    if (m_inventory.GetSlotCount(i) <= 0 || candidateValue == 0)
+                        continue;
+                    Block tool = BlocksManager.Blocks[Terrain.ExtractContents(candidateValue)];
+                    float power = method == BlockDigMethod.Hack ? tool.GetHackPower(candidateValue)
+                        : method == BlockDigMethod.Quarry ? tool.GetQuarryPower(candidateValue)
+                        : method == BlockDigMethod.Shovel ? tool.GetShovelPower(candidateValue) : 0f;
+                    if (power > bestPower)
+                    {
+                        bestPower = power;
+                        bestSlot = i;
+                    }
+                }
+            }
+
+            if (bestSlot >= 0)
+            {
+                SelectInventorySlot(bestSlot);
+                return m_inventory.GetSlotValue(bestSlot);
+            }
+            return 0;
+        }
+
+        private bool TryGetWorkApproach(int x, int y, int z, out Vector3 approach)
+        {
+            approach = Vector3.Zero;
+            float bestDistance = float.MaxValue;
+            bool found = false;
+            Point3[] sides = { new Point3(1, 0, 0), new Point3(-1, 0, 0), new Point3(0, 0, 1), new Point3(0, 0, -1) };
+            for (int i = 0; i < sides.Length; i++)
+            {
+                int sx = x + sides[i].X;
+                int sz = z + sides[i].Z;
+                int feet = m_terrain.Terrain.GetCellValue(sx, y, sz);
+                int head = m_terrain.Terrain.GetCellValue(sx, y + 1, sz);
+                int floor = m_terrain.Terrain.GetCellValue(sx, y - 1, sz);
+                int floorContent = Terrain.ExtractContents(floor);
+                if (!IsAir(feet) || !IsAir(head) || floorContent <= 0 || floorContent >= BlocksManager.Blocks.Length
+                    || !BlocksManager.Blocks[floorContent].IsCollidable_(floor))
+                    continue;
+
+                Vector3 candidate = new Vector3(sx + 0.5f, y, sz + 0.5f);
+                float distance = Vector3.DistanceSquared(m_body.Position, candidate);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    approach = candidate;
+                    found = true;
+                }
+            }
+            return found;
         }
 
         private void TickFarmer()
@@ -677,6 +775,8 @@ namespace Game
             }
 
             m_pathfinding.Stop();
+            SelectInventorySlot(task == 3 ? seedsSlot : rakeSlot);
+            m_miner?.Poke(true);
             if (task == 1)
             {
                 int old = m_terrain.Terrain.GetCellValue(target.X, target.Y, target.Z);
@@ -778,32 +878,35 @@ namespace Game
         {
             if (m_terrain == null || m_pathfinding == null)
                 return;
-            if (!m_hasWorkTarget || m_nextWorkSearchTime <= 0.0 ||
-                Terrain.ExtractContents(m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z)) == 0)
+            if (!m_hasWorkTarget || !m_hasWorkApproach ||
+                IsAir(m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z)))
             {
+                m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
                 if (m_nextWorkSearchTime > 0.0)
                     m_nextWorkSearchTime -= 0.35;
                 if (m_nextWorkSearchTime <= 0.0)
                 {
-                    m_nextWorkSearchTime = 3.0;
-                    m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget);
+                    m_nextWorkSearchTime = 2.0;
+                    m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
+                    m_hasWorkApproach = m_hasWorkTarget;
                 }
             }
 
             if (!m_hasWorkTarget)
             {
-                TickPatrol(4f, 8f);
+                TickPatrol(3f, 5f);
                 return;
             }
 
-            Vector3 target = new Vector3(m_workTarget.X + 1.35f, m_workTarget.Y, m_workTarget.Z + 0.5f);
-            if (Vector3.Distance(m_body.Position, target) > 1.6f)
-                m_pathfinding.SetDestination(target, WorkMoveSpeed, 1.2f, 220, false, false, false, null);
+            if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
+                m_pathfinding.SetDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 220, false, false, false, null);
             else
             {
                 m_pathfinding.Stop();
-                HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z, 5);
+                HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
                 m_nextWorkSearchTime = 0.0;
             }
         }
@@ -812,43 +915,47 @@ namespace Game
         {
             if (m_terrain == null || m_pathfinding == null)
                 return;
-            if (!m_hasWorkTarget || m_nextWorkSearchTime <= 0.0 ||
+            if (!m_hasWorkTarget || !m_hasWorkApproach ||
                 IsAir(m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z)))
             {
+                m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
                 if (m_nextWorkSearchTime > 0.0)
                     m_nextWorkSearchTime -= 0.35;
                 if (m_nextWorkSearchTime <= 0.0)
                 {
-                    m_nextWorkSearchTime = 3.5;
-                    m_hasWorkTarget = TryFindWorkBlock(true, out m_workTarget);
+                    m_nextWorkSearchTime = 2.5;
+                    m_hasWorkTarget = TryFindWorkBlock(true, out m_workTarget, out m_workApproachPosition);
+                    m_hasWorkApproach = m_hasWorkTarget;
                 }
             }
 
             if (!m_hasWorkTarget)
             {
-                TickPatrol(3f, 6f);
+                TickPatrol(2.5f, 4.5f);
                 return;
             }
 
-            Vector3 target = new Vector3(m_workTarget.X + 1.4f, m_workTarget.Y + 0.25f, m_workTarget.Z + 0.5f);
-            if (Vector3.Distance(m_body.Position, target) > 1.6f)
-                m_pathfinding.SetDestination(target, WorkMoveSpeed, 1.2f, 240, false, true, false, null);
+            if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
+                m_pathfinding.SetDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 240, false, false, false, null);
             else
             {
                 m_pathfinding.Stop();
-                HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z, 5);
+                HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
                 m_nextWorkSearchTime = 0.0;
             }
         }
 
-        private bool TryFindWorkBlock(bool ore, out Point3 target)
+        private bool TryFindWorkBlock(bool ore, out Point3 target, out Vector3 approach)
         {
             target = new Point3(0, 0, 0);
-            int cx = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
-            int cy = m_hasHomeDoor ? m_homeDoor.Y : Terrain.ToCell(m_body.Position.Y);
-            int cz = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
-            int bestDistance = int.MaxValue;
+            approach = Vector3.Zero;
+            int cx = Terrain.ToCell(m_body.Position.X);
+            int cy = Terrain.ToCell(m_body.Position.Y);
+            int cz = Terrain.ToCell(m_body.Position.Z);
+            float bestDistance = float.MaxValue;
             for (int x = cx - 12; x <= cx + 12; x++)
             for (int z = cz - 12; z <= cz + 12; z++)
             for (int y = Math.Max(1, cy - (ore ? 20 : 1)); y <= Math.Min(250, cy + (ore ? 5 : 14)); y++)
@@ -861,24 +968,29 @@ namespace Game
                 bool matches = ore
                     ? block.GetType().Name.IndexOf("Ore", StringComparison.OrdinalIgnoreCase) >= 0
                     : block is WoodBlock;
-                if (!matches)
+                if (!matches || !TryGetWorkApproach(x, y, z, out Vector3 candidate))
                     continue;
-                int distance = Math.Abs(x - cx) + Math.Abs(z - cz) + Math.Abs(y - cy);
+                float distance = Vector3.DistanceSquared(m_body.Position, candidate);
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
                     target = new Point3(x, y, z);
+                    approach = candidate;
                 }
             }
-            return bestDistance != int.MaxValue;
+            return bestDistance != float.MaxValue;
         }
 
-        private void HarvestBlock(int x, int y, int z, int toolLevel)
+        private void HarvestBlock(int x, int y, int z)
         {
             int value = m_terrain.Terrain.GetCellValue(x, y, z);
             int content = Terrain.ExtractContents(value);
             if (content == 0 || content >= BlocksManager.Blocks.Length)
                 return;
+
+            int toolValue = SelectBestToolForBlock(value);
+            int toolLevel = toolValue == 0 ? 0 : BlocksManager.Blocks[Terrain.ExtractContents(toolValue)].GetToolLevel(toolValue);
+            m_miner?.Poke(true);
 
             Block block = BlocksManager.Blocks[content];
             List<BlockDropValue> drops = new List<BlockDropValue>();
@@ -930,20 +1042,108 @@ namespace Game
                     m_nextWorkSearchTime -= 0.35;
                 if (m_nextWorkSearchTime <= 0.0)
                 {
-                    m_nextWorkSearchTime = 5.0;
+                    m_nextWorkSearchTime = 4.0;
                     m_hasWorkTarget = TryFindNamedBlock("Furnace", out m_workTarget);
                 }
             }
             if (!m_hasWorkTarget)
             {
-                TickPatrol(2f, 5f);
+                TickPatrol(2f, 4f);
                 return;
             }
             Vector3 target = new Vector3(m_workTarget.X + 1.5f, m_workTarget.Y, m_workTarget.Z + 0.5f);
-            if (Vector3.Distance(m_body.Position, target) > 1.6f)
-                m_pathfinding.SetDestination(target, WorkMoveSpeed, 1.2f, 180, false, false, false, null);
+            if (Vector3.Distance(m_body.Position, target) > 1.45f)
+                m_pathfinding.SetDestination(target, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
             else
+            {
                 m_pathfinding.Stop();
+                ComponentFurnace furnace = FindFurnaceAt(m_workTarget);
+                if (furnace != null)
+                    TendFurnace(furnace);
+            }
+        }
+
+        private ComponentFurnace FindFurnaceAt(Point3 coordinates)
+        {
+            foreach (Entity entity in Project.Entities)
+            {
+                ComponentFurnace furnace = entity.FindComponent<ComponentFurnace>();
+                ComponentBlockEntity blockEntity = entity.FindComponent<ComponentBlockEntity>();
+                if (furnace != null && blockEntity != null && blockEntity.Coordinates.X == coordinates.X
+                    && blockEntity.Coordinates.Y == coordinates.Y && blockEntity.Coordinates.Z == coordinates.Z)
+                    return furnace;
+            }
+            return null;
+        }
+
+        private void TendFurnace(ComponentFurnace furnace)
+        {
+            if (m_inventory == null || furnace == null)
+                return;
+
+            int[] outputSlots = { furnace.ResultSlotIndex, furnace.RemainsSlotIndex };
+            foreach (int slot in outputSlots)
+            {
+                int count = furnace.GetSlotCount(slot);
+                if (count <= 0)
+                    continue;
+                int value = furnace.GetSlotValue(slot);
+                int remaining = ComponentInventoryBase.AcquireItems(m_inventory, value, count);
+                int collected = count - remaining;
+                if (collected > 0)
+                    furnace.RemoveSlotItems(slot, collected);
+            }
+
+            if (furnace.GetSlotCount(furnace.FuelSlotIndex) == 0)
+            {
+                for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
+                {
+                    int value = m_inventory.GetSlotValue(i);
+                    if (m_inventory.GetSlotCount(i) <= 0 || value == 0)
+                        continue;
+                    Block block = BlocksManager.Blocks[Terrain.ExtractContents(value)];
+                    if (block.GetFuelHeatLevel(value) <= 0f || furnace.GetSlotCapacity(furnace.FuelSlotIndex, value) <= 0)
+                        continue;
+                    furnace.AddSlotItems(furnace.FuelSlotIndex, value, 1);
+                    m_inventory.RemoveSlotItems(i, 1);
+                    break;
+                }
+            }
+
+            bool hasInput = false;
+            for (int i = 0; i < furnace.m_furnaceSize; i++)
+                if (furnace.GetSlotCount(i) > 0) { hasInput = true; break; }
+            if (!hasInput)
+            {
+                for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
+                {
+                    int value = m_inventory.GetSlotValue(i);
+                    if (m_inventory.GetSlotCount(i) <= 0 || value == 0
+                        || BlocksManager.Blocks[Terrain.ExtractContents(value)].GetFuelHeatLevel(value) > 0f)
+                        continue;
+                    bool inserted = false;
+                    for (int inputSlot = 0; inputSlot < furnace.m_furnaceSize; inputSlot++)
+                    {
+                        if (furnace.GetSlotCount(inputSlot) != 0 || furnace.GetSlotCapacity(inputSlot, value) <= 0)
+                            continue;
+                        furnace.AddSlotItems(inputSlot, value, 1);
+                        furnace.UpdateSmeltingRecipe();
+                        if (furnace.m_smeltingRecipe != null)
+                        {
+                            m_inventory.RemoveSlotItems(i, 1);
+                            inserted = true;
+                        }
+                        else
+                        {
+                            furnace.RemoveSlotItems(inputSlot, 1);
+                            furnace.UpdateSmeltingRecipe();
+                        }
+                        break;
+                    }
+                    if (inserted)
+                        break;
+                }
+            }
         }
 
         private bool TryFindNamedBlock(string namePart, out Point3 target)
@@ -977,7 +1177,7 @@ namespace Game
         {
             if (m_creatureSpawn == null || m_pathfinding == null)
             {
-                TickPatrol(3f, 7f);
+                TickPatrol(3f, 5f);
                 return;
             }
             ComponentLivingTownsVillager nearest = null;
@@ -987,7 +1187,7 @@ namespace Game
                 if (creature.Entity == Entity)
                     continue;
                 ComponentLivingTownsVillager other = creature.Entity.FindComponent<ComponentLivingTownsVillager>();
-                if (other == null || other.m_body == null)
+                if (other == null || other.m_body == null || other.m_inventory == null)
                     continue;
                 float distance = Vector3.Distance(m_body.Position, other.m_body.Position);
                 if (distance < best)
@@ -998,18 +1198,69 @@ namespace Game
             }
             if (nearest == null)
             {
-                TickPatrol(3f, 7f);
+                TickPatrol(3f, 5f);
                 return;
             }
-            if (best > 2.8f)
+            if (best > 2.6f)
             {
                 Vector3 direction = m_body.Position - nearest.m_body.Position;
                 direction.Y = 0f;
                 if (direction.LengthSquared() < 0.01f)
                     direction = Vector3.UnitX;
                 direction = Vector3.Normalize(direction);
-                m_pathfinding.SetDestination(nearest.m_body.Position + direction * 1.8f, WorkMoveSpeed, 1.2f, 180, false, false, false, null);
+                m_pathfinding.SetDestination(nearest.m_body.Position + direction * 1.8f, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
+                return;
             }
+
+            m_pathfinding.Stop();
+            if (m_nextTradeTime <= 0.0)
+            {
+                bool gave = TransferTradeItem(m_inventory, nearest.m_inventory);
+                bool received = TransferTradeItem(nearest.m_inventory, m_inventory);
+                m_nextTradeTime = 18.0;
+                if (gave || received)
+                {
+                    SetTalkingAnimation(true);
+                    m_isTalking = true;
+                    m_chatTimeRemaining = 2.5;
+                    nearest.SetTalkingAnimation(true);
+                    nearest.m_isTalking = true;
+                    nearest.m_chatTimeRemaining = 2.5;
+                    nearest.m_chatPartner = this;
+                    m_chatPartner = nearest;
+                }
+            }
+            else
+                m_nextTradeTime -= 0.35;
+        }
+
+        private static bool TransferTradeItem(ComponentInventory from, ComponentInventory to)
+        {
+            if (from == null || to == null)
+                return false;
+            for (int i = 0; i < from.VisibleSlotsCount; i++)
+            {
+                int value = from.GetSlotValue(i);
+                if (from.GetSlotCount(i) < 2 || value == 0)
+                    continue;
+                string name = BlocksManager.Blocks[Terrain.ExtractContents(value)].GetType().Name;
+                if (name.IndexOf("Axe", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Pickaxe", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Rake", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Shovel", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Hammer", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Spear", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Machete", StringComparison.OrdinalIgnoreCase) >= 0
+                    || name.IndexOf("Bow", StringComparison.OrdinalIgnoreCase) >= 0)
+                    continue;
+                int targetSlot = ComponentInventoryBase.FindAcquireSlotForItem(to, value);
+                if (targetSlot < 0)
+                    return false;
+                to.AddSlotItems(targetSlot, value, 1);
+                from.RemoveSlotItems(i, 1);
+                return true;
+            }
+            return false;
         }
 
         private int FindItemSlot(int content, int? data)
