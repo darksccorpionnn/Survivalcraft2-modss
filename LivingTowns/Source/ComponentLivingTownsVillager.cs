@@ -2373,11 +2373,10 @@ namespace Game
 
                 int x = centerX + dx;
                 int z = centerZ + dz;
-                // Terrain height varies around a house. Search below the door
-                // level for valleys and up to 40 blocks above it for hills plus
-                // a 25-block tree; grounded trunk validation enforces tree height.
-                int minY = Math.Max(1, centerY - 12);
-                int maxY = Math.Min(250, centerY + 40);
+                // Terrain height varies around a house. Cover nearby valleys and hills
+                // while the grounded-trunk check limits each harvested tree to 25 blocks.
+                int minY = Math.Max(1, centerY - 16);
+                int maxY = Math.Min(250, centerY + 41);
                 // Scan from the top down. This usually finds one top log per
                 // column instead of repeatedly resolving the same trunk base.
                 for (int y = maxY; y >= minY; y--)
