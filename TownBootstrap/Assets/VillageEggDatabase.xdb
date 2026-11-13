@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Mod xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:noNamespaceSchemaLocation="https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/Assets/Database.xsd">
+  <ProjectTemplate Name="Project" Guid="85023bf8-1c90-4dd1-9442-e6c13691d078">
+    <MemberSubsystemTemplate Name="VillageEggBehavior" Guid="4c2c7d83-b5b2-4a4e-9e83-51b0e4a8a001" InheritanceParent="fefb9590-4972-4893-b02a-76063611b745">
+      <Parameter Name="Class" Guid="4c2c7d83-b5b2-4a4e-9e83-51b0e4a8a002" Value="Game.SubsystemVillageEggBehavior" Type="string"/>
+    </MemberSubsystemTemplate>
+  </ProjectTemplate>
+</Mod>
