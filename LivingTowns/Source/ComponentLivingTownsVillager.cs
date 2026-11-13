@@ -967,8 +967,10 @@ namespace Game
 
             if (!m_hasNamedSignCell)
             {
-                if (m_nextNamedSignLookupTime > 0.0
-                    || !TryFindNamedSignSleepPosition(out Point3 signCell, out Point3 ignoredFloor))
+                if (m_nextNamedSignLookupTime > 0.0)
+                    return null;
+                m_nextNamedSignLookupTime = 10.0;
+                if (!TryFindNamedSignSleepPosition(out Point3 signCell, out Point3 ignoredFloor))
                     return null;
                 m_namedSignCell = signCell;
                 m_hasNamedSignCell = true;
