@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.39",
+  "Version": "0.4.40",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers deposit items into the chest by their own name sign while home. Lumberjack routes use real progress tracking and no random recovery; villagers retry a safe home fallback immediately when a named bed sign cannot be resolved.",
+  "Description": "Villagers use per-sign chest storage. Lumberjacks approach from a wider collision-safe radius and use matching route/harvest ranges. Home fallback searches at house elevation, prefers indoor cells and never treats a distant current position as home.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

@@ -1395,6 +1395,12 @@ namespace Game
             float bestScore = float.MaxValue;
             bool found = false;
             Vector3 bestPosition = Vector3.Zero;
+            int minFloorY = Math.Max(1, m_homeDoor.Y - 5);
+            int maxFloorY = Math.Min(250, m_homeDoor.Y + 2);
+
+            // Search at the actual house elevation, not the terrain column's top.
+            // Indoor cells receive a strong preference, with closeness to the door
+            // breaking ties between equivalent positions.
             for (int radius = 0; radius <= 12; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
@@ -1405,17 +1411,17 @@ namespace Game
 
                     int x = m_homeDoor.X + dx;
                     int z = m_homeDoor.Z + dz;
-                    int topY = m_terrain.Terrain.GetTopHeight(x, z);
-                    for (int yOffset = -2; yOffset <= 2; yOffset++)
+                    for (int floorY = minFloorY; floorY <= maxFloorY; floorY++)
                     {
-                        int floorY = topY + yOffset;
                         if (!IsValidStandingCell(x, floorY, z))
                             continue;
 
+                        bool indoor = IsIndoorBedSpot(x, floorY, z, out int walls);
                         Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
-                        float score = Vector3.DistanceSquared(candidate,
-                            new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f))
-                            + Math.Abs(candidate.Y - m_homeDoor.Y) * 2f;
+                        float horizontalDistanceSquared = dx * dx + dz * dz;
+                        float score = horizontalDistanceSquared
+                            + Math.Abs(floorY + 1f - m_homeDoor.Y) * 4f
+                            - (indoor ? 100f + walls * 15f : 0f);
                         if (!found || score < bestScore)
                         {
                             found = true;
@@ -1432,16 +1438,19 @@ namespace Game
                 return true;
             }
 
-            // The villager was spawned on a valid cell adjacent to its door.
-            // Keep that verified cell as the final fallback instead of freezing.
-            int bodyX = Terrain.ToCell(m_body.Position.X);
-            int bodyY = Terrain.ToCell(m_body.Position.Y);
-            int bodyZ = Terrain.ToCell(m_body.Position.Z);
-            if (Math.Abs(bodyX - m_homeDoor.X) <= 12 && Math.Abs(bodyZ - m_homeDoor.Z) <= 12
-                && IsValidStandingCell(bodyX, bodyY - 1, bodyZ))
+            // Never reuse a remote current body position as a fake "home" target.
+            // It is acceptable only when the villager is already beside its door.
+            Vector3 doorPosition = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f);
+            if (Vector3.DistanceSquared(m_body.Position, doorPosition) <= 9f)
             {
-                restPosition = new Vector3(bodyX + 0.5f, bodyY, bodyZ + 0.5f);
-                return true;
+                int bodyX = Terrain.ToCell(m_body.Position.X);
+                int bodyY = Terrain.ToCell(m_body.Position.Y);
+                int bodyZ = Terrain.ToCell(m_body.Position.Z);
+                if (IsValidStandingCell(bodyX, bodyY - 1, bodyZ))
+                {
+                    restPosition = new Vector3(bodyX + 0.5f, bodyY, bodyZ + 0.5f);
+                    return true;
+                }
             }
             return false;
         }
@@ -1949,7 +1958,7 @@ namespace Game
                 return;
             }
 
-            if (distance <= 0.95f)
+            if (distance <= 1.55f)
             {
                 m_workRouteBestDistance = distance;
                 m_workRouteNoProgressTime = 0.0;
@@ -1982,7 +1991,12 @@ namespace Game
             if (m_body == null)
                 return;
 
+            float dx = m_body.Position.X - target.X;
+            float dz = m_body.Position.Z - target.Z;
+            float dy = Math.Abs(m_body.Position.Y - target.Y);
             float distance = Vector3.Distance(m_body.Position, target);
+            bool reached = dx * dx + dz * dz <= 0.90f * 0.90f && dy <= 1.75f;
+
             if (!m_hasHomeReturnSample
                 || Vector3.DistanceSquared(m_homeReturnTrackedTarget, target) > 0.25f)
             {
@@ -1993,7 +2007,7 @@ namespace Game
                 return;
             }
 
-            if (distance <= 0.95f || distance < m_homeReturnBestDistance - 0.15f)
+            if (reached || distance < m_homeReturnBestDistance - 0.15f)
             {
                 m_homeReturnBestDistance = distance;
                 m_homeReturnNoProgressTime = 0.0;
@@ -2510,7 +2524,7 @@ namespace Game
 
             // Fail based on actual distance-to-waypoint progress, not only the
             // pathfinder's transient IsStuck / Destination values.
-            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(0.95f))
+            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(1.55f))
             {
                 if (TryRetryWorkApproach("Lumberjack"))
                 {
@@ -2565,7 +2579,7 @@ namespace Game
             {
                 // Do not allow random recovery movement around the trunk. Move to
                 // one verified standing cell, then re-evaluate after a no-progress timeout.
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.75f, 2600,
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.45f, 2600,
                     false, false, false, null, false);
             }
             else
@@ -2805,10 +2819,11 @@ namespace Game
         {
             if (m_body == null || !m_hasWorkApproach)
                 return false;
-            float dx = m_body.Position.X - m_workApproachPosition.X;
-            float dz = m_body.Position.Z - m_workApproachPosition.Z;
-            float dy = Math.Abs(m_body.Position.Y - m_workApproachPosition.Y);
-            return dx * dx + dz * dz <= 0.95f * 0.95f && dy <= 1.1f;
+
+            // Match the pathfinder's arrival radius. A separate tighter horizontal
+            // threshold made a villager keep circling after pathfinding considered
+            // the destination reached.
+            return Vector3.Distance(m_body.Position, m_workApproachPosition) <= 1.55f;
         }
 
         private bool TryFindNextLockedTreePart(out Point3 target, out Vector3 approach)
@@ -2901,7 +2916,7 @@ namespace Game
             // Look for a clear standing cell around the trunk, not only the four
             // immediately adjacent cells. Leaves, dropped blocks and neighboring
             // trunks can occupy those cells; a 2-3 block perimeter often has a route.
-            for (int radius = 1; radius <= 3; radius++)
+            for (int radius = 2; radius <= 4; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++)

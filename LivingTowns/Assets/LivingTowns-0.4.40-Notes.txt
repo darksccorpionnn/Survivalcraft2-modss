@@ -1,0 +1,13 @@
+Living Towns 0.4.40
+Survivalcraft 2.4.0.0 / API 1.9.5.1
+
+Additional audit fixes over 0.4.39:
+- Lumberjack safe approach search is widened to 2-4 blocks from the trunk to avoid the male model's collision capsule pushing against the log.
+- Lumberjack pathfinder arrival range, progress watchdog and harvest range are synchronized at approximately 1.55 blocks. This prevents the pathfinder from considering the waypoint reached while the controller continues circling.
+- Emergency home fallback searches at the registered house/door elevation rather than terrain column top, avoiding roof-top destinations.
+- Indoor fallback candidates are strongly preferred.
+- A remote current body position is no longer accepted as a fake home-rest target; the last-resort current-cell fallback is restricted to within 3 blocks of the home door.
+- Home-return progress completion uses the same horizontal/vertical arrival tolerance as the actual rest routine.
+- All 0.4.38/0.4.39 chest, no-random-recovery, no-progress watchdog and fallback retry changes are retained.
+
+Build verification required. In-game behavior still requires confirmation in Survivalcraft 2.
