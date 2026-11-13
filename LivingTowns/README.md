@@ -1,4 +1,4 @@
-# Living Towns 0.4.27
+# Living Towns 0.4.31
 
 - Door-created villagers, one villager per lower door half.
 - Automatic opening and closing of normal (non-electrically controlled) doors while pathfinding.
@@ -54,3 +54,11 @@ Latest build: 0.4.27 — reduced door toggling and forced home-door closure befo
 - Older auto-assigned bed positions are discarded on upgrade; add matching signs to give each villager a new sleep position.
 
 Build validation checks compilation and packages the mod as a .scmod archive. Actual Android in-game behavior still needs testing.
+
+
+## Version 0.4.31 — shared-house sleep and doorway fixes
+
+- Sleep-cell conflict checks now reject only the exact same standing cell. Villagers with different matching wall signs can use adjacent sleep positions in a compact shared house.
+- Home-door waypoints use horizontal distance and crossing of the door plane instead of narrow 3D distance checks. This prevents larger villager models from oscillating at the threshold.
+- The same sleep and home-door routines apply to male villagers, female villagers, and farmers.
+- Build validation confirms compilation; the new behavior still requires an in-game test on Android.
