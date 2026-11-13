@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.37",
+  "Version": "0.4.38",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers deposit gathered items into the chest beside their own name sign when they return home; job tools and seeds stay in their inventory. Includes 100-block lumberjack tree harvesting and dusk return.",
+  "Description": "Villagers transfer gathered items to the nearest chest by their own name sign during dusk/night; job tools and seeds stay in inventory. Lumberjacks use a stable work position and stop circling tree trunks.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

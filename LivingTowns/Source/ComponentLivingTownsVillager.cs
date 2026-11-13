@@ -91,6 +91,7 @@ namespace Game
         private int m_lumberTreeX;
         private int m_lumberTreeZ;
         private int m_lumberTreeBaseY;
+        private Vector3 m_lumberTreeApproachPosition;
         private int m_lumberSearchRadius;
         private int m_lumberSearchOffset;
         private bool m_lumberScanFound;
@@ -239,6 +240,9 @@ namespace Game
 
             bool night = IsNight();
             bool dusk = IsDusk();
+            // Store gathered items even if the villager has not reached the exact bed cell.
+            if ((night || dusk) && IsNearHomeForPersonalStorage())
+                DepositCollectedItemsIntoPersonalChest();
             if (night)
             {
                 if (!m_wasNight)
@@ -978,16 +982,9 @@ namespace Game
 
             ComponentChest bestChest = null;
             float bestScore = float.MaxValue;
-            int signValue = m_terrain.Terrain.GetCellValue(
-                m_namedSignCell.X, m_namedSignCell.Y, m_namedSignCell.Z);
-            int signContent = Terrain.ExtractContents(signValue);
-            Point3 outward = new Point3(0, 0, 0);
-            if (signContent > 0 && signContent < BlocksManager.Blocks.Length
-                && BlocksManager.Blocks[signContent] is AttachedSignBlock)
-                outward = CellFace.FaceToPoint3(AttachedSignBlock.GetFace(Terrain.ExtractData(signValue)));
 
-            // The personal chest must be close to this villager's own name sign.
-            // A small room-side search allows the chest to sit below or beside it.
+            // Sign facing varies with house construction. Search both sides and
+            // select the closest actual chest to this villager's own named sign.
             foreach (Entity entity in Project.Entities)
             {
                 if (entity == null)
@@ -1001,15 +998,9 @@ namespace Game
                 int dx = cell.X - m_namedSignCell.X;
                 int dy = cell.Y - m_namedSignCell.Y;
                 int dz = cell.Z - m_namedSignCell.Z;
-                if (Math.Abs(dx) > 4 || Math.Abs(dz) > 4 || Math.Abs(dy) > 3)
+                if (Math.Abs(dx) > 6 || Math.Abs(dz) > 6 || Math.Abs(dy) > 4)
                     continue;
-                if (dx * dx + dz * dz > 16)
-                    continue;
-
-                // Prefer the room-facing side of the attached sign. A chest behind
-                // the wall is not considered this villager's personal container.
-                int side = dx * outward.X + dz * outward.Z;
-                if (side < -1)
+                if (dx * dx + dz * dz > 36)
                     continue;
 
                 int value = m_terrain.Terrain.GetCellValue(cell.X, cell.Y, cell.Z);
@@ -1018,8 +1009,7 @@ namespace Game
                     || !(BlocksManager.Blocks[content] is ChestBlock))
                     continue;
 
-                float score = dx * dx + dz * dz + dy * dy * 1.25f
-                    + (side < 0 ? 1.5f : 0f);
+                float score = dx * dx + dz * dz + dy * dy * 1.25f;
                 if (score < bestScore)
                 {
                     bestScore = score;
@@ -1059,6 +1049,16 @@ namespace Game
             return false;
         }
 
+        private bool IsNearHomeForPersonalStorage()
+        {
+            if (!m_hasHomeDoor || m_body == null)
+                return false;
+            float dx = m_body.Position.X - (m_homeDoor.X + 0.5f);
+            float dz = m_body.Position.Z - (m_homeDoor.Z + 0.5f);
+            return dx * dx + dz * dz <= 20f * 20f
+                && Math.Abs(m_body.Position.Y - (m_homeDoor.Y + 0.5f)) <= 18f;
+        }
+
         private void DepositCollectedItemsIntoPersonalChest()
         {
             if (m_inventory == null || m_nextPersonalChestDepositTime > 0.0)
@@ -1086,16 +1086,18 @@ namespace Game
                 if (value == 0 || remaining <= 0 || IsPersonalChestProtectedItem(value))
                     continue;
 
-                while (remaining > 0)
+                // Fill stacks and empty slots explicitly; only remove items after insertion.
+                for (int targetSlot = 0; targetSlot < chest.VisibleSlotsCount && remaining > 0; targetSlot++)
                 {
-                    int targetSlot = ComponentInventoryBase.FindAcquireSlotForItem(chest, value);
-                    if (targetSlot < 0)
-                        break;
+                    int existingCount = chest.GetSlotCount(targetSlot);
+                    int existingValue = chest.GetSlotValue(targetSlot);
+                    if (existingCount > 0 && existingValue != value)
+                        continue;
 
                     int capacity = chest.GetSlotCapacity(targetSlot, value);
-                    int free = capacity - chest.GetSlotCount(targetSlot);
+                    int free = capacity - existingCount;
                     if (free <= 0)
-                        break;
+                        continue;
 
                     int amount = Math.Min(remaining, free);
                     chest.AddSlotItems(targetSlot, value, amount);
@@ -2087,6 +2089,8 @@ namespace Game
 
             StopManagedPath();
             m_workApproachPosition = nextApproach;
+            if (m_job == LivingTownsJob.Lumberjack && m_hasLumberTreeLock)
+                m_lumberTreeApproachPosition = nextApproach;
             m_hasWorkApproach = true;
             m_workApproachRetryCount++;
             Log.Warning("[LivingTowns] " + jobName + " for " + m_villagerName
@@ -2104,6 +2108,16 @@ namespace Game
                     Terrain.ToCell(m_workApproachPosition.X),
                     Terrain.ToCell(m_workApproachPosition.Y),
                     Terrain.ToCell(m_workApproachPosition.Z)), 35.0);
+            }
+
+            if (m_job == LivingTownsJob.Lumberjack && m_hasLumberTreeLock)
+            {
+                // When a whole route attempt fails, replace the persistent tree
+                // approach so the next block does not reuse the rejected waypoint.
+                if (TryGetLumberjackApproach(m_lumberTreeX, m_lumberTreeBaseY, m_lumberTreeZ, out Vector3 alternate))
+                    m_lumberTreeApproachPosition = alternate;
+                else
+                    m_hasLumberTreeLock = false;
             }
 
             Log.Warning("[LivingTowns] " + jobName + " abandoned an unreachable work target for "
@@ -2325,7 +2339,7 @@ namespace Game
                 }
             }
 
-            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(1.25f))
+            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(2.45f))
             {
                 if (TryRetryWorkApproach("Lumberjack"))
                     return;
@@ -2372,9 +2386,10 @@ namespace Game
                 return;
             }
 
-            if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
+            if (!IsAtLumberjackWorkRange())
             {
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.15f, 2400,
+                // Larger models should not have to squeeze beside the trunk to chop it.
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 2.25f, 2400,
                     false, false, false, null, true);
             }
             else
@@ -2505,6 +2520,7 @@ namespace Game
                         m_lumberTreeX = target.X;
                         m_lumberTreeZ = target.Z;
                         m_lumberTreeBaseY = m_lumberScanBestBaseY;
+                        m_lumberTreeApproachPosition = approach;
                         m_hasLumberTreeLock = true;
                         Log.Information("[LivingTowns] " + m_villagerName + " locked a tree at "
                             + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
@@ -2608,13 +2624,26 @@ namespace Game
             return false;
         }
 
+        private bool IsAtLumberjackWorkRange()
+        {
+            if (m_body == null || !m_hasWorkApproach)
+                return false;
+            float dx = m_body.Position.X - m_workApproachPosition.X;
+            float dz = m_body.Position.Z - m_workApproachPosition.Z;
+            float dy = Math.Abs(m_body.Position.Y - m_workApproachPosition.Y);
+            return dx * dx + dz * dz <= 2.45f * 2.45f && dy <= 2.0f;
+        }
+
         private bool TryFindNextLockedTreePart(out Point3 target, out Vector3 approach)
         {
             target = new Point3(0, 0, 0);
             approach = Vector3.Zero;
-            if (!m_hasLumberTreeLock
-                || !TryGetLumberjackApproach(m_lumberTreeX, m_lumberTreeBaseY, m_lumberTreeZ, out approach))
+            if (!m_hasLumberTreeLock)
                 return false;
+
+            // Keep one approach position while clearing this tree; changing sides
+            // after each block made the villager circle beneath the canopy.
+            approach = m_lumberTreeApproachPosition;
 
             // Finish all trunk/branch wood first. After the logs are gone,
             // collect every nearby LeavesBlock belonging to this canopy.
@@ -2695,7 +2724,7 @@ namespace Game
             // Look for a clear standing cell around the trunk, not only the four
             // immediately adjacent cells. Leaves, dropped blocks and neighboring
             // trunks can occupy those cells; a 2-3 block perimeter often has a route.
-            for (int radius = 1; radius <= 3; radius++)
+            for (int radius = 2; radius <= 4; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++)

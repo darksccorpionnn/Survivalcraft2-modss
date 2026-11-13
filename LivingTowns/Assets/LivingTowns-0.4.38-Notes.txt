@@ -1,0 +1,13 @@
+Living Towns 0.4.38
+Survivalcraft 2.4.0.0 / API 1.9.5.1
+
+Fixes:
+- Personal chest lookup no longer assumes a particular sign-facing direction.
+- Chest lookup accepts a 6-block horizontal / 4-block vertical area around each villager's own named sign.
+- Villagers periodically deposit gathered items while home during dusk/night, not only after reaching the exact bed position.
+- Chest slots are filled directly and partially; source items are removed only after insertion.
+- Work tools, weapons and seeds remain in the villager inventory.
+- Lumberjacks keep one approach position for the full selected tree instead of switching sides after every harvested block.
+- Lumberjacks can harvest from a wider safe working radius; blocked approach points are rejected and replaced.
+
+Build: GitHub Actions compilation required. In-game behavior still needs confirmation in Survivalcraft 2.
