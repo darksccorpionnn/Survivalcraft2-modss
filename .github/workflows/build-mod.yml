@@ -30,9 +30,12 @@ jobs:
       - name: Build and package
         run: dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release --no-restore
 
-      - name: Verify mod package
+      - name: Verify mod package and registrations
         run: |
           python3 - <<'PY'
+          import csv
+          import json
+          import xml.etree.ElementTree as ET
           from pathlib import Path
           from zipfile import ZipFile
 
@@ -46,13 +49,44 @@ jobs:
                   "TownBootstrap.dll",
                   "modinfo.json",
                   "Assets/TownBootstrapDatabase.xdb",
+                  "Assets/TownBootstrapBlocksData.csv",
               }
               missing = required - names
               if missing:
                   raise SystemExit(f"Package is missing required files: {sorted(missing)}")
-              print("Package contents:")
+
+              info = json.loads(archive.read("modinfo.json"))
+              if info.get("Version") != "0.6.3":
+                  raise SystemExit(f"Unexpected mod version: {info.get('Version')}")
+
+              database = ET.fromstring(archive.read("Assets/TownBootstrapDatabase.xdb"))
+              player = next((e for e in database.iter("EntityTemplate")
+                             if e.attrib.get("Name") == "Player"
+                             and e.attrib.get("Guid") == "4be6c1c5-d65d-4537-8a8b-a391969e6dc2"), None)
+              if player is None or not any(c.attrib.get("Name") == "VillageEggGrant"
+                                           for c in player.findall("MemberComponentTemplate")):
+                  raise SystemExit("Player entity is missing VillageEggGrant component registration")
+
+              component = next((e for e in database.iter("ComponentTemplate")
+                                if e.attrib.get("Name") == "VillageEggGrant"), None)
+              if component is None:
+                  raise SystemExit("VillageEggGrant ComponentTemplate was not found")
+              class_parameter = next((p for p in component.findall("Parameter")
+                                      if p.attrib.get("Name") == "Class"), None)
+              if class_parameter is None or class_parameter.attrib.get("Value") != "Game.ComponentVillageEggGrant":
+                  raise SystemExit("VillageEggGrant class mapping is missing or incorrect")
+
+              rows = list(csv.DictReader(
+                  archive.read("Assets/TownBootstrapBlocksData.csv").decode("utf-8-sig").splitlines(),
+                  delimiter=";"
+              ))
+              if not any(row.get("Class Name") == "VillageEggBlock" for row in rows):
+                  raise SystemExit("VillageEggBlock is missing from the block registry CSV")
+
+              print("Package verified:")
               for name in sorted(names):
                   print(" -", name)
+              print("Player component registration and Village Egg block CSV entry verified.")
           PY
 
       - name: Upload .scmod artifact
