@@ -11,3 +11,4 @@ Fixes:
 - Lumberjacks can harvest from a wider safe working radius; blocked approach points are rejected and replaced.
 
 Build: GitHub Actions compilation required. In-game behavior still needs confirmation in Survivalcraft 2.
+- Build workflow must verify source, modinfo version 0.4.38, and packaged output.
