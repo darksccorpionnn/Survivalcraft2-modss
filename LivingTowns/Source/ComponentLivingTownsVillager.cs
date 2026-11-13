@@ -82,6 +82,18 @@ namespace Game
         private Vector3 m_workApproachPosition;
         private bool m_hasWorkApproach;
         private int m_workApproachRetryCount;
+        private bool m_hasLumberTreeLock;
+        private int m_lumberTreeX;
+        private int m_lumberTreeZ;
+        private int m_lumberTreeBaseY;
+        private int m_lumberSearchRadius;
+        private int m_lumberSearchOffset;
+        private bool m_lumberScanFound;
+        private Point3 m_lumberScanBestTarget;
+        private Vector3 m_lumberScanBestApproach;
+        private int m_lumberScanBestBaseY;
+        private float m_lumberScanBestDistance = float.MaxValue;
+        private bool m_wasDusk;
         private double m_nextTradeTime;
         private bool m_farmerKitGranted;
         private int m_farmSearchRadius;
@@ -111,6 +123,9 @@ namespace Game
         private const float WorkMoveSpeed = 2.2f;
         private const int FarmerWorkRadius = 60;
         private const int FarmCellsPerScan = 512;
+        private const int LumberjackHomeRadius = 100;
+        private const int LumberjackTreeMaxHeight = 25;
+        private const int LumberjackScanColumnsPerUpdate = 900;
 
         public UpdateOrder UpdateOrder => UpdateOrder.Default;
         public LivingTownsJob Job => m_job;
@@ -207,11 +222,13 @@ namespace Game
             }
 
             bool night = IsNight();
+            bool dusk = IsDusk();
             if (night)
             {
                 if (!m_wasNight)
                 {
                     m_wasNight = true;
+                    m_wasDusk = true;
                     EndConversation(false);
                     m_hasWorkTarget = false;
                     m_hasWorkApproach = false;
@@ -224,15 +241,45 @@ namespace Game
                     m_bedAssignmentFailureTime = 0.0;
                     m_hasFallbackRestPosition = false;
                     m_nextFallbackRestSearchTime = 0.0;
+                    m_hasLumberTreeLock = false;
+                    ResetLumberSearch();
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
                 }
                 TickSleepRoutine(dt);
                 return;
             }
 
+            // Dusk starts at DuskStart: villagers stop working and go indoors,
+            // but remain awake until NightStart begins.
+            if (dusk)
+            {
+                if (!m_wasDusk)
+                {
+                    m_wasDusk = true;
+                    EndConversation(false);
+                    m_hasWorkTarget = false;
+                    m_hasWorkApproach = false;
+                    m_workTask = 0;
+                    m_nextWorkSearchTime = 0.0;
+                    m_hasLumberTreeLock = false;
+                    ResetLumberSearch();
+                    StopManagedPath();
+                    ReleaseHomeDoorPassage();
+                    m_homeDoorRouteActive = false;
+                    m_isLeavingHome = false;
+                    m_bedAssignmentFailureTime = 0.0;
+                    m_hasFallbackRestPosition = false;
+                    m_nextFallbackRestSearchTime = 0.0;
+                    Log.Information("[LivingTowns] Dusk started; villager is returning home while remaining awake.");
+                }
+                TickHomeReturnRoutine(dt);
+                return;
+            }
+
             if (m_wasNight)
             {
                 m_wasNight = false;
+                m_wasDusk = false;
                 StopManagedPath();
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
@@ -321,6 +368,8 @@ namespace Game
             m_workApproachRetryCount = 0;
             m_workTask = 0;
             m_nextWorkSearchTime = 0.0;
+            m_hasLumberTreeLock = false;
+            ResetLumberSearch();
             m_patrolPause = 0.0;
             EndConversation(false);
             m_chatCooldown = 12.0;
@@ -737,7 +786,24 @@ namespace Game
             return IntervalUtils.IsBetween(m_timeOfDay.TimeOfDay, m_timeOfDay.NightStart, m_timeOfDay.DawnStart);
         }
 
+        private bool IsDusk()
+        {
+            if (m_timeOfDay == null || !m_timeOfDay.TimeOfDayEnabled)
+                return false;
+            return IntervalUtils.IsBetween(m_timeOfDay.TimeOfDay, m_timeOfDay.DuskStart, m_timeOfDay.NightStart);
+        }
+
+        private void TickHomeReturnRoutine(float dt)
+        {
+            TickRestRoutine(dt, false);
+        }
+
         private void TickSleepRoutine(float dt)
+        {
+            TickRestRoutine(dt, true);
+        }
+
+        private void TickRestRoutine(float dt, bool sleepOnArrival)
         {
             // Prefer the villager's exact named wall sign. If it cannot be resolved
             // after repeated scans (for example, a sign is outside the old scan height),
@@ -766,7 +832,7 @@ namespace Game
 
                 if (m_hasFallbackRestPosition)
                 {
-                    RestAtPosition(m_fallbackRestPosition);
+                    RestAtPosition(m_fallbackRestPosition, sleepOnArrival);
                     return;
                 }
 
@@ -783,10 +849,10 @@ namespace Game
             m_bedAssignmentFailureTime = 0.0;
             m_hasFallbackRestPosition = false;
             m_nextFallbackRestSearchTime = 0.0;
-            RestAtPosition(GetBedSleepPosition());
+            RestAtPosition(GetBedSleepPosition(), sleepOnArrival);
         }
 
-        private void RestAtPosition(Vector3 target)
+        private void RestAtPosition(Vector3 target, bool sleepOnArrival)
         {
             float dx = m_body.Position.X - target.X;
             float dz = m_body.Position.Z - target.Z;
@@ -800,15 +866,32 @@ namespace Game
                 m_homeDoorRouteActive = false;
                 StopManagedPath();
                 CloseDoorsForSleep();
-                if (!m_sleepPhysicsSaved)
+
+                if (sleepOnArrival)
                 {
-                    m_wasGravityEnabled = m_body.IsGravityEnabled;
-                    m_sleepPhysicsSaved = true;
+                    if (!m_sleepPhysicsSaved)
+                    {
+                        m_wasGravityEnabled = m_body.IsGravityEnabled;
+                        m_sleepPhysicsSaved = true;
+                    }
                     m_body.IsGravityEnabled = false;
+                    m_body.Velocity = Vector3.Zero;
+                    m_body.Position = target;
+                    SetSleepingAnimation(true);
                 }
-                m_body.Velocity = Vector3.Zero;
-                m_body.Position = target;
-                SetSleepingAnimation(true);
+                else
+                {
+                    // At dusk the villager waits indoors by its assigned bed,
+                    // with gravity enabled and no sleeping animation. It only
+                    // lies down after the clock reaches NightStart.
+                    if (m_sleepPhysicsSaved)
+                    {
+                        m_body.IsGravityEnabled = m_wasGravityEnabled;
+                        m_sleepPhysicsSaved = false;
+                    }
+                    m_body.Velocity = Vector3.Zero;
+                    SetSleepingAnimation(false);
+                }
             }
             else
             {
@@ -1794,7 +1877,9 @@ namespace Game
 
             if (m_job == LivingTownsJob.Lumberjack)
             {
-                if (TryGetGroundedTrunkBaseY(m_workTarget.X, m_workTarget.Y, m_workTarget.Z, out int baseY))
+                if (m_hasLumberTreeLock)
+                    found = TryGetLumberjackApproach(m_lumberTreeX, m_lumberTreeBaseY, m_lumberTreeZ, out nextApproach);
+                else if (TryGetGroundedTrunkBaseY(m_workTarget.X, m_workTarget.Y, m_workTarget.Z, out int baseY))
                     found = TryGetLumberjackApproach(m_workTarget.X, baseY, m_workTarget.Z, out nextApproach);
             }
             else
@@ -2038,8 +2123,9 @@ namespace Game
             {
                 int currentValue = m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 int currentContent = Terrain.ExtractContents(currentValue);
-                if (currentContent <= 0 || currentContent >= BlocksManager.Blocks.Length
-                    || !(BlocksManager.Blocks[currentContent] is WoodBlock))
+                Block currentBlock = currentContent > 0 && currentContent < BlocksManager.Blocks.Length
+                    ? BlocksManager.Blocks[currentContent] : null;
+                if (!(currentBlock is WoodBlock) && !(currentBlock is LeavesBlock))
                 {
                     m_hasWorkTarget = false;
                     m_hasWorkApproach = false;
@@ -2059,20 +2145,35 @@ namespace Game
             {
                 if (m_nextWorkSearchTime > 0.0)
                 {
-                    m_nextWorkSearchTime -= 0.35;
-                    TickPatrol(2.0f, 3.5f);
+                    m_nextWorkSearchTime -= dt;
                     return;
                 }
 
-                m_nextWorkSearchTime = 1.0;
-                m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
-                m_hasWorkApproach = m_hasWorkTarget;
+                m_nextWorkSearchTime = 0.35;
+                if (m_hasLumberTreeLock)
+                {
+                    m_hasWorkTarget = TryFindNextLockedTreePart(out m_workTarget, out m_workApproachPosition);
+                    m_hasWorkApproach = m_hasWorkTarget;
+                    if (!m_hasWorkTarget)
+                    {
+                        Log.Information("[LivingTowns] " + m_villagerName + " finished the locked tree at "
+                            + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
+                            + " including its leaves; searching for the next tree within 100 blocks of home.");
+                        m_hasLumberTreeLock = false;
+                    }
+                }
+
+                if (!m_hasWorkTarget)
+                {
+                    m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
+                    m_hasWorkApproach = m_hasWorkTarget;
+                }
                 m_workApproachRetryCount = 0;
             }
 
             if (!m_hasWorkTarget || !m_hasWorkApproach)
             {
-                TickPatrol(3f, 5f);
+                TickPatrol(2.0f, 3.5f);
                 return;
             }
 
@@ -2087,7 +2188,7 @@ namespace Game
                 HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
                 m_hasWorkApproach = false;
-                m_nextWorkSearchTime = 0.45;
+                m_nextWorkSearchTime = 0.35;
             }
         }
 
@@ -2172,20 +2273,159 @@ namespace Game
             return bestDistance != float.MaxValue;
         }
 
-        // Target the uppermost log of a grounded vertical trunk, then work downward.
-        // Floating canopy remnants are not treated as independent trees.
+        private void ResetLumberSearch()
+        {
+            m_lumberSearchRadius = 0;
+            m_lumberSearchOffset = 0;
+            m_lumberScanFound = false;
+            m_lumberScanBestDistance = float.MaxValue;
+            m_lumberScanBestTarget = new Point3(0, 0, 0);
+            m_lumberScanBestApproach = Vector3.Zero;
+            m_lumberScanBestBaseY = 0;
+        }
+
+        // Scan outward in rings from the villager's home door. The scan is
+        // incremental to avoid freezing mobile devices while covering a full
+        // 100-block work radius. One chosen tree remains locked until its logs
+        // and leaves inside the 25-block canopy envelope are cleared.
         private bool TryFindTreeTopWorkBlock(out Point3 target, out Vector3 approach)
         {
             target = new Point3(0, 0, 0);
             approach = Vector3.Zero;
-            int cx = Terrain.ToCell(m_body.Position.X);
-            int cy = Terrain.ToCell(m_body.Position.Y);
-            int cz = Terrain.ToCell(m_body.Position.Z);
-            float bestDistance = float.MaxValue;
+            int centerX = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
+            int centerZ = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
+            int centerY = m_hasHomeDoor ? m_homeDoor.Y : Terrain.ToCell(m_body.Position.Y);
+            int columnsLeft = LumberjackScanColumnsPerUpdate;
 
-            for (int x = cx - 12; x <= cx + 12; x++)
-            for (int z = cz - 12; z <= cz + 12; z++)
-            for (int y = Math.Max(1, cy - 12); y <= Math.Min(250, cy + 24); y++)
+            while (m_lumberSearchRadius <= LumberjackHomeRadius && columnsLeft > 0)
+            {
+                int radius = m_lumberSearchRadius;
+                int perimeter = radius == 0 ? 1 : 8 * radius;
+                if (m_lumberSearchOffset >= perimeter)
+                {
+                    if (m_lumberScanFound)
+                    {
+                        target = m_lumberScanBestTarget;
+                        approach = m_lumberScanBestApproach;
+                        m_lumberTreeX = target.X;
+                        m_lumberTreeZ = target.Z;
+                        m_lumberTreeBaseY = m_lumberScanBestBaseY;
+                        m_hasLumberTreeLock = true;
+                        Log.Information("[LivingTowns] " + m_villagerName + " locked a tree at "
+                            + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
+                            + " within " + LumberjackHomeRadius + " blocks of home.");
+                        ResetLumberSearch();
+                        return true;
+                    }
+
+                    m_lumberSearchRadius++;
+                    m_lumberSearchOffset = 0;
+                    m_lumberScanFound = false;
+                    m_lumberScanBestDistance = float.MaxValue;
+                    continue;
+                }
+
+                int dx;
+                int dz;
+                int index = m_lumberSearchOffset;
+                if (radius == 0)
+                {
+                    dx = 0;
+                    dz = 0;
+                }
+                else if (index < 2 * radius)
+                {
+                    dx = -radius + index;
+                    dz = -radius;
+                }
+                else if (index < 4 * radius)
+                {
+                    dx = radius;
+                    dz = -radius + (index - 2 * radius);
+                }
+                else if (index < 6 * radius)
+                {
+                    dx = radius - (index - 4 * radius);
+                    dz = radius;
+                }
+                else
+                {
+                    dx = -radius;
+                    dz = radius - (index - 6 * radius);
+                }
+
+                m_lumberSearchOffset++;
+                columnsLeft--;
+                if (dx * dx + dz * dz > LumberjackHomeRadius * LumberjackHomeRadius)
+                    continue;
+
+                int x = centerX + dx;
+                int z = centerZ + dz;
+                // Terrain height varies around a house. Search below the door
+                // level for valleys and up to 40 blocks above it for hills plus
+                // a 25-block tree; grounded trunk validation enforces tree height.
+                int minY = Math.Max(1, centerY - 12);
+                int maxY = Math.Min(250, centerY + 40);
+                for (int y = minY; y <= maxY; y++)
+                {
+                    int value = m_terrain.Terrain.GetCellValue(x, y, z);
+                    int content = Terrain.ExtractContents(value);
+                    if (content <= 0 || content >= BlocksManager.Blocks.Length
+                        || !(BlocksManager.Blocks[content] is WoodBlock)
+                        || IsFailedWorkPosition(x, y, z))
+                        continue;
+
+                    if (!TryGetGroundedTrunkBaseY(x, y, z, out int baseY)
+                        || y > baseY + LumberjackTreeMaxHeight)
+                        continue;
+
+                    int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
+                    int aboveContent = Terrain.ExtractContents(aboveValue);
+                    bool woodAbove = aboveContent > 0 && aboveContent < BlocksManager.Blocks.Length
+                        && BlocksManager.Blocks[aboveContent] is WoodBlock;
+                    if (woodAbove && y < baseY + LumberjackTreeMaxHeight)
+                        continue;
+
+                    if (!TryGetLumberjackApproach(x, baseY, z, out Vector3 candidateApproach))
+                        continue;
+
+                    float distance = Vector3.DistanceSquared(m_body.Position, candidateApproach)
+                        + Math.Abs(y - baseY) * 0.20f;
+                    if (!m_lumberScanFound || distance < m_lumberScanBestDistance)
+                    {
+                        m_lumberScanFound = true;
+                        m_lumberScanBestDistance = distance;
+                        m_lumberScanBestTarget = new Point3(x, y, z);
+                        m_lumberScanBestApproach = candidateApproach;
+                        m_lumberScanBestBaseY = baseY;
+                    }
+                }
+            }
+
+            if (m_lumberSearchRadius > LumberjackHomeRadius)
+            {
+                ResetLumberSearch();
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " finished scanning the 100-block home radius; no reachable tree was found.");
+            }
+            return false;
+        }
+
+        private bool TryFindNextLockedTreePart(out Point3 target, out Vector3 approach)
+        {
+            target = new Point3(0, 0, 0);
+            approach = Vector3.Zero;
+            if (!m_hasLumberTreeLock
+                || !TryGetLumberjackApproach(m_lumberTreeX, m_lumberTreeBaseY, m_lumberTreeZ, out approach))
+                return false;
+
+            // Finish all trunk/branch wood first. After the logs are gone,
+            // collect every nearby LeavesBlock belonging to this canopy.
+            bool foundWood = false;
+            int bestWoodY = int.MinValue;
+            for (int x = m_lumberTreeX - 7; x <= m_lumberTreeX + 7; x++)
+            for (int z = m_lumberTreeZ - 7; z <= m_lumberTreeZ + 7; z++)
+            for (int y = m_lumberTreeBaseY; y <= Math.Min(250, m_lumberTreeBaseY + LumberjackTreeMaxHeight); y++)
             {
                 int value = m_terrain.Terrain.GetCellValue(x, y, z);
                 int content = Terrain.ExtractContents(value);
@@ -2194,26 +2434,40 @@ namespace Game
                     || IsFailedWorkPosition(x, y, z))
                     continue;
 
-                int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
-                int aboveContent = Terrain.ExtractContents(aboveValue);
-                if (aboveContent > 0 && aboveContent < BlocksManager.Blocks.Length
-                    && BlocksManager.Blocks[aboveContent] is WoodBlock)
-                    continue;
-
-                if (!TryGetGroundedTrunkBaseY(x, y, z, out int baseY)
-                    || !TryGetLumberjackApproach(x, baseY, z, out Vector3 candidateApproach))
-                    continue;
-
-                float distance = Vector3.DistanceSquared(m_body.Position, candidateApproach)
-                    + Math.Abs(y - baseY) * 0.20f;
-                if (distance < bestDistance)
+                if (!foundWood || y > bestWoodY)
                 {
-                    bestDistance = distance;
+                    foundWood = true;
+                    bestWoodY = y;
                     target = new Point3(x, y, z);
-                    approach = candidateApproach;
                 }
             }
-            return bestDistance != float.MaxValue;
+            if (foundWood)
+                return true;
+
+            bool foundLeaves = false;
+            float bestLeafScore = float.MaxValue;
+            for (int x = m_lumberTreeX - 7; x <= m_lumberTreeX + 7; x++)
+            for (int z = m_lumberTreeZ - 7; z <= m_lumberTreeZ + 7; z++)
+            for (int y = m_lumberTreeBaseY; y <= Math.Min(250, m_lumberTreeBaseY + LumberjackTreeMaxHeight); y++)
+            {
+                int value = m_terrain.Terrain.GetCellValue(x, y, z);
+                int content = Terrain.ExtractContents(value);
+                if (content <= 0 || content >= BlocksManager.Blocks.Length
+                    || !(BlocksManager.Blocks[content] is LeavesBlock)
+                    || IsFailedWorkPosition(x, y, z))
+                    continue;
+
+                float score = (x - m_lumberTreeX) * (x - m_lumberTreeX)
+                    + (z - m_lumberTreeZ) * (z - m_lumberTreeZ)
+                    + Math.Abs(y - m_lumberTreeBaseY) * 0.15f;
+                if (!foundLeaves || score < bestLeafScore)
+                {
+                    foundLeaves = true;
+                    bestLeafScore = score;
+                    target = new Point3(x, y, z);
+                }
+            }
+            return foundLeaves;
         }
 
         private bool TryGetGroundedTrunkBaseY(int x, int y, int z, out int baseY)
