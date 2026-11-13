@@ -286,6 +286,15 @@ namespace Game
                 m_isLeavingHome = TryBeginHomeExit();
                 Log.Information("[LivingTowns] Dawn routine started; villager will leave through its home door.");
             }
+            else if (m_wasDusk)
+            {
+                // Handles a world-time mode change from Sunset back to Day.
+                m_wasDusk = false;
+                StopManagedPath();
+                ReleaseHomeDoorPassage();
+                m_homeDoorRouteActive = false;
+                m_isLeavingHome = TryBeginHomeExit();
+            }
             WakeFromBedIfNeeded();
             if (m_isLeavingHome && TickHomeExitRoutine())
                 return;
@@ -2276,13 +2285,6 @@ namespace Game
             return bestDistance != float.MaxValue;
         }
 
-        private bool IsAtPossibleLumberjackHeightCap(int x, int y, int centerY)
-        {
-            // This is only a cheap prefilter. Ground-relative height is validated
-            // after the trunk base has been located.
-            return y >= centerY + LumberjackTreeMaxHeight - 1;
-        }
-
         private void ResetLumberSearch()
         {
             m_lumberSearchRadius = 0;
@@ -2376,7 +2378,9 @@ namespace Game
                 // a 25-block tree; grounded trunk validation enforces tree height.
                 int minY = Math.Max(1, centerY - 12);
                 int maxY = Math.Min(250, centerY + 40);
-                for (int y = minY; y <= maxY; y++)
+                // Scan from the top down. This usually finds one top log per
+                // column instead of repeatedly resolving the same trunk base.
+                for (int y = maxY; y >= minY; y--)
                 {
                     int value = m_terrain.Terrain.GetCellValue(x, y, z);
                     int content = Terrain.ExtractContents(value);
@@ -2385,20 +2389,14 @@ namespace Game
                         || IsFailedWorkPosition(x, y, z))
                         continue;
 
-                    int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
-                    int aboveContent = Terrain.ExtractContents(aboveValue);
-                    bool woodAbove = aboveContent > 0 && aboveContent < BlocksManager.Blocks.Length
-                        && BlocksManager.Blocks[aboveContent] is WoodBlock;
-
-                    // Ignore lower trunk logs before doing the more expensive
-                    // grounded-base lookup; the top log is enough to identify a tree.
-                    if (woodAbove && !IsAtPossibleLumberjackHeightCap(x, y, centerY))
-                        continue;
-
                     if (!TryGetGroundedTrunkBaseY(x, y, z, out int baseY)
                         || y > baseY + LumberjackTreeMaxHeight)
                         continue;
 
+                    int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
+                    int aboveContent = Terrain.ExtractContents(aboveValue);
+                    bool woodAbove = aboveContent > 0 && aboveContent < BlocksManager.Blocks.Length
+                        && BlocksManager.Blocks[aboveContent] is WoodBlock;
                     if (woodAbove && y < baseY + LumberjackTreeMaxHeight)
                         continue;
 
@@ -2415,6 +2413,7 @@ namespace Game
                         m_lumberScanBestApproach = candidateApproach;
                         m_lumberScanBestBaseY = baseY;
                     }
+                    break;
                 }
             }
 
