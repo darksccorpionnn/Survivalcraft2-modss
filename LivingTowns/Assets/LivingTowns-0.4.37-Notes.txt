@@ -1,0 +1,9 @@
+Living Towns 0.4.37 — Personal villager chests
+
+- Each villager resolves its own name sign and searches for a ChestBlock with ComponentChest within four horizontal and three vertical blocks of that sign.
+- The search prefers the room-facing side of the attached sign so a chest behind the wall is not claimed.
+- When the villager returns to its assigned indoor rest position at dusk or night, it transfers collected inventory stacks to its personal chest.
+- If the chest is missing, items remain in the villager inventory and the warning is logged once until a chest is found.
+- If the chest is full, remaining items stay with the villager and are retried on the next deposit interval.
+- Work tools, weapons, seeds and job supplies (including axes, pickaxes, rakes, shovels and hammers) are retained in the villager inventory.
+- Includes the 0.4.36 100-block home-centered lumberjack scan, tree lock, logs/leaves harvesting up to 25 blocks, and dusk home-return/night-only sleep schedule.
