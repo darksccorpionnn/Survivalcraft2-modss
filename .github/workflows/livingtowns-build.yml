@@ -2,7 +2,7 @@ name: Living Towns build
 
 on:
   push:
-    branches: [ livingtowns-0.4.0-dev, livingtowns-0.4.34-villager-ai, livingtowns-0.4.34-sleep-stability ]
+    branches: [ livingtowns-0.4.0-dev, livingtowns-0.4.33-villager-ai, livingtowns-0.4.33-sleep-stability ]
     paths:
       - 'LivingTowns/**'
       - '.github/workflows/livingtowns-build.yml'
