@@ -21,8 +21,24 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Fetch matching Survivalcraft API source
+      - name: Fetch Survivalcraft API source
         run: git clone --depth 1 --branch SCAPI1.9 https://github.com/GGigHub/SurvivalcraftApi.git api
+      - name: Remove unavailable optional FLAC decoder for compile-only API reference
+        run: |
+          sed -i '/NAudio.Flac.Unknown.Mod/d' api/Engine/Engine.props api/Survivalcraft/Survivalcraft.props
+          cat > api/Engine/Engine.Media/Flac.cs <<'CS'
+          using System;
+          using System.IO;
+          namespace Engine.Media
+          {
+              public static class Flac
+              {
+                  public static bool IsFlacStream(Stream stream) => false;
+                  public static StreamingSource Stream(Stream stream) => throw new NotSupportedException("FLAC decoder omitted from compile-only API reference.");
+                  public static SoundData Load(Stream stream) => throw new NotSupportedException("FLAC decoder omitted from compile-only API reference.");
+              }
+          }
+          CS
       - name: Restore
         run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.org.config
       - name: Build
