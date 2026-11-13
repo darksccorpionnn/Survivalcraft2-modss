@@ -409,13 +409,25 @@ namespace Game
                 m_hasHomeDoor = true;
             }
 
-            m_nextBedTryTime -= dt;
-            if (m_hasBedCell && m_nextBedTryTime > 0.0
-                && IsValidStandingCell(m_bedCell.X, m_bedCell.Y, m_bedCell.Z)
-                && !IsSleepCellClaimed(m_bedCell))
-                return true;
+            // A successfully resolved named sleep cell is a persistent assignment.
+            // The old 8-second timer expired while slower villagers were still walking
+            // through the house. That cleared m_bedCell, stopped their active route and
+            // made them restart the door approach every few seconds. Faster villagers
+            // could appear to work while the male/farmer got stuck near the doorway.
+            if (m_hasBedCell)
+            {
+                if (IsValidStandingCell(m_bedCell.X, m_bedCell.Y, m_bedCell.Z)
+                    && !IsSleepCellClaimed(m_bedCell))
+                    return true;
 
-            m_hasBedCell = false;
+                // Only discard an assignment when its floor/clearance is no longer valid
+                // or another villager owns the exact same cell.
+                m_hasBedCell = false;
+                m_nextBedTryTime = 0.0;
+            }
+
+            // Retry only failed/missing assignments. Do not time-expire a valid bed.
+            m_nextBedTryTime -= dt;
             if (m_nextBedTryTime > 0.0)
                 return false;
 
@@ -431,7 +443,7 @@ namespace Game
             // so the resulting body position is exactly centered above the floor cell.
             m_bedFramePosition = new Vector3(floorCell.X + 0.5f, floorCell.Y + 2.28f, floorCell.Z + 0.5f);
             m_hasBedCell = true;
-            m_nextBedTryTime = 8.0;
+            m_nextBedTryTime = 0.0;
             Log.Information("[LivingTowns] " + m_villagerName + " assigned to wall sign at "
                 + signCell.X + "," + signCell.Y + "," + signCell.Z
                 + " and sleep cell " + floorCell.X + "," + floorCell.Y + "," + floorCell.Z + ".");
