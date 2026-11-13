@@ -14,7 +14,7 @@ namespace Game
                 if (content <= 0)
                     return;
 
-                ComponentInventory inventory = __instance.ComponentMiner.Inventory;
+                IInventory inventory = __instance.ComponentMiner.Inventory;
                 int value = Terrain.MakeBlockValue(content);
 
                 // Do not grant a second egg if one is already in the player's inventory.
