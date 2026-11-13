@@ -1,3 +1,4 @@
+using System;
 using Engine;
 using GameEntitySystem;
 using TemplatesDatabase;
@@ -5,16 +6,22 @@ using TemplatesDatabase;
 namespace Game
 {
     /// <summary>
-    /// Handles placement of the Village Egg item.
+    /// Handles placement of the Village Egg without re-entering OnBlockAdded
+    /// when the trigger block is temporarily removed or restored.
     /// </summary>
     public sealed class SubsystemVillageEggBehavior : SubsystemBlockBehavior
     {
         private SubsystemTerrain m_terrain;
+        private bool m_internalCellChange;
 
-        public override int[] HandledBlocks => new int[]
+        public override int[] HandledBlocks
         {
-            BlocksManager.GetBlockIndex<VillageEggBlock>()
-        };
+            get
+            {
+                int contents = BlocksManager.GetBlockIndex<VillageEggBlock>();
+                return contents > 0 ? new int[] { contents } : Array.Empty<int>();
+            }
+        }
 
         public override void Load(ValuesDictionary valuesDictionary)
         {
@@ -24,23 +31,51 @@ namespace Game
 
         public override void OnBlockAdded(int value, int oldValue, int x, int y, int z)
         {
+            if (m_internalCellChange || m_terrain == null)
+                return;
+
             int eggContent = BlocksManager.GetBlockIndex<VillageEggBlock>();
-            if (Terrain.ExtractContents(value) != eggContent ||
+            if (eggContent <= 0 ||
+                Terrain.ExtractContents(value) != eggContent ||
                 Terrain.ExtractContents(oldValue) == eggContent)
                 return;
 
-            // Temporarily remove the placed egg so the flat-site clearance test
-            // does not mistake the trigger block for an obstruction.
-            m_terrain.ChangeCell(x, y, z, 0);
-            if (TownPlacementComponent.GenerateFromEgg(m_terrain, x, y, z))
+            // Remove the egg while generating. The guard is set during ChangeCell
+            // because that call synchronously dispatches block behavior callbacks.
+            SetCellInternally(x, y, z, 0);
+
+            bool generated = false;
+            try
+            {
+                generated = TownPlacementComponent.GenerateFromEgg(m_terrain, x, y, z);
+            }
+            catch (Exception ex)
+            {
+                Log.Information("[TownBootstrap] Village generation threw an exception: " + ex);
+            }
+
+            if (generated)
             {
                 Log.Information("[TownBootstrap] Village Egg consumed; village generated.");
             }
             else
             {
-                // Keep the egg in the world on failure; the player can pick it up.
+                // Restore the egg once, while the callback guard prevents recursion.
+                SetCellInternally(x, y, z, value);
+                Log.Information("[TownBootstrap] No suitable site; Village Egg restored safely.");
+            }
+        }
+
+        private void SetCellInternally(int x, int y, int z, int value)
+        {
+            m_internalCellChange = true;
+            try
+            {
                 m_terrain.ChangeCell(x, y, z, value);
-                Log.Information("[TownBootstrap] No suitable site; Village Egg restored.");
+            }
+            finally
+            {
+                m_internalCellChange = false;
             }
         }
     }
