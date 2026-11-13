@@ -81,6 +81,7 @@ namespace Game
         private bool m_hasWorkTarget;
         private Vector3 m_workApproachPosition;
         private bool m_hasWorkApproach;
+        private int m_workApproachRetryCount;
         private double m_nextTradeTime;
         private bool m_farmerKitGranted;
         private int m_farmSearchRadius;
@@ -315,6 +316,7 @@ namespace Game
             m_job = job;
             m_hasWorkTarget = false;
             m_hasWorkApproach = false;
+            m_workApproachRetryCount = 0;
             m_workTask = 0;
             m_nextWorkSearchTime = 0.0;
             m_patrolPause = 0.0;
@@ -1628,7 +1630,13 @@ namespace Game
             approach = Vector3.Zero;
             float bestDistance = float.MaxValue;
             bool found = false;
-            Point3[] sides = { new Point3(1, 0, 0), new Point3(-1, 0, 0), new Point3(0, 0, 1), new Point3(0, 0, -1) };
+            Point3[] sides =
+            {
+                new Point3(1, 0, 0), new Point3(-1, 0, 0),
+                new Point3(0, 0, 1), new Point3(0, 0, -1),
+                new Point3(1, 0, 1), new Point3(1, 0, -1),
+                new Point3(-1, 0, 1), new Point3(-1, 0, -1)
+            };
 
             for (int i = 0; i < sides.Length; i++)
             {
@@ -1710,11 +1718,53 @@ namespace Game
 
         private bool WorkRouteHasFailed(float arrivalDistance)
         {
-            if (m_pathfinding == null || !m_pathfinding.Destination.HasValue)
+            if (m_pathfinding == null || !m_hasWorkApproach)
                 return false;
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) <= arrivalDistance)
                 return false;
-            return m_pathfinding.IsStuck || m_managedNoProgressTime >= 7.0;
+
+            // Destination can briefly be cleared during the pathfinder's Stuck ->
+            // MovingDirect transition. Check IsStuck and the progress watchdog even
+            // when Destination is null so a blocked villager cannot retry forever.
+            return m_pathfinding.IsStuck || m_managedNoProgressTime >= 6.0;
+        }
+
+        private bool TryRetryWorkApproach(string jobName)
+        {
+            if (!m_hasWorkTarget || !m_hasWorkApproach || m_workApproachRetryCount >= 4)
+                return false;
+
+            Point3 failedApproach = new Point3(
+                Terrain.ToCell(m_workApproachPosition.X),
+                Terrain.ToCell(m_workApproachPosition.Y),
+                Terrain.ToCell(m_workApproachPosition.Z));
+            RejectWorkPosition(failedApproach, 60.0);
+            Vector3 nextApproach = Vector3.Zero;
+            bool found = false;
+
+            if (m_job == LivingTownsJob.Lumberjack)
+            {
+                if (TryGetGroundedTrunkBaseY(m_workTarget.X, m_workTarget.Y, m_workTarget.Z, out int baseY))
+                    found = TryGetLumberjackApproach(m_workTarget.X, baseY, m_workTarget.Z, out nextApproach);
+            }
+            else
+            {
+                int approachY = m_job == LivingTownsJob.Farmer
+                    ? (m_workTask == 4 ? m_workTarget.Y : m_workTarget.Y + 1)
+                    : m_workTarget.Y;
+                found = TryGetWorkApproach(m_workTarget.X, approachY, m_workTarget.Z, out nextApproach);
+            }
+
+            if (!found || Vector3.DistanceSquared(nextApproach, m_workApproachPosition) < 0.25f)
+                return false;
+
+            StopManagedPath();
+            m_workApproachPosition = nextApproach;
+            m_hasWorkApproach = true;
+            m_workApproachRetryCount++;
+            Log.Warning("[LivingTowns] " + jobName + " for " + m_villagerName
+                + " found an alternate approach (" + m_workApproachRetryCount + "/4) after an obstacle blocked the first route.");
+            return true;
         }
 
         private void AbandonCurrentWorkTarget(string jobName)
@@ -1733,6 +1783,7 @@ namespace Game
                 + m_villagerName + "; it will try another target instead of circling.");
             m_hasWorkTarget = false;
             m_hasWorkApproach = false;
+            m_workApproachRetryCount = 0;
             m_workTask = 0;
             m_nextWorkSearchTime = 0.8;
             StopManagedPath();
@@ -1809,6 +1860,7 @@ namespace Game
                 m_workTask = task;
                 m_hasWorkTarget = true;
                 m_hasWorkApproach = false;
+                m_workApproachRetryCount = 0;
             }
 
             if (!m_hasWorkApproach)
@@ -1828,14 +1880,16 @@ namespace Game
 
             if (WorkRouteHasFailed(1.45f))
             {
+                if (TryRetryWorkApproach("Farmer"))
+                    return;
                 AbandonCurrentWorkTarget("Farmer");
                 return;
             }
 
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.45f)
             {
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.2f, 900,
-                    false, false, false, null, false);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.25f, 2400,
+                    false, false, false, null, true);
                 return;
             }
 
@@ -1945,6 +1999,8 @@ namespace Game
 
             if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(1.25f))
             {
+                if (TryRetryWorkApproach("Lumberjack"))
+                    return;
                 AbandonCurrentWorkTarget("Lumberjack");
                 return;
             }
@@ -1961,6 +2017,7 @@ namespace Game
                 m_nextWorkSearchTime = 1.0;
                 m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
                 m_hasWorkApproach = m_hasWorkTarget;
+                m_workApproachRetryCount = 0;
             }
 
             if (!m_hasWorkTarget || !m_hasWorkApproach)
@@ -1971,8 +2028,8 @@ namespace Game
 
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
             {
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 900,
-                    false, false, false, null, false);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.15f, 2400,
+                    false, false, false, null, true);
             }
             else
             {
@@ -1988,6 +2045,15 @@ namespace Game
         {
             if (m_terrain == null || m_pathfinding == null)
                 return;
+
+            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(1.25f))
+            {
+                if (TryRetryWorkApproach("Miner"))
+                    return;
+                AbandonCurrentWorkTarget("Miner");
+                return;
+            }
+
             if (!m_hasWorkTarget || !m_hasWorkApproach ||
                 IsAir(m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z)))
             {
@@ -2000,6 +2066,7 @@ namespace Game
                     m_nextWorkSearchTime = 2.5;
                     m_hasWorkTarget = TryFindWorkBlock(true, out m_workTarget, out m_workApproachPosition);
                     m_hasWorkApproach = m_hasWorkTarget;
+                    m_workApproachRetryCount = 0;
                 }
             }
 
@@ -2010,7 +2077,7 @@ namespace Game
             }
 
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 240, false, false, false, null);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.15f, 1800, false, false, false, null, true);
             else
             {
                 StopManagedPath();
@@ -2124,30 +2191,35 @@ namespace Game
             approach = Vector3.Zero;
             float bestDistance = float.MaxValue;
             bool found = false;
-            Point3[] sides =
+            // Look for a clear standing cell around the trunk, not only the four
+            // immediately adjacent cells. Leaves, dropped blocks and neighboring
+            // trunks can occupy those cells; a 2-3 block perimeter often has a route.
+            for (int radius = 1; radius <= 3; radius++)
             {
-                new Point3(1, 0, 0), new Point3(-1, 0, 0),
-                new Point3(0, 0, 1), new Point3(0, 0, -1)
-            };
-
-            for (int i = 0; i < sides.Length; i++)
-            {
-                int sx = x + sides[i].X;
-                int sz = z + sides[i].Z;
-                for (int standY = Math.Max(1, baseY - 1); standY <= Math.Min(250, baseY + 1); standY++)
+                for (int dx = -radius; dx <= radius; dx++)
+                for (int dz = -radius; dz <= radius; dz++)
                 {
-                    if (!IsValidStandingCell(sx, standY - 1, sz)
-                        || IsFailedWorkPosition(sx, standY, sz))
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
                         continue;
 
-                    Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
-                    float score = Vector3.DistanceSquared(m_body.Position, candidate)
-                        + Math.Abs(candidate.Y - m_body.Position.Y) * 4f;
-                    if (score < bestDistance)
+                    int sx = x + dx;
+                    int sz = z + dz;
+                    for (int standY = Math.Max(1, baseY - 1); standY <= Math.Min(250, baseY + 1); standY++)
                     {
-                        bestDistance = score;
-                        approach = candidate;
-                        found = true;
+                        if (!IsValidStandingCell(sx, standY - 1, sz)
+                            || IsFailedWorkPosition(sx, standY, sz))
+                            continue;
+
+                        Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
+                        float score = Vector3.DistanceSquared(m_body.Position, candidate)
+                            + Math.Abs(candidate.Y - m_body.Position.Y) * 4f
+                            + (radius - 1) * 0.35f;
+                        if (score < bestDistance)
+                        {
+                            bestDistance = score;
+                            approach = candidate;
+                            found = true;
+                        }
                     }
                 }
             }
