@@ -26,6 +26,12 @@ namespace Game
             public ComponentLivingTownsVillager Owner;
             public DateTime LastTouchedUtc;
         }
+
+        private sealed class FailedWorkPosition
+        {
+            public Point3 Cell;
+            public double RemainingSeconds;
+        }
         private static readonly object s_homeDoorReservationSync = new object();
         private static readonly Dictionary<string, HomeDoorPassageReservation> s_homeDoorReservations =
             new Dictionary<string, HomeDoorPassageReservation>();
@@ -69,7 +75,9 @@ namespace Game
         private bool m_wasGravityEnabled;
         private bool m_sleepPhysicsSaved;
         private readonly List<Point3> m_autoOpenedDoors = new List<Point3>();
+        private readonly List<FailedWorkPosition> m_failedWorkPositions = new List<FailedWorkPosition>();
         private Point3 m_workTarget;
+        private int m_workTask;
         private bool m_hasWorkTarget;
         private Vector3 m_workApproachPosition;
         private bool m_hasWorkApproach;
@@ -182,6 +190,7 @@ namespace Game
             if (m_destinationRetryCooldown < 0.0)
                 m_destinationRetryCooldown = 0.0;
             UpdateManagedPathProgress(dt);
+            UpdateFailedWorkPositions(dt);
 
             m_nextDoorCheckTime -= dt;
             if (m_nextDoorCheckTime <= 0.0)
@@ -298,6 +307,7 @@ namespace Game
             m_job = job;
             m_hasWorkTarget = false;
             m_hasWorkApproach = false;
+            m_workTask = 0;
             m_nextWorkSearchTime = 0.0;
             m_patrolPause = 0.0;
             EndConversation(false);
@@ -725,7 +735,13 @@ namespace Game
 
         private void RestAtPosition(Vector3 target)
         {
-            if (Vector3.Distance(m_body.Position, target) <= 1.05f)
+            float dx = m_body.Position.X - target.X;
+            float dz = m_body.Position.Z - target.Z;
+            // Different villager models can have slightly different body origins.
+            // Judge bed arrival in the horizontal plane while keeping a vertical safety bound.
+            bool reached = dx * dx + dz * dz <= 0.90f * 0.90f
+                && Math.Abs(m_body.Position.Y - target.Y) <= 1.75f;
+            if (reached)
             {
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
@@ -1568,6 +1584,9 @@ namespace Game
                         || !BlocksManager.Blocks[floorContent].IsCollidable_(floor))
                         continue;
 
+                    if (IsFailedWorkPosition(sx, standY, sz))
+                        continue;
+
                     Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
                     float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 5f;
                     float score = Vector3.DistanceSquared(m_body.Position, candidate) + verticalPenalty;
@@ -1582,60 +1601,209 @@ namespace Game
             return found;
         }
 
+
+        // Failed work cells are temporarily blacklisted. A pathfinder that cannot
+        // reach one tree or plot must not retry the same coordinates forever.
+        private void UpdateFailedWorkPositions(float dt)
+        {
+            for (int i = m_failedWorkPositions.Count - 1; i >= 0; i--)
+            {
+                m_failedWorkPositions[i].RemainingSeconds -= dt;
+                if (m_failedWorkPositions[i].RemainingSeconds <= 0.0)
+                    m_failedWorkPositions.RemoveAt(i);
+            }
+        }
+
+        private bool IsFailedWorkPosition(int x, int y, int z)
+        {
+            for (int i = 0; i < m_failedWorkPositions.Count; i++)
+            {
+                Point3 cell = m_failedWorkPositions[i].Cell;
+                if (cell.X == x && cell.Y == y && cell.Z == z)
+                    return true;
+            }
+            return false;
+        }
+
+        private void RejectWorkPosition(Point3 cell, double seconds)
+        {
+            for (int i = 0; i < m_failedWorkPositions.Count; i++)
+            {
+                FailedWorkPosition failed = m_failedWorkPositions[i];
+                if (failed.Cell.X == cell.X && failed.Cell.Y == cell.Y && failed.Cell.Z == cell.Z)
+                {
+                    failed.RemainingSeconds = Math.Max(failed.RemainingSeconds, seconds);
+                    return;
+                }
+            }
+
+            if (m_failedWorkPositions.Count >= 64)
+                m_failedWorkPositions.RemoveAt(0);
+            m_failedWorkPositions.Add(new FailedWorkPosition
+            {
+                Cell = cell,
+                RemainingSeconds = seconds
+            });
+        }
+
+        private bool WorkRouteHasFailed(float arrivalDistance)
+        {
+            if (m_pathfinding == null || !m_pathfinding.Destination.HasValue)
+                return false;
+            if (Vector3.Distance(m_body.Position, m_workApproachPosition) <= arrivalDistance)
+                return false;
+            return m_pathfinding.IsStuck || m_managedNoProgressTime >= 7.0;
+        }
+
+        private void AbandonCurrentWorkTarget(string jobName)
+        {
+            if (m_hasWorkTarget)
+                RejectWorkPosition(m_workTarget, 35.0);
+            if (m_hasWorkApproach)
+            {
+                RejectWorkPosition(new Point3(
+                    Terrain.ToCell(m_workApproachPosition.X),
+                    Terrain.ToCell(m_workApproachPosition.Y),
+                    Terrain.ToCell(m_workApproachPosition.Z)), 35.0);
+            }
+
+            Log.Warning("[LivingTowns] " + jobName + " abandoned an unreachable work target for "
+                + m_villagerName + "; it will try another target instead of circling.");
+            m_hasWorkTarget = false;
+            m_hasWorkApproach = false;
+            m_workTask = 0;
+            m_nextWorkSearchTime = 0.8;
+            StopManagedPath();
+        }
+
+        private bool TryGetFarmTaskAt(Point3 cell, out int task)
+        {
+            task = 0;
+            if (m_terrain == null || cell.Y < 1 || cell.Y > 253)
+                return false;
+
+            int value = m_terrain.Terrain.GetCellValue(cell.X, cell.Y, cell.Z);
+            int content = Terrain.ExtractContents(value);
+            int rye = BlocksManager.GetBlockIndex<RyeBlock>();
+
+            if (content == rye && RyeBlock.GetSize(Terrain.ExtractData(value)) >= 7
+                && Terrain.ExtractContents(m_terrain.Terrain.GetCellValue(cell.X, cell.Y - 1, cell.Z)) == 168)
+            {
+                task = 4;
+                return true;
+            }
+
+            int above = Terrain.ExtractContents(m_terrain.Terrain.GetCellValue(cell.X, cell.Y + 1, cell.Z));
+            if (content == 168 && above == 0)
+            {
+                task = 3;
+                return true;
+            }
+            return false;
+        }
+
         private void TickFarmer()
         {
             if (m_inventory == null || m_terrain == null || m_pathfinding == null)
                 return;
+
             int rakeSlot = FindItemSlot(BlocksManager.GetBlockIndex<IronRakeBlock>(), null);
             int seedsSlot = FindItemSlot(BlocksManager.GetBlockIndex<SeedsBlock>(), 5);
             if (rakeSlot < 0 || seedsSlot < 0)
             {
-                TickPatrol(2.5f, 4.0f);
-                return;
-            }
-            if (!TryFindFarmTask(out Point3 target, out int task))
-            {
+                m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
+                StopManagedPath();
                 TickPatrol(2.5f, 4.0f);
                 return;
             }
 
-            Vector3 targetPosition;
-            int approachY = task == 4 ? target.Y : target.Y + 1;
-            if (!TryGetWorkApproach(target.X, approachY, target.Z, out targetPosition))
+            // Keep one farm task until it is completed. The old implementation
+            // selected a new cell every AI tick while still walking to the previous one.
+            if (m_hasWorkTarget && !TryGetFarmTaskAt(m_workTarget, out m_workTask))
             {
+                m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
+                m_workTask = 0;
                 StopManagedPath();
+            }
+
+            if (!m_hasWorkTarget)
+            {
+                if (m_nextWorkSearchTime > 0.0)
+                {
+                    m_nextWorkSearchTime -= 0.35;
+                    TickPatrol(2.0f, 3.5f);
+                    return;
+                }
+
+                if (!TryFindFarmTask(out Point3 target, out int task))
+                {
+                    TickPatrol(2.5f, 4.0f);
+                    return;
+                }
+
+                m_workTarget = target;
+                m_workTask = task;
+                m_hasWorkTarget = true;
+                m_hasWorkApproach = false;
+            }
+
+            if (!m_hasWorkApproach)
+            {
+                int approachY = m_workTask == 4 ? m_workTarget.Y : m_workTarget.Y + 1;
+                if (!TryGetWorkApproach(m_workTarget.X, approachY, m_workTarget.Z, out m_workApproachPosition))
+                {
+                    RejectWorkPosition(m_workTarget, 25.0);
+                    m_hasWorkTarget = false;
+                    m_workTask = 0;
+                    m_nextWorkSearchTime = 0.8;
+                    StopManagedPath();
+                    return;
+                }
+                m_hasWorkApproach = true;
+            }
+
+            if (WorkRouteHasFailed(1.45f))
+            {
+                AbandonCurrentWorkTarget("Farmer");
                 return;
             }
-            if (Vector3.Distance(m_body.Position, targetPosition) > 1.45f)
+
+            if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.45f)
             {
-                SetManagedDestination(targetPosition, WorkMoveSpeed, 1.2f, 220, false, false, false, null);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.2f, 900,
+                    false, false, false, null, false);
                 return;
             }
 
             StopManagedPath();
-            SelectInventorySlot(task == 3 ? seedsSlot : rakeSlot);
+            if (!TryGetFarmTaskAt(m_workTarget, out int currentTask))
+            {
+                m_hasWorkTarget = false;
+                m_hasWorkApproach = false;
+                m_workTask = 0;
+                m_nextWorkSearchTime = 0.25;
+                return;
+            }
+
+            SelectInventorySlot(currentTask == 3 ? seedsSlot : rakeSlot);
             m_miner?.Poke(true);
-            if (task == 1)
-            {
-                int old = m_terrain.Terrain.GetCellValue(target.X, target.Y, target.Z);
-                m_terrain.ChangeCell(target.X, target.Y, target.Z, Terrain.ReplaceContents(old, 168));
-                DamageRake(rakeSlot);
-            }
-            else if (task == 2)
-            {
-                int old = m_terrain.Terrain.GetCellValue(target.X, target.Y, target.Z);
-                m_terrain.ChangeCell(target.X, target.Y, target.Z, Terrain.ReplaceContents(old, 2));
-                DamageRake(rakeSlot);
-            }
-            else if (task == 3)
+            if (currentTask == 3)
             {
                 int rye = BlocksManager.GetBlockIndex<RyeBlock>();
                 int cropData = RyeBlock.SetSize(RyeBlock.SetIsWild(0, false), 0);
-                m_terrain.ChangeCell(target.X, target.Y + 1, target.Z, Terrain.MakeBlockValue(rye, 0, cropData));
+                m_terrain.ChangeCell(m_workTarget.X, m_workTarget.Y + 1, m_workTarget.Z,
+                    Terrain.MakeBlockValue(rye, 0, cropData));
                 m_inventory.RemoveSlotItems(seedsSlot, 1);
             }
-            else if (task == 4)
-                HarvestCrop(target.X, target.Y, target.Z);
+            else if (currentTask == 4)
+                HarvestCrop(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
+
+            m_hasWorkTarget = false;
+            m_hasWorkApproach = false;
+            m_workTask = 0;
+            m_nextWorkSearchTime = 0.45;
         }
 
         private bool TryFindFarmTask(out Point3 target, out int task)
@@ -1644,7 +1812,6 @@ namespace Game
             task = 0;
             int centerX = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
             int centerZ = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
-            int rye = BlocksManager.GetBlockIndex<RyeBlock>();
 
             for (int scanned = 0; scanned < FarmCellsPerScan; scanned++)
             {
@@ -1666,23 +1833,15 @@ namespace Game
                 int x = centerX + dx;
                 int z = centerZ + dz;
                 int y = m_terrain.Terrain.GetTopHeight(x, z);
-                if (y < 1 || y > 253)
+                if (y < 1 || y > 253 || IsFailedWorkPosition(x, y, z))
                     continue;
 
-                int groundValue = m_terrain.Terrain.GetCellValue(x, y, z);
-                int ground = Terrain.ExtractContents(groundValue);
-                int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
-                int above = Terrain.ExtractContents(aboveValue);
+                Point3 candidate = new Point3(x, y, z);
+                if (!TryGetFarmTaskAt(candidate, out task))
+                    continue;
 
-                if (ground == rye && RyeBlock.GetSize(Terrain.ExtractData(groundValue)) >= 7 &&
-                    Terrain.ExtractContents(m_terrain.Terrain.GetCellValue(x, y - 1, z)) == 168)
-                {
-                    target = new Point3(x, y, z); task = 4; return true;
-                }
-                if (ground == 168 && above == 0)
-                {
-                    target = new Point3(x, y, z); task = 3; return true;
-                }
+                target = candidate;
+                return true;
             }
             return false;
         }
@@ -1708,36 +1867,58 @@ namespace Game
         {
             if (m_terrain == null || m_pathfinding == null)
                 return;
-            if (!m_hasWorkTarget || !m_hasWorkApproach ||
-                IsAir(m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z)))
+
+            if (m_hasWorkTarget)
             {
-                m_hasWorkTarget = false;
-                m_hasWorkApproach = false;
-                if (m_nextWorkSearchTime > 0.0)
-                    m_nextWorkSearchTime -= 0.35;
-                if (m_nextWorkSearchTime <= 0.0)
+                int currentValue = m_terrain.Terrain.GetCellValue(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
+                int currentContent = Terrain.ExtractContents(currentValue);
+                if (currentContent <= 0 || currentContent >= BlocksManager.Blocks.Length
+                    || !(BlocksManager.Blocks[currentContent] is WoodBlock))
                 {
-                    m_nextWorkSearchTime = 2.0;
-                    m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
-                    m_hasWorkApproach = m_hasWorkTarget;
+                    m_hasWorkTarget = false;
+                    m_hasWorkApproach = false;
+                    StopManagedPath();
                 }
             }
 
+            if (m_hasWorkTarget && m_hasWorkApproach && WorkRouteHasFailed(1.25f))
+            {
+                AbandonCurrentWorkTarget("Lumberjack");
+                return;
+            }
+
             if (!m_hasWorkTarget)
+            {
+                if (m_nextWorkSearchTime > 0.0)
+                {
+                    m_nextWorkSearchTime -= 0.35;
+                    TickPatrol(2.0f, 3.5f);
+                    return;
+                }
+
+                m_nextWorkSearchTime = 1.0;
+                m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
+                m_hasWorkApproach = m_hasWorkTarget;
+            }
+
+            if (!m_hasWorkTarget || !m_hasWorkApproach)
             {
                 TickPatrol(3f, 5f);
                 return;
             }
 
             if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.25f)
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 220, false, false, false, null);
+            {
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 0.85f, 900,
+                    false, false, false, null, false);
+            }
             else
             {
                 StopManagedPath();
                 HarvestBlock(m_workTarget.X, m_workTarget.Y, m_workTarget.Z);
                 m_hasWorkTarget = false;
                 m_hasWorkApproach = false;
-                m_nextWorkSearchTime = 0.0;
+                m_nextWorkSearchTime = 0.45;
             }
         }
 
@@ -1780,6 +1961,9 @@ namespace Game
 
         private bool TryFindWorkBlock(bool ore, out Point3 target, out Vector3 approach)
         {
+            if (!ore)
+                return TryFindTreeTopWorkBlock(out target, out approach);
+
             target = new Point3(0, 0, 0);
             approach = Vector3.Zero;
             int cx = Terrain.ToCell(m_body.Position.X);
@@ -1788,17 +1972,15 @@ namespace Game
             float bestDistance = float.MaxValue;
             for (int x = cx - 12; x <= cx + 12; x++)
             for (int z = cz - 12; z <= cz + 12; z++)
-            for (int y = Math.Max(1, cy - (ore ? 20 : 1)); y <= Math.Min(250, cy + (ore ? 5 : 14)); y++)
+            for (int y = Math.Max(1, cy - 20); y <= Math.Min(250, cy + 5); y++)
             {
                 int value = m_terrain.Terrain.GetCellValue(x, y, z);
                 int content = Terrain.ExtractContents(value);
                 if (content == 0 || content >= BlocksManager.Blocks.Length)
                     continue;
                 Block block = BlocksManager.Blocks[content];
-                bool matches = ore
-                    ? block.GetType().Name.IndexOf("Ore", StringComparison.OrdinalIgnoreCase) >= 0
-                    : block is WoodBlock;
-                if (!matches || !TryGetWorkApproach(x, y, z, out Vector3 candidate))
+                if (block.GetType().Name.IndexOf("Ore", StringComparison.OrdinalIgnoreCase) < 0
+                    || !TryGetWorkApproach(x, y, z, out Vector3 candidate))
                     continue;
                 float distance = Vector3.DistanceSquared(m_body.Position, candidate);
                 if (distance < bestDistance)
@@ -1809,6 +1991,105 @@ namespace Game
                 }
             }
             return bestDistance != float.MaxValue;
+        }
+
+        // Target the uppermost log of a grounded vertical trunk, then work downward.
+        // Floating canopy remnants are not treated as independent trees.
+        private bool TryFindTreeTopWorkBlock(out Point3 target, out Vector3 approach)
+        {
+            target = new Point3(0, 0, 0);
+            approach = Vector3.Zero;
+            int cx = Terrain.ToCell(m_body.Position.X);
+            int cy = Terrain.ToCell(m_body.Position.Y);
+            int cz = Terrain.ToCell(m_body.Position.Z);
+            float bestDistance = float.MaxValue;
+
+            for (int x = cx - 12; x <= cx + 12; x++)
+            for (int z = cz - 12; z <= cz + 12; z++)
+            for (int y = Math.Max(1, cy - 12); y <= Math.Min(250, cy + 24); y++)
+            {
+                int value = m_terrain.Terrain.GetCellValue(x, y, z);
+                int content = Terrain.ExtractContents(value);
+                if (content <= 0 || content >= BlocksManager.Blocks.Length
+                    || !(BlocksManager.Blocks[content] is WoodBlock)
+                    || IsFailedWorkPosition(x, y, z))
+                    continue;
+
+                int aboveValue = m_terrain.Terrain.GetCellValue(x, y + 1, z);
+                int aboveContent = Terrain.ExtractContents(aboveValue);
+                if (aboveContent > 0 && aboveContent < BlocksManager.Blocks.Length
+                    && BlocksManager.Blocks[aboveContent] is WoodBlock)
+                    continue;
+
+                if (!TryGetGroundedTrunkBaseY(x, y, z, out int baseY)
+                    || !TryGetLumberjackApproach(x, baseY, z, out Vector3 candidateApproach))
+                    continue;
+
+                float distance = Vector3.DistanceSquared(m_body.Position, candidateApproach)
+                    + Math.Abs(y - baseY) * 0.20f;
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    target = new Point3(x, y, z);
+                    approach = candidateApproach;
+                }
+            }
+            return bestDistance != float.MaxValue;
+        }
+
+        private bool TryGetGroundedTrunkBaseY(int x, int y, int z, out int baseY)
+        {
+            baseY = y;
+            for (int depth = 0; depth < 32; depth++)
+            {
+                int belowValue = m_terrain.Terrain.GetCellValue(x, baseY - 1, z);
+                int belowContent = Terrain.ExtractContents(belowValue);
+                if (belowContent > 0 && belowContent < BlocksManager.Blocks.Length
+                    && BlocksManager.Blocks[belowContent] is WoodBlock)
+                {
+                    baseY--;
+                    continue;
+                }
+
+                return belowContent > 0 && belowContent < BlocksManager.Blocks.Length
+                    && BlocksManager.Blocks[belowContent].IsCollidable_(belowValue);
+            }
+            return false;
+        }
+
+        private bool TryGetLumberjackApproach(int x, int baseY, int z, out Vector3 approach)
+        {
+            approach = Vector3.Zero;
+            float bestDistance = float.MaxValue;
+            bool found = false;
+            Point3[] sides =
+            {
+                new Point3(1, 0, 0), new Point3(-1, 0, 0),
+                new Point3(0, 0, 1), new Point3(0, 0, -1)
+            };
+
+            for (int i = 0; i < sides.Length; i++)
+            {
+                int sx = x + sides[i].X;
+                int sz = z + sides[i].Z;
+                for (int standY = Math.Max(1, baseY - 1); standY <= Math.Min(250, baseY + 1); standY++)
+                {
+                    if (!IsValidStandingCell(sx, standY - 1, sz)
+                        || IsFailedWorkPosition(sx, standY, sz))
+                        continue;
+
+                    Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
+                    float score = Vector3.DistanceSquared(m_body.Position, candidate)
+                        + Math.Abs(candidate.Y - m_body.Position.Y) * 4f;
+                    if (score < bestDistance)
+                    {
+                        bestDistance = score;
+                        approach = candidate;
+                        found = true;
+                    }
+                }
+            }
+            return found;
         }
 
         private void HarvestBlock(int x, int y, int z)
