@@ -71,8 +71,8 @@ namespace Game
         private Vector3 m_managedDestination;
         private bool m_hasManagedDestination;
         private double m_destinationRetryCooldown;
-        private Vector3 m_managedProgressPosition;
         private Vector3 m_managedProgressTarget;
+        private float m_managedProgressDistance;
         private double m_managedNoProgressTime;
         private bool m_hasManagedProgressSample;
         private bool m_wasNight;
@@ -863,33 +863,44 @@ namespace Game
             if (m_pathfinding?.Destination.HasValue != true || m_body == null)
             {
                 m_managedNoProgressTime = 0.0;
+                m_managedProgressDistance = 0f;
                 m_hasManagedProgressSample = false;
                 return;
             }
 
             Vector3 target = m_pathfinding.Destination.Value;
+            float distanceToTarget = Vector3.Distance(m_body.Position, target);
             if (!m_hasManagedProgressSample
                 || Vector3.DistanceSquared(target, m_managedProgressTarget) > 0.25f)
             {
                 m_managedProgressTarget = target;
-                m_managedProgressPosition = m_body.Position;
+                m_managedProgressDistance = distanceToTarget;
                 m_managedNoProgressTime = 0.0;
                 m_hasManagedProgressSample = true;
                 return;
             }
 
-            if (Vector3.DistanceSquared(m_body.Position, m_managedProgressPosition) > 0.09f)
+            // Track actual progress toward the requested destination, not raw movement.
+            // A villager circling a tree can move every frame without getting any closer;
+            // the old position-delta watchdog incorrectly treated that as progress.
+            float arrivalDistance = Math.Max(0.9f, m_pathfinding.Range + 0.25f);
+            if (distanceToTarget <= arrivalDistance)
             {
-                m_managedProgressPosition = m_body.Position;
+                m_managedProgressDistance = distanceToTarget;
                 m_managedNoProgressTime = 0.0;
+                return;
             }
-            else if (Vector3.DistanceSquared(m_body.Position, target) > 2.25f)
+
+            // Keep the best distance reached during this attempt. Small oscillations and
+            // sideways movement do not reset the watchdog; meaningful approach does.
+            if (distanceToTarget < m_managedProgressDistance - 0.15f)
             {
-                m_managedNoProgressTime += dt;
+                m_managedProgressDistance = distanceToTarget;
+                m_managedNoProgressTime = 0.0;
             }
             else
             {
-                m_managedNoProgressTime = 0.0;
+                m_managedNoProgressTime += dt;
             }
         }
 
@@ -905,7 +916,7 @@ namespace Game
             bool sameCurrentTarget = current.HasValue
                 && Vector3.DistanceSquared(current.Value, destination) <= 0.0625f;
             bool stuck = m_pathfinding.IsStuck;
-            bool stalled = sameRequestedTarget && m_managedNoProgressTime >= 7.0;
+            bool stalled = sameRequestedTarget && m_managedNoProgressTime >= 10.0;
 
             // Important: a stuck pathfinder keeps Destination set. Never treat that as
             // proof that the route is still working; explicitly restart the route search.
@@ -927,7 +938,7 @@ namespace Game
             m_destinationRetryCooldown = 3.0;
             m_managedNoProgressTime = 0.0;
             m_managedProgressTarget = destination;
-            m_managedProgressPosition = m_body.Position;
+            m_managedProgressDistance = Vector3.Distance(m_body.Position, destination);
             m_hasManagedProgressSample = true;
         }
 
@@ -938,6 +949,7 @@ namespace Game
             m_hasManagedDestination = false;
             m_destinationRetryCooldown = 0.0;
             m_managedNoProgressTime = 0.0;
+            m_managedProgressDistance = 0f;
             m_hasManagedProgressSample = false;
         }
 
