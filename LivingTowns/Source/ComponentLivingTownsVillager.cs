@@ -97,6 +97,8 @@ namespace Game
         private bool m_hasFallbackRestPosition;
         private Vector3 m_fallbackRestPosition;
         private double m_nextFallbackRestSearchTime;
+        private double m_bedAssignmentFailureTime;
+        private bool m_sleepDoorRouteBypassed;
         private bool m_homeDoorRouteActive;
         private bool m_homeDoorRouteEntering;
         private int m_homeDoorRouteStage;
@@ -179,6 +181,8 @@ namespace Game
             m_hasFallbackRestPosition = false;
             m_nextBedTryTime = 0.0;
             m_nextFallbackRestSearchTime = 0.0;
+            m_bedAssignmentFailureTime = 0.0;
+            m_sleepDoorRouteBypassed = false;
         }
 
         public void Update(float dt)
@@ -213,6 +217,10 @@ namespace Game
                     ReleaseHomeDoorPassage();
                     m_homeDoorRouteActive = false;
                     m_isLeavingHome = false;
+                    m_sleepDoorRouteBypassed = false;
+                    m_bedAssignmentFailureTime = 0.0;
+                    m_hasFallbackRestPosition = false;
+                    m_nextFallbackRestSearchTime = 0.0;
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
                 }
                 TickSleepRoutine(dt);
@@ -492,12 +500,12 @@ namespace Game
 
             bool found = false;
             float bestScore = float.MaxValue;
-            int minX = m_homeDoor.X - 12;
-            int maxX = m_homeDoor.X + 12;
-            int minZ = m_homeDoor.Z - 12;
-            int maxZ = m_homeDoor.Z + 12;
-            int minY = Math.Max(1, m_homeDoor.Y - 2);
-            int maxY = Math.Min(250, m_homeDoor.Y + 7);
+            int minX = m_homeDoor.X - 16;
+            int maxX = m_homeDoor.X + 16;
+            int minZ = m_homeDoor.Z - 16;
+            int maxZ = m_homeDoor.Z + 16;
+            int minY = Math.Max(1, m_homeDoor.Y - 4);
+            int maxY = Math.Min(250, m_homeDoor.Y + 14);
 
             for (int x = minX; x <= maxX; x++)
             for (int z = minZ; z <= maxZ; z++)
@@ -537,7 +545,7 @@ namespace Game
                 // the room side immediately in front of it, never the doorway.
                 for (int dx = -1; dx <= 1; dx++)
                 for (int dz = -1; dz <= 1; dz++)
-                for (int candidateY = Math.Max(1, y - 4); candidateY <= y - 1; candidateY++)
+                for (int candidateY = Math.Max(1, y - 6); candidateY <= y - 1; candidateY++)
                 {
                     int cx = preferredX + dx;
                     int cz = preferredZ + dz;
@@ -727,10 +735,37 @@ namespace Game
 
         private void TickSleepRoutine(float dt)
         {
-            // A named wall sign is the only valid sleep assignment. No free-position
-            // or door-area fallback: a missing sign must never make villagers overlap.
+            // Prefer the villager's exact named wall sign. If it cannot be resolved
+            // after repeated scans (for example, a sign is outside the old scan height),
+            // use a safe indoor position near this home rather than leaving the villager
+            // frozen outside all night.
             if (!EnsureAssignedBed(dt))
             {
+                m_bedAssignmentFailureTime += dt;
+                if (!m_hasFallbackRestPosition && m_bedAssignmentFailureTime >= 8.0
+                    && m_nextFallbackRestSearchTime <= 0.0)
+                {
+                    m_nextFallbackRestSearchTime = 4.0;
+                    if (TryFindHomeRestPosition(out Vector3 fallbackPosition))
+                    {
+                        m_fallbackRestPosition = fallbackPosition;
+                        m_hasFallbackRestPosition = true;
+                        Log.Warning("[LivingTowns] " + m_villagerName
+                            + " could not resolve its named sleep sign; using a safe home rest position at "
+                            + fallbackPosition.X.ToString("0.0") + ","
+                            + fallbackPosition.Y.ToString("0.0") + ","
+                            + fallbackPosition.Z.ToString("0.0") + ".");
+                    }
+                }
+                else if (!m_hasFallbackRestPosition)
+                    m_nextFallbackRestSearchTime -= dt;
+
+                if (m_hasFallbackRestPosition)
+                {
+                    RestAtPosition(m_fallbackRestPosition);
+                    return;
+                }
+
                 StopManagedPath();
                 if (m_sleepPhysicsSaved)
                 {
@@ -741,7 +776,9 @@ namespace Game
                 return;
             }
 
+            m_bedAssignmentFailureTime = 0.0;
             m_hasFallbackRestPosition = false;
+            m_nextFallbackRestSearchTime = 0.0;
             RestAtPosition(GetBedSleepPosition());
         }
 
@@ -773,10 +810,23 @@ namespace Game
             {
                 SetSleepingAnimation(false);
                 Vector3 routeTarget = target;
-                TryGetHomeDoorRouteDestination(target, true, out routeTarget);
-                // Home entry is deliberately waypoint-based. Random recovery makes
-                // villagers walk into side walls or circle the house instead of using
-                // their registered door.
+                // If the waypoint route is genuinely stuck, release its door lock and
+                // let pathfinding find a direct route to the assigned rest cell. This is
+                // a one-time fallback for the current night, not random wandering.
+                if (!m_sleepDoorRouteBypassed && m_homeDoorRouteActive
+                    && m_pathfinding?.Destination.HasValue == true
+                    && (m_pathfinding.IsStuck || m_managedNoProgressTime >= 6.0))
+                {
+                    Log.Warning("[LivingTowns] " + m_villagerName
+                        + " sleep doorway route stalled; retrying directly to the assigned rest cell.");
+                    ReleaseHomeDoorPassage();
+                    m_homeDoorRouteActive = false;
+                    m_sleepDoorRouteBypassed = true;
+                }
+                if (!m_sleepDoorRouteBypassed)
+                    TryGetHomeDoorRouteDestination(target, true, out routeTarget);
+                // Random recovery is intentionally disabled: the direct fallback keeps
+                // the named resting target and avoids wandering through the house.
                 SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
             }
         }
