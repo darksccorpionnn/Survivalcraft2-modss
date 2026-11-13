@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.32",
+  "Version": "0.4.33",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villager jobs use persistent work targets, unreachable-target recovery and grounded-tree lumberjacking. Named indoor sleeping and shared doorway routing are retained.",
+  "Description": "Fixes persistent named sleep-bed assignments so slower villagers are not interrupted while navigating home; retains villager job path recovery.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
