@@ -748,8 +748,8 @@ namespace Game
             return 0;
         }
 
-        private void SetManagedDestination(Vector3 destination, float speed, float range, int maxPathfindingIterations,
-            bool useRandomRange, bool useCurrentPosition, bool useTerrainHeight, object callback)
+        private void SetManagedDestination(Vector3 destination, float speed, float range, int maxPathfindingPositions,
+            bool useRandomMovements, bool ignoreHeightDifference, bool raycastDestination, ComponentBody doNotAvoidBody)
         {
             if (m_pathfinding == null)
                 return;
@@ -763,8 +763,8 @@ namespace Game
             if (!current.HasValue && sameRequestedTarget && m_destinationRetryCooldown > 0.0)
                 return;
 
-            m_pathfinding.SetDestination(destination, speed, range, maxPathfindingIterations,
-                useRandomRange, useCurrentPosition, useTerrainHeight, callback);
+            m_pathfinding.SetDestination(destination, speed, range, maxPathfindingPositions,
+                useRandomMovements, ignoreHeightDifference, raycastDestination, doNotAvoidBody);
             m_managedDestination = destination;
             m_hasManagedDestination = true;
             m_destinationRetryCooldown = 2.5;
