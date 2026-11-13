@@ -812,7 +812,7 @@ namespace Game
             for (int i = m_autoOpenedDoors.Count - 1; i >= 0; i--)
             {
                 Point3 p = m_autoOpenedDoors[i];
-                if (IsAnotherVillagerNearDoor(p))
+                if (IsAnotherVillagerInDoorway(p))
                     continue;
                 CloseDoorIfOpen(p.X, p.Y, p.Z);
                 m_autoOpenedDoors.RemoveAt(i);
@@ -820,7 +820,7 @@ namespace Game
 
             // The home door may have been opened by another villager or already been
             // open when this villager arrived, so it might not be in the local list.
-            if (!IsAnotherVillagerNearDoor(m_homeDoor))
+            if (!IsAnotherVillagerInDoorway(m_homeDoor))
                 CloseDoorIfOpen(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
         }
 
@@ -869,6 +869,22 @@ namespace Game
                     continue;
                 ComponentBody body = creature.Entity.FindComponent<ComponentBody>();
                 if (body != null && Vector3.Distance(body.Position, center) < 3.5f)
+                    return true;
+            }
+            return false;
+        }
+
+        private bool IsAnotherVillagerInDoorway(Point3 door)
+        {
+            if (m_creatureSpawn == null)
+                return false;
+            Vector3 center = new Vector3(door.X + 0.5f, door.Y, door.Z + 0.5f);
+            foreach (ComponentCreature creature in m_creatureSpawn.Creatures)
+            {
+                if (creature.Entity == Entity || creature.Entity.FindComponent<ComponentLivingTownsVillager>() == null)
+                    continue;
+                ComponentBody body = creature.Entity.FindComponent<ComponentBody>();
+                if (body != null && Vector3.Distance(body.Position, center) < 1.45f)
                     return true;
             }
             return false;
