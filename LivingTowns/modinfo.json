@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Living Towns - Door Control and Night Closure Fix",
-  "Version": "0.4.26",
+  "Name": "Living Towns - Named Villager Sleep",
+  "Version": "0.4.27",
   "ApiVersion": "1.9.5.1",
-  "Description": "Reduced automatic door toggling, closes home doors before sleep, respects nearby villagers, and retains home-return and obstacle-navigation fixes.",
+  "Description": "Villagers have persistent unique names and sleep only at safe indoor positions marked by their matching wall-mounted wooden sign. Sleep cells are exclusive; random door-area fallback is disabled.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

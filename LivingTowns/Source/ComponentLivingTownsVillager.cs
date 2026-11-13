@@ -39,8 +39,10 @@ namespace Game
         private SubsystemCreatureSpawn m_creatureSpawn;
         private SubsystemDoorBlockBehavior m_doorBehavior;
         private SubsystemPickables m_pickables;
+        private SubsystemSignBlockBehavior m_signBehavior;
 
         private LivingTownsJob m_job = LivingTownsJob.Unemployed;
+        private string m_villagerName = string.Empty;
         private Point3 m_homeDoor;
         private bool m_hasHomeDoor;
         private Point3 m_bedCell;
@@ -105,8 +107,10 @@ namespace Game
             m_creatureSpawn = Project.FindSubsystem<SubsystemCreatureSpawn>(true);
             m_doorBehavior = Project.FindSubsystem<SubsystemDoorBlockBehavior>(true);
             m_pickables = Project.FindSubsystem<SubsystemPickables>(true);
+            m_signBehavior = Project.FindSubsystem<SubsystemSignBlockBehavior>(true);
 
             m_job = (LivingTownsJob)valuesDictionary.GetValue<int>("Job", 0);
+            m_villagerName = valuesDictionary.GetValue<string>("VillagerName", string.Empty);
             m_hasHomeDoor = valuesDictionary.GetValue<bool>("HasHomeDoor", false);
             m_homeDoor = new Point3(
                 valuesDictionary.GetValue<int>("HomeDoorX", 0),
@@ -116,7 +120,10 @@ namespace Game
                 valuesDictionary.GetValue<int>("BedX", 0),
                 valuesDictionary.GetValue<int>("BedY", 0),
                 valuesDictionary.GetValue<int>("BedZ", 0));
-            m_hasBedCell = valuesDictionary.GetValue<bool>("HasBed", false);
+            // Old releases assigned beds by home door, which allowed roommates to share one spot.
+            // Force a fresh lookup of this villager's own named wall sign.
+            m_hasBedCell = false;
+            EnsureVillagerName();
             m_farmerKitGranted = valuesDictionary.GetValue<bool>("FarmerKitGranted", false);
 
             if (m_locomotion != null)
@@ -130,6 +137,7 @@ namespace Game
         public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
         {
             valuesDictionary.SetValue("Job", (int)m_job);
+            valuesDictionary.SetValue("VillagerName", m_villagerName ?? string.Empty);
             valuesDictionary.SetValue("HasHomeDoor", m_hasHomeDoor);
             valuesDictionary.SetValue("HomeDoorX", m_homeDoor.X);
             valuesDictionary.SetValue("HomeDoorY", m_homeDoor.Y);
@@ -232,7 +240,7 @@ namespace Game
                 "Eldeki eşyayı NPC'ye ver"
             };
             DialogsManager.ShowDialog(null, new ListSelectionDialog(
-                "Köylü Görevleri",
+                (string.IsNullOrEmpty(m_villagerName) ? "Köylü" : m_villagerName) + " | Görevler",
                 options,
                 60f,
                 item => item == null ? string.Empty : item.ToString(),
@@ -369,60 +377,171 @@ namespace Game
                 m_hasHomeDoor = true;
             }
 
-            foreach (Entity entity in Project.Entities)
-            {
-                ComponentLivingTownsBed bed = entity.FindComponent<ComponentLivingTownsBed>();
-                if (bed == null || !bed.IsOwnedBy(m_homeDoor))
-                    continue;
-                ComponentFrame frame = entity.FindComponent<ComponentFrame>();
-                if (frame == null)
-                    continue;
-                Point3 existingFloor = new Point3(
-                    Terrain.ToCell(frame.Position.X),
-                    Terrain.ToCell(frame.Position.Y - 1.736f),
-                    Terrain.ToCell(frame.Position.Z));
-                if (IsIndoorBedSpot(existingFloor.X, existingFloor.Y, existingFloor.Z, out _))
-                {
-                    m_bedFramePosition = frame.Position;
-                    m_bedCell = existingFloor;
-                    m_hasBedCell = true;
-                    return true;
-                }
-
-                // Older builds could assign a bed outside the house. Release that
-                // assignment so this villager can receive an indoor bed instead.
-                bed.SetOwnerDoor(new Point3(int.MinValue, int.MinValue, int.MinValue));
-                Log.Information("[LivingTowns] Replacing an outdoor bed assignment with an indoor bed.");
-
-            }
-
             m_nextBedTryTime -= dt;
+            if (m_hasBedCell && m_nextBedTryTime > 0.0
+                && IsValidStandingCell(m_bedCell.X, m_bedCell.Y, m_bedCell.Z)
+                && !IsSleepCellClaimed(m_bedCell))
+                return true;
+
+            m_hasBedCell = false;
             if (m_nextBedTryTime > 0.0)
                 return false;
+
             m_nextBedTryTime = 4.0;
-
-            if (!TryFindBedPlacement(out Point3 floorCell, out Vector3 modelPosition))
-                return false;
-
-            try
+            if (!TryFindNamedSignSleepPosition(out Point3 signCell, out Point3 floorCell))
             {
-                ValuesDictionary values = DatabaseManager.FindEntityValuesDictionary("LivingTowns_CelticBed", true);
-                Entity bedEntity = Project.CreateEntity(values);
-                bedEntity.FindComponent<ComponentFrame>(true).Position = modelPosition;
-                bedEntity.FindComponent<ComponentLivingTownsBed>(true).SetOwnerDoor(m_homeDoor);
-                Project.AddEntity(bedEntity);
-
-                m_bedFramePosition = modelPosition;
-                m_bedCell = floorCell;
-                m_hasBedCell = true;
-                Log.Information("[LivingTowns] Dedicated Celtic bed created for " + m_homeDoor.X + "," + m_homeDoor.Y + "," + m_homeDoor.Z);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[LivingTowns] Unable to create NPC bed: " + ex);
+                Log.Warning("[LivingTowns] No wall sign found for " + m_villagerName + "; villager will not choose a random sleep position.");
                 return false;
             }
+
+            m_bedCell = floorCell;
+            // GetBedSleepPosition subtracts 1.28 from the frame origin. Offset it
+            // so the resulting body position is exactly centered above the floor cell.
+            m_bedFramePosition = new Vector3(floorCell.X + 0.5f, floorCell.Y + 2.28f, floorCell.Z + 0.5f);
+            m_hasBedCell = true;
+            m_nextBedTryTime = 8.0;
+            Log.Information("[LivingTowns] " + m_villagerName + " assigned to wall sign at "
+                + signCell.X + "," + signCell.Y + "," + signCell.Z
+                + " and sleep cell " + floorCell.X + "," + floorCell.Y + "," + floorCell.Z + ".");
+            return true;
+        }
+
+        private void EnsureVillagerName()
+        {
+            if (!string.IsNullOrWhiteSpace(m_villagerName))
+            {
+                m_villagerName = m_villagerName.Trim();
+                return;
+            }
+
+            for (int number = 1; number <= 9999; number++)
+            {
+                string candidate = "Köylü-" + number.ToString("000");
+                bool alreadyUsed = false;
+                foreach (Entity entity in Project.Entities)
+                {
+                    if (entity == null || entity == Entity)
+                        continue;
+                    ComponentLivingTownsVillager other = entity.FindComponent<ComponentLivingTownsVillager>();
+                    if (other != null && string.Equals(other.m_villagerName, candidate, StringComparison.OrdinalIgnoreCase))
+                    {
+                        alreadyUsed = true;
+                        break;
+                    }
+                }
+                if (!alreadyUsed)
+                {
+                    m_villagerName = candidate;
+                    return;
+                }
+            }
+
+            m_villagerName = "Köylü-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+        }
+
+        private bool TryFindNamedSignSleepPosition(out Point3 selectedSign, out Point3 floorCell)
+        {
+            selectedSign = new Point3(0, 0, 0);
+            floorCell = new Point3(0, 0, 0);
+            if (m_terrain == null || m_signBehavior == null || !m_hasHomeDoor || string.IsNullOrWhiteSpace(m_villagerName))
+                return false;
+
+            bool found = false;
+            float bestScore = float.MaxValue;
+            int minX = m_homeDoor.X - 12;
+            int maxX = m_homeDoor.X + 12;
+            int minZ = m_homeDoor.Z - 12;
+            int maxZ = m_homeDoor.Z + 12;
+            int minY = Math.Max(1, m_homeDoor.Y - 2);
+            int maxY = Math.Min(250, m_homeDoor.Y + 7);
+
+            for (int x = minX; x <= maxX; x++)
+            for (int z = minZ; z <= maxZ; z++)
+            for (int y = minY; y <= maxY; y++)
+            {
+                int signValue = m_terrain.Terrain.GetCellValue(x, y, z);
+                int signContent = Terrain.ExtractContents(signValue);
+                if (signContent <= 0 || signContent >= BlocksManager.Blocks.Length)
+                    continue;
+
+                // Wall-mounted signs only. Standing/hanging signs do not define a bed-side wall position.
+                if (!(BlocksManager.Blocks[signContent] is AttachedSignBlock))
+                    continue;
+
+                SignData signData = m_signBehavior.GetSignData(new Point3(x, y, z));
+                if (signData == null || signData.Lines == null)
+                    continue;
+
+                bool nameMatches = false;
+                for (int line = 0; line < signData.Lines.Length; line++)
+                {
+                    if (string.Equals((signData.Lines[line] ?? string.Empty).Trim(), m_villagerName,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        nameMatches = true;
+                        break;
+                    }
+                }
+                if (!nameMatches)
+                    continue;
+
+                Point3 outward = CellFace.FaceToPoint3(AttachedSignBlock.GetFace(Terrain.ExtractData(signValue)));
+                int preferredX = x + outward.X;
+                int preferredZ = z + outward.Z;
+
+                // The sign is on the wall; choose a safe, roofed standing cell on
+                // the room side immediately in front of it, never the doorway.
+                for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                for (int candidateY = Math.Max(1, y - 4); candidateY <= y - 1; candidateY++)
+                {
+                    int cx = preferredX + dx;
+                    int cz = preferredZ + dz;
+                    if (!IsValidStandingCell(cx, candidateY, cz))
+                        continue;
+                    if (!IsIndoorBedSpot(cx, candidateY, cz, out _))
+                        continue;
+
+                    Vector3 candidate = new Vector3(cx + 0.5f, candidateY + 1f, cz + 0.5f);
+                    Vector3 doorCenter = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y + 0.5f, m_homeDoor.Z + 0.5f);
+                    if (Vector3.DistanceSquared(candidate, doorCenter) < 2.25f)
+                        continue;
+
+                    Point3 candidateCell = new Point3(cx, candidateY, cz);
+                    if (IsSleepCellClaimed(candidateCell))
+                        continue;
+
+                    float score = (dx * dx + dz * dz) * 2.0f
+                        + Math.Abs(candidateY - (y - 2)) * 0.4f
+                        + Vector3.DistanceSquared(candidate, new Vector3(preferredX + 0.5f, candidateY + 1f, preferredZ + 0.5f));
+                    if (!found || score < bestScore)
+                    {
+                        found = true;
+                        bestScore = score;
+                        selectedSign = new Point3(x, y, z);
+                        floorCell = candidateCell;
+                    }
+                }
+            }
+            return found;
+        }
+
+        private bool IsSleepCellClaimed(Point3 candidate)
+        {
+            foreach (Entity entity in Project.Entities)
+            {
+                if (entity == null || entity == Entity)
+                    continue;
+                ComponentLivingTownsVillager other = entity.FindComponent<ComponentLivingTownsVillager>();
+                if (other == null || !other.m_hasBedCell)
+                    continue;
+
+                if (Math.Abs(other.m_bedCell.X - candidate.X) <= 1
+                    && Math.Abs(other.m_bedCell.Y - candidate.Y) <= 1
+                    && Math.Abs(other.m_bedCell.Z - candidate.Z) <= 1)
+                    return true;
+            }
+            return false;
         }
 
         private bool TryFindBedPlacement(out Point3 floorCell, out Vector3 modelPosition)
@@ -560,35 +679,22 @@ namespace Game
 
         private void TickSleepRoutine(float dt)
         {
+            // A named wall sign is the only valid sleep assignment. No free-position
+            // or door-area fallback: a missing sign must never make villagers overlap.
             if (!EnsureAssignedBed(dt))
             {
-                // A villager must still return to its home at night even when the
-                // room is too small for a Celtic bed. Older code stopped navigation
-                // here, leaving the villager standing still outside all night.
-                m_nextFallbackRestSearchTime -= dt;
-                if (!m_hasFallbackRestPosition && m_nextFallbackRestSearchTime <= 0.0)
+                StopManagedPath();
+                if (m_sleepPhysicsSaved)
                 {
-                    m_nextFallbackRestSearchTime = 4.0;
-                    m_hasFallbackRestPosition = TryFindHomeRestPosition(out m_fallbackRestPosition);
-                    if (m_hasFallbackRestPosition)
-                        Log.Information("[LivingTowns] No bed fit; using an indoor home rest position.");
-                    else
-                        Log.Warning("[LivingTowns] No indoor rest cell found near home door; villager will keep retrying.");
+                    m_body.IsGravityEnabled = m_wasGravityEnabled;
+                    m_sleepPhysicsSaved = false;
                 }
-
-                if (!m_hasFallbackRestPosition)
-                {
-                    StopManagedPath();
-                    SetSleepingAnimation(false);
-                    return;
-                }
-
-                RestAtPosition(m_fallbackRestPosition);
+                SetSleepingAnimation(false);
                 return;
             }
+
             m_hasFallbackRestPosition = false;
-            Vector3 target = GetBedSleepPosition();
-            RestAtPosition(target);
+            RestAtPosition(GetBedSleepPosition());
         }
 
         private void RestAtPosition(Vector3 target)
