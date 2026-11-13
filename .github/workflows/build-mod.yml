@@ -50,13 +50,14 @@ jobs:
                   "modinfo.json",
                   "Assets/TownBootstrapDatabase.xdb",
                   "Assets/TownBootstrapBlocksData.csv",
+                  "Assets/Textures/VillageEgg.png",
               }
               missing = required - names
               if missing:
                   raise SystemExit(f"Package is missing required files: {sorted(missing)}")
 
               info = json.loads(archive.read("modinfo.json"))
-              if info.get("Version") != "0.6.3":
+              if info.get("Version") != "0.6.4":
                   raise SystemExit(f"Unexpected mod version: {info.get('Version')}")
 
               database = ET.fromstring(archive.read("Assets/TownBootstrapDatabase.xdb"))
@@ -83,10 +84,17 @@ jobs:
               if not any(row.get("Class Name") == "VillageEggBlock" for row in rows):
                   raise SystemExit("VillageEggBlock is missing from the block registry CSV")
 
+              block_source = Path("TownBootstrap/VillageEggBlock.cs").read_text(encoding="utf-8")
+              behavior_source = Path("TownBootstrap/SubsystemVillageEggBehavior.cs").read_text(encoding="utf-8")
+              if "VillageEggBlock : CrossBlock" not in block_source:
+                  raise SystemExit("Village Egg is not using CrossBlock rendering")
+              if "m_internalCellChange" not in behavior_source or "SetCellInternally" not in behavior_source:
+                  raise SystemExit("Village Egg placement re-entry guard is missing")
+
               print("Package verified:")
               for name in sorted(names):
                   print(" -", name)
-              print("Player component registration and Village Egg block CSV entry verified.")
+              print("CrossBlock renderer, texture asset, player grant, and placement re-entry guard verified.")
           PY
 
       - name: Upload .scmod artifact
