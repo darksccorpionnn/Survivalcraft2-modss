@@ -81,6 +81,11 @@ namespace Game
         private bool m_hasFallbackRestPosition;
         private Vector3 m_fallbackRestPosition;
         private double m_nextFallbackRestSearchTime;
+        private bool m_homeDoorRouteActive;
+        private bool m_homeDoorRouteEntering;
+        private int m_homeDoorRouteStage;
+        private Vector3 m_homeDoorRouteFinalTarget;
+        private bool m_isLeavingHome;
 
         private const float VillagerWalkSpeed = 2.2f;
         private const float WorkMoveSpeed = 2.2f;
@@ -187,6 +192,8 @@ namespace Game
                     m_hasWorkApproach = false;
                     m_nextWorkSearchTime = 0.0;
                     StopManagedPath();
+                    m_homeDoorRouteActive = false;
+                    m_isLeavingHome = false;
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
                 }
                 TickSleepRoutine(dt);
@@ -197,9 +204,13 @@ namespace Game
             {
                 m_wasNight = false;
                 StopManagedPath();
-                Log.Information("[LivingTowns] Dawn routine started; villager leaving bed.");
+                m_homeDoorRouteActive = false;
+                m_isLeavingHome = TryBeginHomeExit();
+                Log.Information("[LivingTowns] Dawn routine started; villager will leave through its home door.");
             }
             WakeFromBedIfNeeded();
+            if (m_isLeavingHome && TickHomeExitRoutine())
+                return;
             m_chatCooldown -= dt;
 
             if (m_isTalking)
@@ -701,6 +712,7 @@ namespace Game
         {
             if (Vector3.Distance(m_body.Position, target) <= 1.05f)
             {
+                m_homeDoorRouteActive = false;
                 StopManagedPath();
                 CloseDoorsForSleep();
                 if (!m_sleepPhysicsSaved)
@@ -716,8 +728,184 @@ namespace Game
             else
             {
                 SetSleepingAnimation(false);
-                SetManagedDestination(target, 2.2f, 0.85f, 1200, true, false, false, null);
+                Vector3 routeTarget = target;
+                TryGetHomeDoorRouteDestination(target, true, out routeTarget);
+                // Home entry is deliberately waypoint-based. Random recovery makes
+                // villagers walk into side walls or circle the house instead of using
+                // their registered door.
+                SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
             }
+        }
+
+        private bool TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward)
+        {
+            doorCenter = Vector3.Zero;
+            inward = Vector3.Zero;
+            if (m_terrain == null || !m_hasHomeDoor || !m_hasBedCell)
+                return false;
+
+            int value = m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
+            int content = Terrain.ExtractContents(value);
+            if (content <= 0 || content >= BlocksManager.Blocks.Length
+                || !(BlocksManager.Blocks[content] is DoorBlock)
+                || !DoorBlock.IsBottomPart(m_terrain.Terrain, m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z))
+                return false;
+
+            int rotation = DoorBlock.GetRotation(Terrain.ExtractData(value));
+            Vector3 axis = (rotation & 1) == 0 ? Vector3.UnitZ : Vector3.UnitX;
+            doorCenter = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f);
+            Vector3 bedPosition = new Vector3(m_bedCell.X + 0.5f, m_bedCell.Y + 1f, m_bedCell.Z + 0.5f);
+            float side = Vector3.Dot(bedPosition - doorCenter, axis);
+            if (Math.Abs(side) < 0.45f)
+                return false;
+
+            inward = side > 0f ? axis : -axis;
+            return true;
+        }
+
+        private bool TryGetHomeDoorRouteDestination(Vector3 finalTarget, bool entering, out Vector3 routeTarget)
+        {
+            routeTarget = finalTarget;
+            if (m_body == null || !TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+            {
+                m_homeDoorRouteActive = false;
+                return false;
+            }
+
+            float targetSide = Vector3.Dot(finalTarget - doorCenter, inward);
+            float currentSide = Vector3.Dot(m_body.Position - doorCenter, inward);
+            bool sameRoute = m_homeDoorRouteActive
+                && m_homeDoorRouteEntering == entering
+                && Vector3.DistanceSquared(m_homeDoorRouteFinalTarget, finalTarget) <= 0.25f;
+
+            if (!sameRoute)
+            {
+                m_homeDoorRouteActive = false;
+                bool shouldRoute = entering
+                    ? targetSide > 0.45f && currentSide < 0.60f
+                    : targetSide < -0.45f && currentSide > -0.60f;
+                if (!shouldRoute)
+                    return false;
+
+                m_homeDoorRouteActive = true;
+                m_homeDoorRouteEntering = entering;
+                m_homeDoorRouteStage = 0;
+                m_homeDoorRouteFinalTarget = finalTarget;
+            }
+
+            Vector3 outsidePoint = doorCenter - inward * 1.10f;
+            Vector3 insidePoint = doorCenter + inward * 1.10f;
+
+            if (entering)
+            {
+                if (m_homeDoorRouteStage == 0
+                    && Vector3.Distance(m_body.Position, outsidePoint) <= 0.60f)
+                    m_homeDoorRouteStage = 1;
+                if (m_homeDoorRouteStage == 1
+                    && Vector3.Distance(m_body.Position, doorCenter) <= 0.60f)
+                    m_homeDoorRouteStage = 2;
+                if (m_homeDoorRouteStage == 2
+                    && (Vector3.Distance(m_body.Position, insidePoint) <= 0.60f || currentSide >= 0.75f))
+                    m_homeDoorRouteStage = 3;
+            }
+            else
+            {
+                if (m_homeDoorRouteStage == 0
+                    && Vector3.Distance(m_body.Position, insidePoint) <= 0.60f)
+                    m_homeDoorRouteStage = 1;
+                if (m_homeDoorRouteStage == 1
+                    && Vector3.Distance(m_body.Position, doorCenter) <= 0.60f)
+                    m_homeDoorRouteStage = 2;
+                if (m_homeDoorRouteStage == 2
+                    && (Vector3.Distance(m_body.Position, outsidePoint) <= 0.60f || currentSide <= -0.75f))
+                    m_homeDoorRouteStage = 3;
+            }
+
+            if (m_homeDoorRouteStage >= 3)
+            {
+                m_homeDoorRouteActive = false;
+                return false;
+            }
+
+            if (m_homeDoorRouteStage >= 1
+                && Vector3.Distance(m_body.Position, doorCenter) <= 3.5f)
+                OpenHomeDoorForRoute();
+
+            routeTarget = m_homeDoorRouteStage == 0
+                ? (entering ? outsidePoint : insidePoint)
+                : m_homeDoorRouteStage == 1 ? doorCenter
+                : (entering ? insidePoint : outsidePoint);
+            return true;
+        }
+
+        private void OpenHomeDoorForRoute()
+        {
+            if (m_doorBehavior == null || m_terrain == null)
+                return;
+
+            int value = m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
+            int content = Terrain.ExtractContents(value);
+            int data = Terrain.ExtractData(value);
+            if (content <= 0 || content >= BlocksManager.Blocks.Length
+                || !(BlocksManager.Blocks[content] is DoorBlock)
+                || !DoorBlock.IsBottomPart(m_terrain.Terrain, m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z)
+                || DoorBlock.GetOpen(data)
+                || m_doorBehavior.IsDoorElectricallyConnected(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z))
+                return;
+
+            if (m_doorBehavior.OpenCloseDoor(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z, true)
+                && !ContainsDoor(m_autoOpenedDoors, m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z))
+                m_autoOpenedDoors.Add(m_homeDoor);
+        }
+
+        private bool TryBeginHomeExit()
+        {
+            if (m_body == null || !TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+                return false;
+
+            float currentSide = Vector3.Dot(m_body.Position - doorCenter, inward);
+            if (currentSide <= 0.60f)
+                return false;
+
+            m_homeDoorRouteActive = true;
+            m_homeDoorRouteEntering = false;
+            m_homeDoorRouteStage = 0;
+            m_homeDoorRouteFinalTarget = doorCenter - inward * 1.10f;
+            return true;
+        }
+
+        private bool TickHomeExitRoutine()
+        {
+            if (!m_isLeavingHome)
+                return false;
+
+            if (!TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+            {
+                m_isLeavingHome = false;
+                m_homeDoorRouteActive = false;
+                return false;
+            }
+
+            Vector3 exitTarget = doorCenter - inward * 1.10f;
+            if (Vector3.Distance(m_body.Position, exitTarget) <= 0.70f)
+            {
+                m_isLeavingHome = false;
+                m_homeDoorRouteActive = false;
+                StopManagedPath();
+                return false;
+            }
+
+            Vector3 routeTarget = exitTarget;
+            TryGetHomeDoorRouteDestination(exitTarget, false, out routeTarget);
+            if (!m_homeDoorRouteActive)
+            {
+                m_isLeavingHome = false;
+                StopManagedPath();
+                return false;
+            }
+
+            SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
+            return true;
         }
 
         private bool TryFindHomeRestPosition(out Vector3 restPosition)
@@ -1203,7 +1391,8 @@ namespace Game
         }
 
         private void SetManagedDestination(Vector3 destination, float speed, float range, int maxPathfindingPositions,
-            bool useRandomMovements, bool ignoreHeightDifference, bool raycastDestination, ComponentBody doNotAvoidBody)
+            bool useRandomMovements, bool ignoreHeightDifference, bool raycastDestination, ComponentBody doNotAvoidBody,
+            bool allowRandomRecoveryOnFailure = true)
         {
             if (m_pathfinding == null)
                 return;
@@ -1224,10 +1413,21 @@ namespace Game
                 && !stuck && !stalled)
                 return;
 
+            if ((stuck || stalled) && !allowRandomRecoveryOnFailure && sameCurrentTarget)
+            {
+                // Retry the same safe waypoint after a short pause, never wander randomly
+                // when a villager is navigating a house entrance.
+                m_pathfinding.Stop();
+                m_destinationRetryCooldown = 1.5;
+                m_managedNoProgressTime = 0.0;
+                return;
+            }
+
             if (stuck || stalled)
                 m_pathfinding.Stop();
 
-            bool allowRandomRecovery = useRandomMovements || stuck || stalled;
+            bool allowRandomRecovery = useRandomMovements
+                || (allowRandomRecoveryOnFailure && (stuck || stalled));
             int pathBudget = Math.Max(maxPathfindingPositions, 700);
             m_pathfinding.SetDestination(destination, speed, range, pathBudget,
                 allowRandomRecovery, ignoreHeightDifference, raycastDestination, doNotAvoidBody);
