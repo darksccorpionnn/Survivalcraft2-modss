@@ -1,0 +1,15 @@
+{
+  "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
+  "Name": "Living Towns - Villagers, Jobs and Celtic Beds",
+  "Version": "0.4.1",
+  "ApiVersion": "1.9.5.1",
+  "Description": "Door-based villagers, automatic doors, work routines, social conversations and one persistent Celtic bed for each villager.",
+  "ScVersion": "2.4.0.0",
+  "LoadOrder": 10000,
+  "NonPersistentMod": false,
+  "GameplayImpactLevel": "Major",
+  "Link": "https://github.com/darksccorpionnn/Survivalcraft2-modss",
+  "Author": "darksccorpionnn",
+  "PackageName": "darksccorpionnn.LivingTowns",
+  "Dependencies": {}
+}

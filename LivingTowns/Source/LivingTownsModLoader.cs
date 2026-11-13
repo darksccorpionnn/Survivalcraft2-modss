@@ -13,12 +13,12 @@ namespace Game
         {
             new Harmony(PackageName + ".VillagerInteraction").PatchAll();
             ModsManager.RegisterHook("OnLoadingFinished", this);
-            Log.Information("[LivingTowns] 0.4.0 source module initialized.");
+            Log.Information("[LivingTowns] 0.4.1 initialized.");
         }
 
         public override void OnLoadingFinished(List<Action> actions)
         {
-            Log.Information("[LivingTowns] Door spawning, villager jobs and villager-only sleep controller registered.");
+            Log.Information("[LivingTowns] 0.4.1 villagers, jobs, Celtic beds, conversations and doors ready.");
         }
     }
 }
