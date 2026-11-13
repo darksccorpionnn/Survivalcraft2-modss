@@ -1,4 +1,4 @@
-name: Living Towns 0.4.1 build
+name: Living Towns build
 
 on:
   push:
@@ -43,16 +43,32 @@ jobs:
         run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.org.config
       - name: Build
         run: dotnet build LivingTowns/LivingTowns.csproj --configuration Release --no-restore
-      - name: Package .scmod
+      - name: Package complete .scmod
         run: |
+          set -euo pipefail
           package_dir="$(mktemp -d)"
-          cp LivingTowns/bin/Release/net10.0/LivingTowns.dll "$package_dir/"
+          output_dir="LivingTowns/bin/Release/net10.0"
+          cp "$output_dir/LivingTowns.dll" "$package_dir/"
           cp LivingTowns/modinfo.json "$package_dir/"
-          (cd "$package_dir" && zip -q "$GITHUB_WORKSPACE/LivingTowns/bin/Release/net10.0/LivingTowns.scmod" LivingTowns.dll modinfo.json)
-          unzip -t LivingTowns/bin/Release/net10.0/LivingTowns.scmod
-      - name: Upload compiled assembly
+          test -d LivingTowns/Assets
+          cp -a LivingTowns/Assets "$package_dir/Assets"
+          test -s "$package_dir/Assets/Models/CelticBed/CelticBed.glb"
+          test -s "$package_dir/Assets/Models/Farmer/Farmer.glb"
+          test -s "$package_dir/Assets/Models/FemaleVillager/FemaleVillager.glb"
+          test -s "$package_dir/Assets/Models/MaleVillager/MaleVillager.glb"
+          test -s "$package_dir/Assets/LivingTownsDatabase.xdb"
+          test -s "$package_dir/Assets/Animations/Farmer.json"
+          test -s "$package_dir/Assets/Lang/tr-TR.json"
+          (cd "$package_dir" && zip -qr "$GITHUB_WORKSPACE/$output_dir/LivingTowns.scmod" LivingTowns.dll modinfo.json Assets)
+          unzip -t "$output_dir/LivingTowns.scmod"
+          echo "Packaged entry count:"
+          unzip -Z1 "$output_dir/LivingTowns.scmod" | tee "$RUNNER_TEMP/package-files.txt" | wc -l
+          grep -q '^Assets/Models/CelticBed/CelticBed.glb$' "$RUNNER_TEMP/package-files.txt"
+          grep -q '^Assets/LivingTownsDatabase.xdb$' "$RUNNER_TEMP/package-files.txt"
+          du -h "$output_dir/LivingTowns.scmod"
+      - name: Upload complete mod package
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.27-scmod
+          name: LivingTowns-0.4.28-complete-scmod
           path: LivingTowns/bin/Release/net10.0/LivingTowns.scmod
           if-no-files-found: error
