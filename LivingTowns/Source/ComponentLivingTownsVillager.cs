@@ -98,6 +98,7 @@ namespace Game
         private bool m_hasFallbackRestPosition;
         private Vector3 m_fallbackRestPosition;
         private double m_nextFallbackRestSearchTime;
+        private double m_nextObstacleJumpTime;
         private double m_bedAssignmentFailureTime;
         private bool m_sleepDoorRouteBypassed;
         private bool m_homeDoorRouteActive;
@@ -195,6 +196,7 @@ namespace Game
             if (m_destinationRetryCooldown < 0.0)
                 m_destinationRetryCooldown = 0.0;
             UpdateManagedPathProgress(dt);
+            TryJumpAtBlockingStep(dt);
             UpdateFailedWorkPositions(dt);
 
             m_nextDoorCheckTime -= dt;
@@ -1516,6 +1518,54 @@ namespace Game
                 return m_inventory.GetSlotValue(bestSlot);
             }
             return 0;
+        }
+
+        private void TryJumpAtBlockingStep(float dt)
+        {
+            m_nextObstacleJumpTime -= dt;
+            if (m_nextObstacleJumpTime > 0.0 || m_locomotion == null || m_terrain == null
+                || m_pathfinding?.Destination.HasValue != true
+                || !m_body.StandingOnValue.HasValue
+                || m_body.ImmersionFactor > 0.5f
+                || m_managedNoProgressTime < 0.55)
+                return;
+
+            Vector3 direction = m_pathfinding.Destination.Value - m_body.Position;
+            direction.Y = 0f;
+            if (direction.LengthSquared() < 0.04f)
+                return;
+            direction = Vector3.Normalize(direction);
+
+            // Probe the next foot cell along the current route. When a single
+            // collidable block is directly in front and two blocks of headroom
+            // remain, issue a short jump instead of pushing into it indefinitely.
+            int x = Terrain.ToCell(m_body.Position.X + direction.X * 0.78f);
+            int z = Terrain.ToCell(m_body.Position.Z + direction.Z * 0.78f);
+            int feetY = Terrain.ToCell(m_body.Position.Y + 0.1f);
+            int obstacleValue = m_terrain.Terrain.GetCellValue(x, feetY, z);
+            int obstacleContent = Terrain.ExtractContents(obstacleValue);
+            if (obstacleContent <= 0 || obstacleContent >= BlocksManager.Blocks.Length)
+                return;
+
+            Block obstacle = BlocksManager.Blocks[obstacleContent];
+            if (!obstacle.IsCollidable_(obstacleValue) || obstacle is DoorBlock)
+                return;
+
+            int headValue = m_terrain.Terrain.GetCellValue(x, feetY + 1, z);
+            int ceilingValue = m_terrain.Terrain.GetCellValue(x, feetY + 2, z);
+            int headContent = Terrain.ExtractContents(headValue);
+            int ceilingContent = Terrain.ExtractContents(ceilingValue);
+            if (headContent < 0 || headContent >= BlocksManager.Blocks.Length
+                || ceilingContent < 0 || ceilingContent >= BlocksManager.Blocks.Length)
+                return;
+            if (BlocksManager.Blocks[headContent].IsCollidable_(headValue)
+                || BlocksManager.Blocks[ceilingContent].IsCollidable_(ceilingValue))
+                return;
+
+            // JumpOrder is merged with the pilot's own order by ComponentPilot,
+            // so this remains compatible with the game's normal locomotion update.
+            m_locomotion.JumpOrder = 1f;
+            m_nextObstacleJumpTime = 1.15;
         }
 
         private void UpdateManagedPathProgress(float dt)
