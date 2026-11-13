@@ -207,7 +207,7 @@ namespace Game
             AddNonGround(p, "SpruceWoodBlock", "OakWoodBlock", "BirchWoodBlock",
                 "SpruceLeavesBlock", "OakLeavesBlock", "BirchLeavesBlock",
                 "TallSpruceLeavesBlock", "LeavesBlock", "BedrockBlock",
-                "TallGrassBlock", "GrassBlock", "FlowerBlock");
+                "TallGrassBlock", "GrassBlock", "FlowerBlock", "VillageEggBlock");
 
             Log.Information("[TownBootstrap] Exact palette: spruce wood=" + p.SpruceWood +
                 ", planks=" + p.Planks + ", cobblestone=" + p.Cobblestone +
