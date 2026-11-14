@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.57",
+  "Name": "Living Towns - Inventory Trade",
+  "Version": "0.4.58",
   "ApiVersion": "1.9.5.1",
-  "Description": "Adds individual outdoor WORK-sign destinations within 200 blocks for each villager; detects both wall-mounted and upright posted signs and routes villagers to their own work areas.",
+  "Description": "Adds villager profession AI, individual WORK signs, and a native inventory-style trade window opened by tapping a villager. Trade stock is saved with the world.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
