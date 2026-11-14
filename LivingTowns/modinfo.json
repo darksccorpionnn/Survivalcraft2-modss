@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.45",
+  "Version": "0.4.46",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villager roles are bound to their model type: Farmer models farm automatically, while male and female villagers remain unemployed. The interaction menu only transfers held items.",
+  "Description": "Villagers resolve and use their assigned home doorway for entry and exit; doorway waypoints align with standing height and invalid door routes fail safely. Farmer models farm automatically, while male and female villagers remain unemployed.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
