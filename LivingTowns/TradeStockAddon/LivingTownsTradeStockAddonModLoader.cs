@@ -16,7 +16,7 @@ namespace Game
             {
                 m_harmony = new Harmony(HarmonyId);
                 ModsManager.RegisterHook("OnLoadingFinished", this);
-                Log.Information("[LivingTowns Trade Stock] 0.4.60 addon initialized; waiting for world loading to finish.");
+                Log.Information("[LivingTowns Trade Stock] 0.4.61 currency shop initialized; waiting for world loading to finish.");
             }
             catch (Exception ex)
             {
@@ -30,7 +30,7 @@ namespace Game
             {
                 if (m_harmony != null)
                     LivingTownsTradeStockPatch.Install(m_harmony);
-                Log.Information("[LivingTowns Trade Stock] Profession-based Survivalcraft 2 inventory stock patch is ready.");
+                Log.Information("[LivingTowns Trade Stock] Profession currency shop and stock patch are ready.");
             }
             catch (Exception ex)
             {
