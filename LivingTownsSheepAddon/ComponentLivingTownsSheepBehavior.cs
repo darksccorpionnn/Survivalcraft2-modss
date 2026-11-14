@@ -29,6 +29,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private ComponentPathfinding m_pathfinding;
     private SubsystemPlayers m_players;
     private SubsystemTime m_time;
+    private SubsystemAudio m_audio;
+    private bool m_fleeBleatPlayed;
     private ComponentPlayer m_target;
     private ComponentPlayer m_fleeTarget;
     private SheepMode m_mode;
@@ -57,6 +59,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_pathfinding = Entity.FindComponent<ComponentPathfinding>(throwOnError: true);
         m_players = Project.FindSubsystem<SubsystemPlayers>(throwOnError: true);
         m_time = Project.FindSubsystem<SubsystemTime>(throwOnError: true);
+        m_audio = Project.FindSubsystem<SubsystemAudio>(throwOnError: true);
         m_mode = SheepMode.None;
     }
 
@@ -66,6 +69,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
 
         RefreshTargets();
+        if (m_mode != SheepMode.Flee)
+            m_fleeBleatPlayed = false;
         if (!IsActive)
             return;
 
@@ -168,6 +173,13 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     {
         if (m_fleeTarget == null)
             return;
+
+        if (!m_fleeBleatPlayed)
+        {
+            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_alarm", 0.8f, 0f,
+                m_creature.ComponentBody.Position, 9f, autoDelay: false);
+            m_fleeBleatPlayed = true;
+        }
 
         Vector3 sheepPosition = m_creature.ComponentBody.Position;
         Vector3 threatPosition = m_fleeTarget.ComponentBody.Position;
