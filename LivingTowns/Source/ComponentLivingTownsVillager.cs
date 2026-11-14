@@ -46,6 +46,7 @@ namespace Game
         private ComponentBody m_body;
         private ComponentPathfinding m_pathfinding;
         private ComponentInventory m_inventory;
+        private LivingTownsTradeInventory m_tradeInventory;
         private ComponentModel m_model;
         private ComponentMiner m_miner;
         private ComponentLocomotion m_locomotion;
@@ -197,6 +198,8 @@ namespace Game
             m_body = Entity.FindComponent<ComponentBody>(true);
             m_pathfinding = Entity.FindComponent<ComponentPathfinding>();
             m_inventory = Entity.FindComponent<ComponentInventory>();
+            m_tradeInventory = new LivingTownsTradeInventory(Project);
+            m_tradeInventory.Load(valuesDictionary);
             m_model = Entity.FindComponent<ComponentModel>();
             m_miner = Entity.FindComponent<ComponentMiner>();
             m_locomotion = Entity.FindComponent<ComponentLocomotion>();
@@ -286,6 +289,7 @@ namespace Game
 
         public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
         {
+            m_tradeInventory?.Save(valuesDictionary);
             valuesDictionary.SetValue("Job", (int)m_job);
             valuesDictionary.SetValue("VillagerName", m_villagerName ?? string.Empty);
             valuesDictionary.SetValue("HasHomeDoor", m_hasHomeDoor);
@@ -494,37 +498,9 @@ namespace Game
             TickJob();
         }
 
-        public void ShowJobMenu(ComponentPlayer player)
+        public IInventory GetTradeInventory()
         {
-            if (player == null)
-                return;
-
-            List<string> options = new List<string>
-            {
-                "Eldeki eşyayı NPC'ye ver"
-            };
-
-            DialogsManager.ShowDialog(null, new ListSelectionDialog(
-                (string.IsNullOrEmpty(m_villagerName) ? "Köylü" : m_villagerName) + " | Etkileşim",
-                options,
-                60f,
-                item => item == null ? string.Empty : item.ToString(),
-                item => HandleMenuChoice(player, item == null ? string.Empty : item.ToString())
-            ));
-        }
-
-        private void HandleMenuChoice(ComponentPlayer player, string choice)
-        {
-            try
-            {
-                if (string.Equals((choice ?? string.Empty).Trim(), "Eldeki eşyayı NPC'ye ver", StringComparison.Ordinal))
-                    GiveHeldItems(player);
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[LivingTowns] Villager item-transfer menu action failed safely: " + ex);
-                player?.ComponentGui?.DisplaySmallMessage("Eşya aktarılırken hata oluştu; ayrıntı günlüğe yazıldı.", Color.White, true, false);
-            }
+            return m_tradeInventory;
         }
 
         private void TickJob()
@@ -540,44 +516,6 @@ namespace Game
                 case LivingTownsJob.Healer: TickHealer(); break;
                 default: TickPatrol(2.5f, 5.0f); break;
             }
-        }
-
-        private void GiveHeldItems(ComponentPlayer player)
-        {
-            if (m_inventory == null || player?.ComponentMiner?.Inventory == null)
-            {
-                player?.ComponentGui?.DisplaySmallMessage("NPC envanteri bulunamadı.", Color.White, true, false);
-                return;
-            }
-
-            IInventory source = player.ComponentMiner.Inventory;
-            int active = source.ActiveSlotIndex;
-            if (active < 0 || active >= source.SlotsCount || source.GetSlotCount(active) <= 0)
-            {
-                player.ComponentGui?.DisplaySmallMessage("Elinde verilecek eşya yok.", Color.White, true, false);
-                return;
-            }
-
-            int value = source.GetSlotValue(active);
-            int targetSlot = ComponentInventoryBase.FindAcquireSlotForItem(m_inventory, value);
-            if (targetSlot < 0)
-            {
-                player.ComponentGui?.DisplaySmallMessage("NPC envanteri dolu.", Color.White, true, false);
-                return;
-            }
-
-            int free = m_inventory.GetSlotCapacity(targetSlot, value) - m_inventory.GetSlotCount(targetSlot);
-            int amount = Math.Min(source.GetSlotCount(active), free);
-            if (amount <= 0)
-                return;
-
-            source.RemoveSlotItems(active, amount);
-            m_inventory.AddSlotItems(targetSlot, value, amount);
-            // ComponentHumanModel.DrawExtras reads the active slot through ComponentMiner.
-            // Selecting the received slot makes the block/item render with the game's normal hand pose.
-            m_inventory.ActiveSlotIndex = targetSlot;
-            m_miner?.Poke(true);
-            player.ComponentGui?.DisplaySmallMessage("NPC'ye " + amount + " adet eşya verildi; eline aldı.", Color.White, true, false);
         }
 
         private bool EnsureAssignedBed(float dt)

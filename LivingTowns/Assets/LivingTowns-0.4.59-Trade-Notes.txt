@@ -1,0 +1,10 @@
+LivingTowns 0.4.59 - Currency and Inventory Trading
+
+- Restores villager interaction as a native chest-style inventory panel; the old ListSelectionDialog and held-item menu are removed.
+- Each villager has a dedicated persistent 10-slot trade stock, separate from the work inventory used by farmer/lumberjack/miner routines and personal chest deposits.
+- Player items can be moved between the player inventory and the villager's trade stock using the game's standard inventory drag/drop controls.
+- Trade stock is saved with the villager and loaded again with the world.
+- Silver Coin and Gold Coin remain available as real 3D items, each with its own DAE mesh and PNG texture.
+- Currency ratio: 1 Gold Coin = 10 Silver Coins.
+- Existing villager models, animations, profession routing, work routines, home/bed routines, healer behavior and guard behavior are retained.
+- Important limitation: this restores the inventory-transfer trading panel. Profession-specific fixed buy/sell recipes, prices, stock restocking and reputation progression are not implemented in this version.

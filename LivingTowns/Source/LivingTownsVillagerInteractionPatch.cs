@@ -19,7 +19,11 @@ namespace Game
             if (villager == null)
                 return true;
 
-            villager.ShowJobMenu(__instance.ComponentPlayer);
+            if (!LivingTownsTradeWidget.TryOpen(__instance.ComponentPlayer, villager))
+                __instance.ComponentPlayer.ComponentGui?.DisplaySmallMessage(
+                    "Köylü ticaret ekranı açılamadı.", Color.White, true, false);
+
+            // Consume the hit: tapping a villager opens the inventory-style trade panel.
             return false;
         }
     }

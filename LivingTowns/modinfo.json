@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Living Towns - Villager AI and Currency",
-  "Version": "0.4.58",
+  "Name": "Living Towns - Villager AI, Currency and Trading",
+  "Version": "0.4.59",
   "ApiVersion": "1.9.5.1",
-  "Description": "Adds individual villager work destinations and two stackable 3D currency items: Silver Coin and Gold Coin (1 Gold = 10 Silver). Profession-based trading is a later feature.",
+  "Description": "Adds inventory-style tap-to-trade panels with persistent, separate villager stock plus 3D silver and gold currency items, while retaining existing villager jobs, WORK-sign routing and home routines.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
