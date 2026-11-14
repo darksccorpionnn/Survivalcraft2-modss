@@ -17,12 +17,25 @@ jobs:
     steps:
       - name: Checkout mod source
         uses: actions/checkout@v4
+
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Set up Python for deterministic coin assets
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generate 3D silver and gold coin models and textures
+        run: |
+          python -m pip install Pillow
+          python LivingTowns/GenerateCurrencyAssets.py
+
       - name: Fetch Survivalcraft API source
         run: git clone --depth 1 --branch SCAPI1.9 https://github.com/GGigHub/SurvivalcraftApi.git api
+
       - name: Remove unavailable optional FLAC decoder for compile-only API reference
         run: |
           sed -i '/NAudio.Flac.Unknown.Mod/d' api/Engine/Engine.props api/Survivalcraft/Survivalcraft.props
@@ -39,22 +52,62 @@ jobs:
               }
           }
           CS
+
       - name: Restore
         run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.org.config
+
       - name: Build
         run: dotnet build LivingTowns/LivingTowns.csproj --configuration Release --no-restore
-      - name: Verify compiled assembly
+
+      - name: Verify compiled currency items and package assets
         run: |
           set -euo pipefail
-          test -s LivingTowns/bin/Release/net10.0/LivingTowns.dll
-          grep -q '"Version": "0.4.57"' LivingTowns/modinfo.json
-          echo "Compiled DLL:"
-          ls -lh LivingTowns/bin/Release/net10.0/LivingTowns.dll
-      - name: Upload compiled assembly
+          python - <<'PY'
+          import csv
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          output = Path("LivingTowns/bin/Release/net10.0")
+          assert (output / "LivingTowns.dll").is_file()
+          info = json.loads((output / "modinfo.json").read_text(encoding="utf-8"))
+          assert info.get("Version") == "0.4.58", info.get("Version")
+
+          csv_path = output / "Assets/LivingTownsBlocksData.csv"
+          with csv_path.open(encoding="utf-8-sig", newline="") as stream:
+              rows = list(csv.reader(stream, delimiter=";"))
+          assert len(rows) == 3 and len(rows[0]) == 78
+          assert all(len(row) == len(rows[0]) for row in rows)
+          assert rows[1][0] == "SilverCoinBlock" and rows[2][0] == "GoldCoinBlock"
+          assert rows[1][37] == "99" and rows[2][37] == "99"
+
+          for name in ("SilverCoin", "GoldCoin"):
+              ET.parse(output / f"Assets/Models/LivingTownsCoins/{name}.dae")
+              texture = output / f"Assets/Textures/LivingTownsCoins/{name}.png"
+              assert texture.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+          for language in ("tr-TR", "en-US"):
+              data = json.loads((output / f"Assets/Lang/{language}.json").read_text(encoding="utf-8"))
+              assert "DisplayName:SilverCoinBlock" in data
+              assert "DisplayName:GoldCoinBlock" in data
+
+          source = Path("LivingTowns/Source/LivingTownsCoinBlock.cs").read_text(encoding="utf-8")
+          assert "class SilverCoinBlock" in source and "class GoldCoinBlock" in source
+          print("Verified: compiled DLL, 2 coin block types, 3D DAE meshes, PNG textures, 99-item stacks, TR/EN names and 0.4.58 metadata.")
+          PY
+
+      - name: Upload currency-enabled build components
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.57-assembly
+          name: LivingTowns-0.4.58-currency-items
           path: |
             LivingTowns/bin/Release/net10.0/LivingTowns.dll
+            LivingTowns/bin/Release/net10.0/modinfo.json
+            LivingTowns/bin/Release/net10.0/Assets/LivingTownsBlocksData.csv
+            LivingTowns/bin/Release/net10.0/Assets/LivingTowns-0.4.58-Currency-Notes.txt
+            LivingTowns/bin/Release/net10.0/Assets/Lang/tr-TR.json
+            LivingTowns/bin/Release/net10.0/Assets/Lang/en-US.json
+            LivingTowns/bin/Release/net10.0/Assets/Models/LivingTownsCoins/*.dae
+            LivingTowns/bin/Release/net10.0/Assets/Textures/LivingTownsCoins/*.png
           if-no-files-found: error
           retention-days: 14

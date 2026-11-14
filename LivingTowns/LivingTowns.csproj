@@ -13,5 +13,11 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\api\Survivalcraft\Survivalcraft.csproj" />
+    <None Update="modinfo.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
