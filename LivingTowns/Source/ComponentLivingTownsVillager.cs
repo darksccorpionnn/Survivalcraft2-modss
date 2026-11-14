@@ -1354,11 +1354,24 @@ namespace Game
         private bool TryGetHomeDoorRouteDestination(Vector3 finalTarget, bool entering, out Vector3 routeTarget)
         {
             routeTarget = finalTarget;
-            if (m_body == null || !TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+            if (m_body == null)
             {
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 return false;
+            }
+            if (!TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+            {
+                // Fail closed: never send a villager straight to an indoor bed when
+                // its registered doorway cannot be resolved. That direct path is
+                // exactly what causes wall-walking when door coordinates are stale.
+                ReleaseHomeDoorPassage();
+                m_homeDoorRouteActive = true;
+                m_homeDoorRouteEntering = entering;
+                m_homeDoorRouteFinalTarget = finalTarget;
+                m_waitingForHomeDoorPassage = true;
+                routeTarget = m_body.Position;
+                return true;
             }
 
             float targetSide = Vector3.Dot(finalTarget - doorCenter, inward);
@@ -1514,8 +1527,14 @@ namespace Game
 
         private bool TryBeginHomeExit()
         {
-            if (m_body == null || !TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+            if (m_body == null)
                 return false;
+            if (!TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
+            {
+                // Keep dawn exit active until the assigned door can be resolved;
+                // do not start a work/patrol route from inside the house.
+                return m_hasHomeDoor;
+            }
 
             float currentSide = Vector3.Dot(m_body.Position - doorCenter, inward);
             // A shallow inside position still needs to use the door. The old
@@ -1541,10 +1560,10 @@ namespace Game
 
             if (!TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward))
             {
+                // Retain the exit state and retry on the next update. Abandoning it
+                // would let the villager begin its job inside the house or through a wall.
                 ReleaseHomeDoorPassage();
-                m_isLeavingHome = false;
-                m_homeDoorRouteActive = false;
-                return false;
+                return m_hasHomeDoor;
             }
 
             Vector3 exitTarget = doorCenter + Vector3.UnitY - inward * 1.10f;
