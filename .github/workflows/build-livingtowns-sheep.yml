@@ -1,0 +1,54 @@
+name: Build LivingTowns Sheep Addon
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "LivingTownsSheepAddon/**"
+      - ".github/workflows/build-livingtowns-sheep.yml"
+      - "nuget.config"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore LivingTownsSheepAddon/LivingTownsSheepAddon.csproj --configfile nuget.config
+
+      - name: Build
+        run: dotnet build LivingTownsSheepAddon/LivingTownsSheepAddon.csproj --configuration Release --no-restore
+
+      - name: Verify compiled sheep behavior
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+          dll = Path("LivingTownsSheepAddon/bin/Release/net10.0/LivingTownsSheepAddon.dll")
+          if not dll.is_file():
+              raise SystemExit(f"Missing compiled addon: {dll}")
+          data = dll.read_bytes()
+          for token in (b"ComponentLivingTownsSheepBehavior", b"LivingTownsSheepAddonModLoader"):
+              if token not in data:
+                  raise SystemExit(f"Compiled DLL does not contain {token.decode()}")
+          print(f"Compiled and verified {dll} ({dll.stat().st_size} bytes)")
+          PY
+
+      - name: Upload sheep addon DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: LivingTownsSheepAddon-DLL
+          path: LivingTownsSheepAddon/bin/Release/net10.0/LivingTownsSheepAddon.dll
+          if-no-files-found: error
+          retention-days: 14
