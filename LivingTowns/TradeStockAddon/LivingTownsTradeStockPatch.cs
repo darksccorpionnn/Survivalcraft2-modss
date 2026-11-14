@@ -75,7 +75,14 @@ namespace Game
             if (transferMethod != null && blockTransfer != null)
             {
                 harmony.Patch(transferMethod, prefix: new HarmonyMethod(blockTransfer));
-                Log.Information("[LivingTowns Trade Shop] Blocked legacy TransferTradeItem helper.");
+                Log.Information("[LivingTowns Trade Shop] Blocked legacy TransferTradeItem helper on trade widget.");
+            }
+
+            MethodInfo villagerTransferMethod = AccessTools.Method(villagerType, "TransferTradeItem");
+            if (villagerTransferMethod != null && blockTransfer != null)
+            {
+                harmony.Patch(villagerTransferMethod, prefix: new HarmonyMethod(blockTransfer));
+                Log.Information("[LivingTowns Trade Shop] Blocked legacy TransferTradeItem helper on villager.");
             }
             Log.Information("[LivingTowns Trade Shop] Currency shop patch installation completed.");
         }
