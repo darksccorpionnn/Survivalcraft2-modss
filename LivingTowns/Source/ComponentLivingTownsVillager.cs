@@ -180,7 +180,9 @@ namespace Game
             m_pickables = Project.FindSubsystem<SubsystemPickables>(true);
             m_signBehavior = Project.FindSubsystem<SubsystemSignBlockBehavior>(true);
 
-            m_job = (LivingTownsJob)valuesDictionary.GetValue<int>("Job", 0);
+            // Villager role is determined by the model template, never by a menu assignment
+            // or stale saved Job value. This keeps the Farmer model and male/female models isolated.
+            m_job = GetJobForModelRoute(m_model?.ModelRoute);
             m_villagerName = valuesDictionary.GetValue<string>("VillagerName", string.Empty);
             m_hasHomeDoor = valuesDictionary.GetValue<bool>("HasHomeDoor", false);
             m_homeDoor = new Point3(
@@ -205,6 +207,14 @@ namespace Game
                 m_body.IsGravityEnabled = true;
 
             Log.Information("[LivingTowns] Villager controller loaded; speed=" + VillagerWalkSpeed + ", miner=" + (m_miner != null) + ", job=" + m_job);
+        }
+
+        private static LivingTownsJob GetJobForModelRoute(string modelRoute)
+        {
+            if (string.Equals(modelRoute, "Models/Farmer/Farmer", StringComparison.OrdinalIgnoreCase))
+                return LivingTownsJob.Farmer;
+
+            return LivingTownsJob.Unemployed;
         }
 
         public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
@@ -247,6 +257,10 @@ namespace Game
         {
             if (m_body == null)
                 return;
+
+            // Grant the farmer kit after every component has completed loading.
+            if (m_job == LivingTownsJob.Farmer && !m_farmerKitGranted)
+                EnsureFarmerKit();
 
             m_nextPersonalChestDepositTime -= dt;
             if (m_nextPersonalChestDepositTime < 0.0)
