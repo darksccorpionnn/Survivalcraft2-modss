@@ -11,7 +11,5 @@
   "Link": "https://github.com/darksccorpionnn/Survivalcraft2-modss",
   "Author": "darksccorpionnn",
   "PackageName": "darksccorpionnn.LivingTownsTradeStockAddon",
-  "Dependencies": {
-    "darksccorpionnn.LivingTowns": "0.4.59"
-  }
+  "Dependencies": {}
 }
