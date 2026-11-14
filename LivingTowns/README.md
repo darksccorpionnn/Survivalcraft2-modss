@@ -1,4 +1,4 @@
-# Living Towns 0.4.55
+# Living Towns 0.4.56
 
 - Target: Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
 - Original male, female and farmer villagers keep their existing daily routines.
@@ -8,13 +8,17 @@
 - At dusk all villagers stop work and return home; at night they sleep; at dawn they leave through their own door. The four new profession models use a wider final bed-arrival radius and a short blocked-approach fallback so they do not keep turning beside their assigned bed. Original male, female and farmer arrival behavior remains unchanged.
 - Healers seek injured LivingTowns villagers within range and restore health. They do not heal players or unrelated creatures.
 - Guards patrol and defend against nearby land predators. They do not target players or LivingTowns villagers.
+- Every villager can use an individual exterior wall-mounted Wooden Sign as its work destination. Put the exact villager name on one sign line and WORK on another; signs are searched incrementally within 200 horizontal blocks of that villager's registered home.
+- At dawn villagers exit through their registered home door, navigate to their own WORK sign, and only then start their profession routine. At dusk they stop work and return home.
+- Long-distance work travel uses a 30,000-position pathfinding budget, the existing six-block obstacle-detour search, alternate sign-front standing positions, and temporary blacklisting of unreachable waypoints.
+- Farmer plots, lumberjack tree scans, blacksmith workstation scans and patrol centers are anchored to the personal work sign when one is assigned.
 - Blacksmith and merchant keep their existing profession routines.
 - The four supplied GLB models, animation configs, localization files and XDB templates are retained in the full .scmod package. The XDB has seven entity templates and 328 unique GUIDs with no duplicates.
 - GitHub Actions compiles and uploads the C# assembly. The full .scmod package is assembled by preserving the prior model/template archive and replacing its DLL and metadata.
 - Build succeeded with Survivalcraft API 1.9.5.1. Actual Android in-game behavior still requires testing in the user's world.
 
 
-## Version 0.4.55
+## Version 0.4.56
 
 - Obstacle detour search radius increased from 3 to 6 blocks.
 - Standing-cell search now checks floor levels up to 2 blocks above/below the villager.
@@ -24,7 +28,7 @@
 - Shared villager home, sleep, work and profession routines remain unchanged.
 
 
-## Version 0.4.55
+## Version 0.4.56
 
 - Blacksmith, merchant, healer and guard now accept a 1.45-block horizontal arrival radius at their own assigned sleep cell.
 - If one of these four models remains indoors within 1.90 blocks of the assigned sleep position without progress for 2 seconds, it settles into that validated sleep position instead of repeatedly trying to close the final steps.

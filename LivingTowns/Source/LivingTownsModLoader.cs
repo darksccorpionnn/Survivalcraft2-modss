@@ -13,12 +13,12 @@ namespace Game
         {
             new Harmony(PackageName + ".VillagerInteraction").PatchAll();
             ModsManager.RegisterHook("OnLoadingFinished", this);
-            Log.Information("[LivingTowns] 0.4.55 initialized; healer treatment and guard defense enabled.");
+            Log.Information("[LivingTowns] 0.4.56 initialized; healer treatment and guard defense enabled.");
         }
 
         public override void OnLoadingFinished(List<Action> actions)
         {
-            Log.Information("[LivingTowns] 0.4.55 villagers, late-resolved profession routes, healer treatment, guard predator defense, persistent unique names, named wall-sign sleep positions, exclusive rest cells, safe home-rest fallback, controlled obstacle jumping, 100-block locked tree harvesting with leaves, 25-block canopy height, dusk return, night-only sleeping and sign-linked personal chest storage ready.");
+            Log.Information("[LivingTowns] 0.4.56 villagers, unique personal WORK signs searched to 200 blocks, incremental sign scanning, obstacle-aware long-distance work travel, late-resolved profession routes, healer treatment, guard predator defense, named wall-sign sleep positions, exclusive rest cells, safe home-rest fallback, controlled obstacle jumping, dusk return, night-only sleeping and sign-linked personal chest storage ready.");
         }
     }
 }

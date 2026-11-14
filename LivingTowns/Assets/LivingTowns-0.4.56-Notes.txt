@@ -1,0 +1,18 @@
+LivingTowns 0.4.56
+Target: Survivalcraft 2.4.0.0 / API 1.9.5.1
+
+Personal outdoor work signs:
+- Every villager uses a separate wall-mounted Wooden Sign.
+- Put the villager's exact displayed name on one sign line and WORK on another line.
+- The sign is searched for within 200 horizontal blocks of that villager's registered home.
+- Search is incremental to avoid one large scan freezing the game.
+- At dawn the villager leaves through its registered home door and travels to its own sign.
+- At dusk the villager stops work and returns home.
+
+Navigation:
+- Long work-sign routes use a 30,000-position pathfinding budget.
+- The existing six-block obstacle-detour search remains active.
+- When the front approach is blocked, the villager tests alternate clear positions in front of its own sign.
+- Unreachable detour waypoints continue to be temporarily blacklisted.
+
+Existing seven villager templates, models, animations, language assets and XDB database are retained in the full .scmod package.

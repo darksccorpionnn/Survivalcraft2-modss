@@ -64,6 +64,21 @@ namespace Game
         private bool m_hasBedCell;
         private Point3 m_namedSignCell;
         private bool m_hasNamedSignCell;
+        private Point3 m_workSignCell;
+        private bool m_hasWorkSignCell;
+        private Vector3 m_workSignApproach;
+        private bool m_hasWorkSignApproach;
+        private bool m_workShiftInitialized;
+        private bool m_isGoingToWorkSign;
+        private int m_workSignSearchRadius;
+        private int m_workSignSearchOffset;
+        private double m_nextWorkSignScanTime;
+        private double m_workSignNoProgressTime;
+        private float m_workSignBestDistance;
+        private Vector3 m_workSignTrackedTarget;
+        private bool m_hasWorkSignProgressSample;
+        private int m_workSignApproachRetryCount;
+        private double m_workSignRouteRetryCooldown;
         private double m_nextNamedSignLookupTime;
         private double m_nextPersonalChestDepositTime;
         private bool m_personalChestMissingWarningShown;
@@ -155,12 +170,16 @@ namespace Game
         private const float WorkMoveSpeed = 2.2f;
         private const int FarmerWorkRadius = 60;
         private const int FarmCellsPerScan = 512;
-        private const int LumberjackHomeRadius = 24;
+        private const int WorkSignSearchRadius = 200;
+        private const int WorkSignScanColumnsPerUpdate = 700;
+        private const int WorkSignPathfindingPositions = 30000;
+        private const float WorkSignArrivalRadius = 1.45f;
+        private const int LumberjackWorkRadius = 24;
         private const int LumberjackTreesPerStorageTrip = 1;
         private const int LumberjackDepositItemsPerStorageTrip = 8;
         private const double LumberjackMaxWorkSecondsPerTrip = 150.0;
         private const float LumberjackStorageReturnDistance = 18f;
-        private const float LumberjackMaxApproachDistanceFromHome = 16.5f;
+        private const float LumberjackMaxApproachDistanceFromWorkArea = 16.5f;
         private const int HomeReturnPathfindingPositions = 30000;
         private const int LumberjackWorkPathfindingPositions = 10000;
         private const int LumberjackTreeMaxHeight = 25;
@@ -340,6 +359,7 @@ namespace Game
                 m_nextObstacleDetourTime = 0.0;
             UpdateManagedPathProgress(dt);
             UpdateWorkRouteProgress(dt);
+            UpdateWorkSignRouteProgress(dt);
             TryJumpAtBlockingStep(dt);
             UpdateFailedWorkPositions(dt);
 
@@ -352,6 +372,11 @@ namespace Game
 
             bool night = IsNight();
             bool dusk = IsDusk();
+            if (!m_workShiftInitialized && !night && !dusk)
+            {
+                m_workShiftInitialized = true;
+                BeginWorkSignShift();
+            }
             // Store gathered items even if the villager has not reached the exact bed cell.
             if ((night || dusk) && IsNearHomeForPersonalStorage())
                 DepositCollectedItemsIntoPersonalChest();
@@ -364,6 +389,8 @@ namespace Game
                     EndConversation(false);
                     m_hasWorkTarget = false;
                     m_hasWorkApproach = false;
+                    m_isGoingToWorkSign = false;
+                    ResetWorkSignRouteProgress();
                     m_nextWorkSearchTime = 0.0;
                     StopManagedPath();
                     ReleaseHomeDoorPassage();
@@ -395,6 +422,8 @@ namespace Game
                     EndConversation(false);
                     m_hasWorkTarget = false;
                     m_hasWorkApproach = false;
+                    m_isGoingToWorkSign = false;
+                    ResetWorkSignRouteProgress();
                     m_workTask = 0;
                     m_nextWorkSearchTime = 0.0;
                     m_hasLumberTreeLock = false;
@@ -423,7 +452,8 @@ namespace Game
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 m_isLeavingHome = TryBeginHomeExit();
-                Log.Information("[LivingTowns] Dawn routine started; villager will leave through its home door.");
+                BeginWorkSignShift();
+                Log.Information("[LivingTowns] Dawn routine started; villager will leave through its home door and head for its personal WORK sign.");
             }
             else if (m_wasDusk)
             {
@@ -433,9 +463,12 @@ namespace Game
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
                 m_isLeavingHome = TryBeginHomeExit();
+                BeginWorkSignShift();
             }
             WakeFromBedIfNeeded();
             if (m_isLeavingHome && TickHomeExitRoutine())
+                return;
+            if (m_isGoingToWorkSign && TickWorkSignRoutine(dt))
                 return;
             m_chatCooldown -= dt;
 
@@ -675,7 +708,7 @@ namespace Game
                     continue;
 
                 SignData signData = m_signBehavior.GetSignData(new Point3(x, y, z));
-                if (signData == null || signData.Lines == null)
+                if (signData == null || signData.Lines == null || IsWorkLocationSign(signData))
                     continue;
 
                 bool nameMatches = false;
@@ -730,6 +763,368 @@ namespace Game
                 }
             }
             return found;
+        }
+
+
+        private void BeginWorkSignShift()
+        {
+            m_workShiftInitialized = true;
+            m_isGoingToWorkSign = true;
+            m_workSignApproachRetryCount = 0;
+            m_workSignRouteRetryCooldown = 0.0;
+            m_nextWorkSignScanTime = 0.0;
+            ResetWorkSignRouteProgress();
+
+            // Reuse a previously identified sign when it still exists and still
+            // belongs to this villager. Otherwise restart the incremental 200-block scan.
+            if (m_hasWorkSignCell && IsWorkSignAtCell(m_workSignCell)
+                && TryGetWorkSignApproach(m_workSignCell, out Vector3 cachedApproach))
+            {
+                m_workSignApproach = cachedApproach;
+                m_hasWorkSignApproach = true;
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " is returning to its own WORK sign at "
+                    + m_workSignCell.X + "," + m_workSignCell.Y + "," + m_workSignCell.Z + ".");
+                return;
+            }
+
+            m_hasWorkSignCell = false;
+            m_hasWorkSignApproach = false;
+            m_workSignSearchRadius = 0;
+            m_workSignSearchOffset = 0;
+            Log.Information("[LivingTowns] " + m_villagerName
+                + " started an incremental search for its personal WORK sign within "
+                + WorkSignSearchRadius + " blocks.");
+        }
+
+        private bool TickWorkSignRoutine(float dt)
+        {
+            if (!m_isGoingToWorkSign || m_body == null)
+                return false;
+
+            if (!m_hasWorkSignCell || !m_hasWorkSignApproach)
+            {
+                m_nextWorkSignScanTime -= dt;
+                if (m_nextWorkSignScanTime > 0.0)
+                    return true;
+
+                m_nextWorkSignScanTime = 0.35;
+                if (TryFindWorkSignBatch(out bool scanComplete))
+                {
+                    m_hasWorkSignCell = true;
+                    m_hasWorkSignApproach = true;
+                    m_workSignApproachRetryCount = 0;
+                    ResetWorkSignRouteProgress();
+                    Log.Information("[LivingTowns] " + m_villagerName
+                        + " found its own WORK sign at "
+                        + m_workSignCell.X + "," + m_workSignCell.Y + "," + m_workSignCell.Z
+                        + "; navigating to the outdoor work area.");
+                }
+                else if (scanComplete)
+                {
+                    m_isGoingToWorkSign = false;
+                    m_hasWorkSignCell = false;
+                    m_hasWorkSignApproach = false;
+                    ResetWorkSignRouteProgress();
+                    Log.Warning("[LivingTowns] No personal WORK sign for " + m_villagerName
+                        + " was found within " + WorkSignSearchRadius
+                        + " blocks. Its normal profession routine will continue.");
+                    return false;
+                }
+                else
+                    return true;
+            }
+
+            float dx = m_body.Position.X - m_workSignApproach.X;
+            float dz = m_body.Position.Z - m_workSignApproach.Z;
+            bool arrived = dx * dx + dz * dz <= WorkSignArrivalRadius * WorkSignArrivalRadius
+                && Math.Abs(m_body.Position.Y - m_workSignApproach.Y) <= 1.75f;
+            if (arrived)
+            {
+                StopManagedPath();
+                m_isGoingToWorkSign = false;
+                ResetWorkSignRouteProgress();
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " reached its personal outdoor work area and is starting its profession routine.");
+                return false;
+            }
+
+            m_workSignRouteRetryCooldown -= dt;
+            if (m_workSignRouteRetryCooldown < 0.0)
+                m_workSignRouteRetryCooldown = 0.0;
+
+            bool pathSearchPending = m_pathfinding?.m_pathfindingResult?.IsInProgress == true;
+            if (!pathSearchPending && m_workSignRouteRetryCooldown <= 0.0
+                && (m_pathfinding?.IsStuck == true || m_workSignNoProgressTime >= 18.0))
+            {
+                Point3 failedApproach = new Point3(
+                    Terrain.ToCell(m_workSignApproach.X),
+                    Terrain.ToCell(m_workSignApproach.Y),
+                    Terrain.ToCell(m_workSignApproach.Z));
+                RejectWorkPosition(failedApproach, 90.0);
+
+                if (TryGetWorkSignApproach(m_workSignCell, out Vector3 alternateApproach)
+                    && Vector3.DistanceSquared(alternateApproach, m_workSignApproach) > 0.25f)
+                {
+                    m_workSignApproach = alternateApproach;
+                    m_workSignApproachRetryCount++;
+                    StopManagedPath();
+                    ResetWorkSignRouteProgress();
+                    m_workSignRouteRetryCooldown = 2.0;
+                    Log.Warning("[LivingTowns] " + m_villagerName
+                        + " could not reach the first side of its WORK sign; trying another clear approach around nearby obstacles ("
+                        + m_workSignApproachRetryCount + ").");
+                }
+                else
+                {
+                    // Keep the same destination active. SetManagedDestination will continue
+                    // its six-block obstacle detours and blacklist unreachable detour points.
+                    ResetWorkSignRouteProgress();
+                    m_workSignRouteRetryCooldown = 5.0;
+                    Log.Warning("[LivingTowns] " + m_villagerName
+                        + " is still blocked on its WORK-sign route; retrying with obstacle detours.");
+                }
+            }
+
+            SetManagedDestination(m_workSignApproach, WorkMoveSpeed, 1.20f,
+                WorkSignPathfindingPositions, false, false, false, null, false);
+            return true;
+        }
+
+        private bool TryFindWorkSignBatch(out bool complete)
+        {
+            complete = false;
+            if (m_terrain == null || m_signBehavior == null)
+            {
+                complete = true;
+                return false;
+            }
+
+            Point3 workCenter = GetWorkCenterCell();
+            int centerX = workCenter.X;
+            int centerZ = workCenter.Z;
+            int centerY = workCenter.Y;
+            int columnsLeft = WorkSignScanColumnsPerUpdate;
+
+            while (m_workSignSearchRadius <= WorkSignSearchRadius && columnsLeft > 0)
+            {
+                int radius = m_workSignSearchRadius;
+                int perimeter = radius == 0 ? 1 : 8 * radius;
+                if (m_workSignSearchOffset >= perimeter)
+                {
+                    m_workSignSearchRadius++;
+                    m_workSignSearchOffset = 0;
+                    continue;
+                }
+
+                int dx;
+                int dz;
+                int index = m_workSignSearchOffset;
+                if (radius == 0)
+                {
+                    dx = 0;
+                    dz = 0;
+                }
+                else if (index < 2 * radius)
+                {
+                    dx = -radius + index;
+                    dz = -radius;
+                }
+                else if (index < 4 * radius)
+                {
+                    dx = radius;
+                    dz = -radius + (index - 2 * radius);
+                }
+                else if (index < 6 * radius)
+                {
+                    dx = radius - (index - 4 * radius);
+                    dz = radius;
+                }
+                else
+                {
+                    dx = -radius;
+                    dz = radius - (index - 6 * radius);
+                }
+
+                m_workSignSearchOffset++;
+                columnsLeft--;
+                if (dx * dx + dz * dz > WorkSignSearchRadius * WorkSignSearchRadius)
+                    continue;
+
+                int x = centerX + dx;
+                int z = centerZ + dz;
+                int terrainTop = m_terrain.Terrain.GetTopHeight(x, z);
+                int topMinY = Math.Max(1, terrainTop - 14);
+                int topMaxY = Math.Min(250, terrainTop + 3);
+
+                // Search both the local terrain-height band and the home-elevation band.
+                // This finds signs on hills, work sheds and raised platforms without
+                // scanning every vertical cell in a 200-block radius.
+                for (int y = topMaxY; y >= topMinY; y--)
+                {
+                    if (TryMatchWorkSignAt(x, y, z))
+                        return true;
+                }
+
+                int homeMinY = Math.Max(1, centerY - 12);
+                int homeMaxY = Math.Min(250, centerY + 14);
+                for (int y = homeMaxY; y >= homeMinY; y--)
+                {
+                    if (y >= topMinY && y <= topMaxY)
+                        continue;
+                    if (TryMatchWorkSignAt(x, y, z))
+                        return true;
+                }
+            }
+
+            if (m_workSignSearchRadius > WorkSignSearchRadius)
+            {
+                complete = true;
+                return false;
+            }
+            return false;
+        }
+
+        private bool TryMatchWorkSignAt(int x, int y, int z)
+        {
+            int value = m_terrain.Terrain.GetCellValue(x, y, z);
+            int content = Terrain.ExtractContents(value);
+            if (content <= 0 || content >= BlocksManager.Blocks.Length
+                || !(BlocksManager.Blocks[content] is AttachedSignBlock))
+                return false;
+
+            Point3 signCell = new Point3(x, y, z);
+            SignData signData = m_signBehavior.GetSignData(signCell);
+            if (!IsWorkLocationSign(signData) || !TryGetWorkSignApproach(signCell, out Vector3 approach))
+                return false;
+
+            m_workSignCell = signCell;
+            m_workSignApproach = approach;
+            return true;
+        }
+
+        private bool IsWorkSignAtCell(Point3 signCell)
+        {
+            if (m_terrain == null || m_signBehavior == null)
+                return false;
+            int value = m_terrain.Terrain.GetCellValue(signCell.X, signCell.Y, signCell.Z);
+            int content = Terrain.ExtractContents(value);
+            if (content <= 0 || content >= BlocksManager.Blocks.Length
+                || !(BlocksManager.Blocks[content] is AttachedSignBlock))
+                return false;
+            return IsWorkLocationSign(m_signBehavior.GetSignData(signCell));
+        }
+
+        private bool IsWorkLocationSign(SignData signData)
+        {
+            if (signData == null || signData.Lines == null || string.IsNullOrWhiteSpace(m_villagerName))
+                return false;
+
+            bool hasName = false;
+            bool hasWorkMarker = false;
+            for (int i = 0; i < signData.Lines.Length; i++)
+            {
+                string line = (signData.Lines[i] ?? string.Empty).Trim();
+                if (string.Equals(line, m_villagerName, StringComparison.OrdinalIgnoreCase))
+                    hasName = true;
+                if (string.Equals(line, "WORK", StringComparison.OrdinalIgnoreCase))
+                    hasWorkMarker = true;
+            }
+            return hasName && hasWorkMarker;
+        }
+
+        private bool TryGetWorkSignApproach(Point3 signCell, out Vector3 approach)
+        {
+            approach = Vector3.Zero;
+            if (m_terrain == null || !IsWorkSignAtCell(signCell))
+                return false;
+
+            int signValue = m_terrain.Terrain.GetCellValue(signCell.X, signCell.Y, signCell.Z);
+            Point3 outward = CellFace.FaceToPoint3(AttachedSignBlock.GetFace(Terrain.ExtractData(signValue)));
+            if (outward.X == 0 && outward.Z == 0)
+                return false;
+
+            Point3 tangent = new Point3(-outward.Z, 0, outward.X);
+            bool found = false;
+            float bestScore = float.MaxValue;
+            for (int distance = 1; distance <= 4; distance++)
+            for (int lateral = -3; lateral <= 3; lateral++)
+            for (int floorY = Math.Max(1, signCell.Y - 4); floorY <= Math.Min(250, signCell.Y + 1); floorY++)
+            {
+                int x = signCell.X + outward.X * distance + tangent.X * lateral;
+                int z = signCell.Z + outward.Z * distance + tangent.Z * lateral;
+                if (!IsValidStandingCell(x, floorY, z)
+                    || IsFailedWorkPosition(x, floorY + 1, z))
+                    continue;
+
+                Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                float score = Vector3.DistanceSquared(m_body.Position, candidate)
+                    + Math.Abs(lateral) * 0.75f
+                    + Math.Abs(floorY - (signCell.Y - 2)) * 1.5f
+                    + (distance - 1) * 0.8f;
+                if (!found || score < bestScore)
+                {
+                    found = true;
+                    bestScore = score;
+                    approach = candidate;
+                }
+            }
+            return found;
+        }
+
+        private void UpdateWorkSignRouteProgress(float dt)
+        {
+            if (!m_isGoingToWorkSign || !m_hasWorkSignApproach || m_body == null)
+            {
+                ResetWorkSignRouteProgress();
+                return;
+            }
+
+            float distance = Vector3.Distance(m_body.Position, m_workSignApproach);
+            if (m_obstacleDetourActive)
+            {
+                m_workSignBestDistance = distance;
+                m_workSignNoProgressTime = 0.0;
+                m_workSignTrackedTarget = m_workSignApproach;
+                m_hasWorkSignProgressSample = true;
+                return;
+            }
+
+            if (!m_hasWorkSignProgressSample
+                || Vector3.DistanceSquared(m_workSignTrackedTarget, m_workSignApproach) > 0.25f)
+            {
+                m_workSignTrackedTarget = m_workSignApproach;
+                m_workSignBestDistance = distance;
+                m_workSignNoProgressTime = 0.0;
+                m_hasWorkSignProgressSample = true;
+                return;
+            }
+
+            if (distance <= WorkSignArrivalRadius || distance < m_workSignBestDistance - 0.15f)
+            {
+                m_workSignBestDistance = distance;
+                m_workSignNoProgressTime = 0.0;
+            }
+            else
+                m_workSignNoProgressTime += dt;
+        }
+
+        private void ResetWorkSignRouteProgress()
+        {
+            m_workSignNoProgressTime = 0.0;
+            m_workSignBestDistance = 0f;
+            m_workSignTrackedTarget = Vector3.Zero;
+            m_hasWorkSignProgressSample = false;
+        }
+
+        private Point3 GetWorkCenterCell()
+        {
+            if (m_hasWorkSignCell)
+                return m_workSignCell;
+            if (m_hasHomeDoor)
+                return m_homeDoor;
+            return new Point3(Terrain.ToCell(m_body.Position.X),
+                Terrain.ToCell(m_body.Position.Y), Terrain.ToCell(m_body.Position.Z));
         }
 
         private bool IsSleepCellClaimed(Point3 candidate)
@@ -3018,8 +3413,9 @@ namespace Game
         {
             target = new Point3(0, 0, 0);
             task = 0;
-            int centerX = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
-            int centerZ = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
+            Point3 workCenter = GetWorkCenterCell();
+            int centerX = workCenter.X;
+            int centerZ = workCenter.Z;
 
             for (int scanned = 0; scanned < FarmCellsPerScan; scanned++)
             {
@@ -3336,7 +3732,7 @@ namespace Game
             int centerY = m_hasHomeDoor ? m_homeDoor.Y : Terrain.ToCell(m_body.Position.Y);
             int columnsLeft = LumberjackScanColumnsPerUpdate;
 
-            while (m_lumberSearchRadius <= LumberjackHomeRadius && columnsLeft > 0)
+            while (m_lumberSearchRadius <= LumberjackWorkRadius && columnsLeft > 0)
             {
                 int radius = m_lumberSearchRadius;
                 int perimeter = radius == 0 ? 1 : 8 * radius;
@@ -3353,7 +3749,7 @@ namespace Game
                         m_hasLumberTreeLock = true;
                         Log.Information("[LivingTowns] " + m_villagerName + " locked a tree at "
                             + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
-                            + " within " + LumberjackHomeRadius + " blocks of home.");
+                            + " within " + LumberjackWorkRadius + " blocks of home.");
                         ResetLumberSearch();
                         return true;
                     }
@@ -3396,7 +3792,7 @@ namespace Game
 
                 m_lumberSearchOffset++;
                 columnsLeft--;
-                if (dx * dx + dz * dz > LumberjackHomeRadius * LumberjackHomeRadius)
+                if (dx * dx + dz * dz > LumberjackWorkRadius * LumberjackWorkRadius)
                     continue;
 
                 int x = centerX + dx;
@@ -3431,12 +3827,13 @@ namespace Game
                         || !TryGetLumberjackApproach(x, baseY, z, out Vector3 candidateApproach))
                         continue;
 
-                    if (m_hasHomeDoor)
+                    if (m_hasHomeDoor || m_hasWorkSignCell)
                     {
-                        float homeDx = candidateApproach.X - (m_homeDoor.X + 0.5f);
-                        float homeDz = candidateApproach.Z - (m_homeDoor.Z + 0.5f);
-                        if (homeDx * homeDx + homeDz * homeDz
-                            > LumberjackMaxApproachDistanceFromHome * LumberjackMaxApproachDistanceFromHome)
+                        Point3 workCenter = GetWorkCenterCell();
+                        float workDx = candidateApproach.X - (workCenter.X + 0.5f);
+                        float workDz = candidateApproach.Z - (workCenter.Z + 0.5f);
+                        if (workDx * workDx + workDz * workDz
+                            > LumberjackMaxApproachDistanceFromWorkArea * LumberjackMaxApproachDistanceFromWorkArea)
                             continue;
                     }
 
@@ -3454,7 +3851,7 @@ namespace Game
                 }
             }
 
-            if (m_lumberSearchRadius > LumberjackHomeRadius)
+            if (m_lumberSearchRadius > LumberjackWorkRadius)
             {
                 ResetLumberSearch();
                 Log.Information("[LivingTowns] " + m_villagerName
@@ -3653,8 +4050,9 @@ namespace Game
             // destination is blocked or has stopped getting closer, choose a new
             // patrol point instead of waiting forever on the old destination.
 
-            int cx = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
-            int cz = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
+            Point3 workCenter = GetWorkCenterCell();
+            int cx = workCenter.X;
+            int cz = workCenter.Z;
             Vector3 destination = Vector3.Zero;
             float bestScore = float.NegativeInfinity;
             bool found = false;
@@ -3807,9 +4205,10 @@ namespace Game
         private bool TryFindNamedBlock(string namePart, out Point3 target)
         {
             target = new Point3(0, 0, 0);
-            int cx = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
-            int cy = m_hasHomeDoor ? m_homeDoor.Y : Terrain.ToCell(m_body.Position.Y);
-            int cz = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
+            Point3 workCenter = GetWorkCenterCell();
+            int cx = workCenter.X;
+            int cy = workCenter.Y;
+            int cz = workCenter.Z;
             int bestDistance = int.MaxValue;
             for (int x = cx - 12; x <= cx + 12; x++)
             for (int z = cz - 12; z <= cz + 12; z++)
