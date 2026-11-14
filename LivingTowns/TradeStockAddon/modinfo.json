@@ -1,0 +1,15 @@
+{
+  "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
+  "Name": "Living Towns - Profession Trade Stock Addon",
+  "Version": "0.4.60",
+  "ApiVersion": "1.9.5.1",
+  "Description": "Companion addon for LivingTowns 0.4.59. Seeds empty persistent villager trade inventories with profession-specific Survivalcraft 2 items without replacing the existing villager AI or currency assembly.",
+  "ScVersion": "2.4.0.0",
+  "LoadOrder": 10001,
+  "NonPersistentMod": false,
+  "GameplayImpactLevel": "Major",
+  "Link": "https://github.com/darksccorpionnn/Survivalcraft2-modss",
+  "Author": "darksccorpionnn",
+  "PackageName": "darksccorpionnn.LivingTownsTradeStockAddon",
+  "Dependencies": {}
+}
