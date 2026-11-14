@@ -85,11 +85,6 @@ namespace Game
             }
         }
 
-        public override void DragOver(Widget dragWidget, object data)
-        {
-            // Trade offer slots are intentionally not inventory drop targets.
-        }
-
         public override void DragDrop(Widget dragWidget, object data)
         {
             // Items can only leave the offer through a validated trade.
