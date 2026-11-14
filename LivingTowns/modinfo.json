@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.52",
+  "Version": "0.4.53",
   "ApiVersion": "1.9.5.1",
-  "Description": "Fixes unique database GUIDs for the four animated profession templates; adds blacksmith, merchant, healer, and guard models while preserving villager AI and 0.20-second obstacle detours.",
+  "Description": "Improves custom profession model-route detection and late model-load resolution while preserving existing villager routines and profession AI.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
