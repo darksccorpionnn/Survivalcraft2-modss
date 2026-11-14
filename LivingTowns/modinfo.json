@@ -3,7 +3,7 @@
   "Name": "Living Towns - Villager AI Fix",
   "Version": "0.4.53",
   "ApiVersion": "1.9.5.1",
-  "Description": "Improves custom profession model-route detection and late model-load resolution while preserving existing villager routines and profession AI.",
+  "Description": "Improves profession route detection and door spawning; adds healer treatment for injured villagers and guard defense against nearby land predators while preserving shared villager routines.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
