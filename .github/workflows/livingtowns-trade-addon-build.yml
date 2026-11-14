@@ -1,8 +1,8 @@
-name: Living Towns 0.4.60 Trade Stock Addon
+name: Living Towns 0.4.61 Profession Currency Shop
 
 on:
   push:
-    branches: [ livingtowns-0.4.60-trade-stock ]
+    branches: [ livingtowns-0.4.61-currency-shop ]
     paths:
       - 'LivingTowns/TradeStockAddon/**'
       - '.github/workflows/livingtowns-trade-addon-build.yml'
@@ -61,9 +61,9 @@ jobs:
 
           root = Path("LivingTowns/TradeStockAddon")
           output = root / "bin/Release/net10.0"
-          package = Path("LivingTowns-0.4.60-TradeStockAddon.scmod")
+          package = Path("LivingTowns-0.4.61-ProfessionCurrencyShop.scmod")
           info = json.loads((root / "modinfo.json").read_text(encoding="utf-8"))
-          assert info["Version"] == "0.4.60"
+          assert info["Version"] == "0.4.61"
           assert info["PackageName"] == "darksccorpionnn.LivingTownsTradeStockAddon"
           with ZipFile(package, "w", ZIP_DEFLATED) as archive:
               archive.write(output / "LivingTownsTradeStockAddon.dll", "LivingTownsTradeStockAddon.dll")
@@ -78,7 +78,7 @@ jobs:
       - name: Upload .scmod artifact
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.60-TradeStockAddon
+          name: LivingTowns-0.4.61-ProfessionCurrencyShop
           path: LivingTowns-0.4.60-TradeStockAddon.scmod
           if-no-files-found: error
           retention-days: 14
