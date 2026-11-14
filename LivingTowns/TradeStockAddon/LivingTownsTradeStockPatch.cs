@@ -51,12 +51,12 @@ namespace Game
             // This prevents the old free-transfer panel from opening while leaving all villager AI intact.
             Type interactionType = AccessTools.TypeByName("Game.LivingTownsVillagerInteractionPatch");
             MethodInfo oldPrefix = interactionType == null ? null : AccessTools.Method(interactionType, "Prefix");
-            MethodInfo replacement = typeof(LivingTownsTradeStockPatch).GetMethod(
-                nameof(TradeScreenPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+            MethodInfo callbackReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(TradeScreenCallbackPrefix), BindingFlags.Static | BindingFlags.NonPublic);
 
-            if (oldPrefix != null && replacement != null)
+            if (oldPrefix != null && callbackReplacement != null)
             {
-                HarmonyMethod patch = new HarmonyMethod(replacement);
+                HarmonyMethod patch = new HarmonyMethod(callbackReplacement);
                 patch.priority = Priority.First;
                 harmony.Patch(oldPrefix, prefix: patch);
                 Log.Information("[LivingTowns Trade Shop] Replaced the old free-transfer interaction panel.");
@@ -66,9 +66,11 @@ namespace Game
                 // Fallback for builds where the interaction callback has a different type name.
                 MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
                     new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
-                if (hit != null && replacement != null)
+                MethodInfo hitReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
+                    nameof(TradeScreenHitPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+                if (hit != null && hitReplacement != null)
                 {
-                    HarmonyMethod patch = new HarmonyMethod(replacement);
+                    HarmonyMethod patch = new HarmonyMethod(hitReplacement);
                     patch.priority = Priority.First;
                     harmony.Patch(hit, prefix: patch);
                     Log.Warning("[LivingTowns Trade Shop] Used fallback ComponentMiner.Hit interception.");
@@ -140,13 +142,29 @@ namespace Game
             }
         }
 
-        private static bool TradeScreenPrefix(
+        // The original interaction callback is static, so its arguments are bound by position.
+        private static bool TradeScreenCallbackPrefix(
+            ComponentMiner __0,
+            ComponentBody __1,
+            Engine.Vector3 __2,
+            Engine.Vector3 __3)
+        {
+            return OpenShop(__0, __1);
+        }
+
+        // Fallback when the base mod does not expose its Harmony interaction callback.
+        private static bool TradeScreenHitPrefix(
             ComponentMiner __instance,
             ComponentBody componentBody,
             Engine.Vector3 hitPoint,
             Engine.Vector3 hitDirection)
         {
-            if (__instance?.ComponentPlayer == null || componentBody?.Entity == null)
+            return OpenShop(__instance, componentBody);
+        }
+
+        private static bool OpenShop(ComponentMiner miner, ComponentBody componentBody)
+        {
+            if (miner?.ComponentPlayer == null || componentBody?.Entity == null)
                 return true;
 
             Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
@@ -157,7 +175,7 @@ namespace Game
             if (villager == null)
                 return true;
 
-            ComponentPlayer player = __instance.ComponentPlayer;
+            ComponentPlayer player = miner.ComponentPlayer;
             try
             {
                 SeedTradeInventory(villager);
