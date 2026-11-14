@@ -47,13 +47,13 @@ jobs:
         run: |
           set -euo pipefail
           test -s LivingTowns/bin/Release/net10.0/LivingTowns.dll
-          grep -q '"Version": "0.4.56"' LivingTowns/modinfo.json
+          grep -q '"Version": "0.4.57"' LivingTowns/modinfo.json
           echo "Compiled DLL:"
           ls -lh LivingTowns/bin/Release/net10.0/LivingTowns.dll
       - name: Upload compiled assembly
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.56-assembly
+          name: LivingTowns-0.4.57-assembly
           path: |
             LivingTowns/bin/Release/net10.0/LivingTowns.dll
           if-no-files-found: error
