@@ -1,17 +1,17 @@
 using System;
-using Engine;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using GameEntitySystem;
+using Engine;
 using HarmonyLib;
+using GameEntitySystem;
 using TemplatesDatabase;
 
 namespace Game
 {
     internal static class LivingTownsTradeStockPatch
     {
-        private const string InitializedKey = "LivingTownsTradeStockInitialized_0_4_60";
+        private const string InitializedKey = "LivingTownsTradeStockInitialized_0_4_61";
 
         private sealed class SeedState
         {
@@ -40,23 +40,46 @@ namespace Game
             Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
             if (villagerType == null)
             {
-                Log.Warning("[LivingTowns Trade Stock] ComponentLivingTownsVillager was not found; base mod must be loaded first.");
+                Log.Warning("[LivingTowns Trade Shop] ComponentLivingTownsVillager was not found; base mod must load first.");
                 return;
             }
 
             PatchMethod(harmony, villagerType, "Load", nameof(LoadPostfix));
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
 
-            // Patch the same native hit entry used by the 0.4.58/0.4.59 villager interaction
-            // hook. The postfix runs after the existing interaction prefix creates the trade panel.
-            MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
-                new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
-            MethodInfo hitPostfix = typeof(LivingTownsTradeStockPatch).GetMethod(
-                nameof(HitPostfix), BindingFlags.Static | BindingFlags.NonPublic);
-            if (hit == null || hitPostfix == null)
-                Log.Warning("[LivingTowns Trade Stock] ComponentMiner.Hit entry point was not found.");
+            // Replace the original villager interaction callback, not the game's inventory system.
+            // This prevents the old free-transfer panel from opening while leaving all villager AI intact.
+            Type interactionType = AccessTools.TypeByName("Game.LivingTownsVillagerInteractionPatch");
+            MethodInfo oldPrefix = interactionType == null ? null : AccessTools.Method(interactionType, "Prefix");
+            MethodInfo replacement = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(TradeScreenPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+
+            if (oldPrefix != null && replacement != null)
+            {
+                HarmonyMethod patch = new HarmonyMethod(replacement);
+                patch.priority = Priority.First;
+                harmony.Patch(oldPrefix, prefix: patch);
+                Log.Information("[LivingTowns Trade Shop] Replaced the old free-transfer interaction panel.");
+            }
             else
-                harmony.Patch(hit, postfix: new HarmonyMethod(hitPostfix));
+            {
+                // Fallback for builds where the interaction callback has a different type name.
+                MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
+                    new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
+                if (hit != null && replacement != null)
+                {
+                    HarmonyMethod patch = new HarmonyMethod(replacement);
+                    patch.priority = Priority.First;
+                    harmony.Patch(hit, prefix: patch);
+                    Log.Warning("[LivingTowns Trade Shop] Used fallback ComponentMiner.Hit interception.");
+                }
+                else
+                {
+                    Log.Warning("[LivingTowns Trade Shop] Could not locate the villager interaction entry point.");
+                }
+            }
+
+            Log.Information("[LivingTowns Trade Shop] Currency shop patch installation completed.");
         }
 
         private static void PatchMethod(Harmony harmony, Type type, string targetName, string postfixName)
@@ -67,7 +90,7 @@ namespace Game
 
             if (target == null || postfix == null)
             {
-                Log.Warning("[LivingTowns Trade Stock] Could not patch " + targetName + ".");
+                Log.Warning("[LivingTowns Trade Shop] Could not patch " + targetName + ".");
                 return;
             }
 
@@ -113,11 +136,62 @@ namespace Game
             }
             catch (Exception ex)
             {
-                Log.Warning("[LivingTowns Trade Stock] Could not save stock initialization state: " + ex.Message);
+                Log.Warning("[LivingTowns Trade Shop] Could not save stock initialization state: " + ex.Message);
             }
         }
 
-        private static void HitPostfix(ComponentMiner __instance, ComponentBody componentBody, Engine.Vector3 hitPoint, Engine.Vector3 hitDirection)
+        private static bool TradeScreenPrefix(
+            ComponentMiner __instance,
+            ComponentBody componentBody,
+            Engine.Vector3 hitPoint,
+            Engine.Vector3 hitDirection)
+        {
+            if (__instance?.ComponentPlayer == null || componentBody?.Entity == null)
+                return true;
+
+            Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
+            if (villagerType == null)
+                return true;
+
+            object villager = componentBody.Entity.FindComponent(villagerType, null, false);
+            if (villager == null)
+                return true;
+
+            ComponentPlayer player = __instance.ComponentPlayer;
+            try
+            {
+                SeedTradeInventory(villager);
+                IInventory stock = GetTradeInventory(villager);
+                if (stock == null)
+                {
+                    player.ComponentGui?.DisplaySmallMessage(
+                        "Köylünün ticaret stoğu okunamadı.", Color.White, true, false);
+                    return false;
+                }
+
+                string job = GetJobName(villager);
+                string name = GetVillagerName(villager);
+                LivingTownsTradeShopWidget shop =
+                    new LivingTownsTradeShopWidget(player, villager, stock, job, name);
+
+                player.ComponentGui.ModalPanelWidget = shop;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("[LivingTowns Trade Shop] Could not open shop: " + ex);
+                player.ComponentGui?.DisplaySmallMessage(
+                    "Ticaret ekranı açılamadı. Hata günlüğünü kontrol et.", Color.White, true, false);
+            }
+
+            // Suppress the old panel even if shop initialization fails: no free stock transfer.
+            return false;
+        }
+
+        private static void HitPostfix(
+            ComponentMiner __instance,
+            ComponentBody componentBody,
+            Engine.Vector3 hitPoint,
+            Engine.Vector3 hitDirection)
         {
             if (componentBody?.Entity == null)
                 return;
@@ -127,27 +201,25 @@ namespace Game
                 return;
 
             object villager = componentBody.Entity.FindComponent(villagerType, null, false);
+            if (villager != null)
+                SeedTradeInventory(villager);
+        }
+
+        private static void SeedTradeInventory(object villager)
+        {
             if (villager == null)
                 return;
 
-            SeedTradeInventory(villager);
-        }
-
-        private static void SeedTradeInventory(object __instance)
-        {
-            if (__instance == null)
-                return;
-
-            SeedState state = GetState(__instance);
+            SeedState state = GetState(villager);
             if (state.Initialized)
                 return;
 
             try
             {
-                IInventory inventory = GetTradeInventory(__instance);
+                IInventory inventory = GetTradeInventory(villager);
                 if (inventory == null || inventory.SlotsCount <= 0)
                 {
-                    Log.Warning("[LivingTowns Trade Stock] Trade inventory was not available.");
+                    Log.Warning("[LivingTowns Trade Shop] Trade inventory was not available.");
                     return;
                 }
 
@@ -157,7 +229,7 @@ namespace Game
                     return;
                 }
 
-                string job = GetJobName(__instance);
+                string job = GetJobName(villager);
                 StockItem[] stock = GetStockForJob(job);
                 int addedTypes = 0;
 
@@ -170,17 +242,17 @@ namespace Game
                 if (addedTypes > 0)
                 {
                     state.Initialized = true;
-                    Log.Information("[LivingTowns Trade Stock] Seeded " + addedTypes
-                        + " Survivalcraft 2 item types for profession " + job + ".");
+                    Log.Information("[LivingTowns Trade Shop] Seeded " + addedTypes
+                        + " stock item types for profession " + job + ".");
                 }
                 else
                 {
-                    Log.Warning("[LivingTowns Trade Stock] No valid stock items were found for profession " + job + ".");
+                    Log.Warning("[LivingTowns Trade Shop] No valid stock items were found for profession " + job + ".");
                 }
             }
             catch (Exception ex)
             {
-                Log.Warning("[LivingTowns Trade Stock] Stock initialization failed: " + ex);
+                Log.Warning("[LivingTowns Trade Shop] Stock initialization failed: " + ex);
             }
         }
 
@@ -213,6 +285,13 @@ namespace Game
             return field?.GetValue(villager)?.ToString() ?? "Unemployed";
         }
 
+        private static string GetVillagerName(object villager)
+        {
+            PropertyInfo property = AccessTools.Property(villager.GetType(), "VillagerName");
+            object name = property?.GetValue(villager, null);
+            return name?.ToString() ?? string.Empty;
+        }
+
         private static bool HasAnyItems(IInventory inventory)
         {
             for (int i = 0; i < inventory.SlotsCount; i++)
@@ -230,7 +309,7 @@ namespace Game
             if (blockIndex < 0 || blockIndex >= BlocksManager.Blocks.Length
                 || BlocksManager.Blocks[blockIndex] == null)
             {
-                Log.Warning("[LivingTowns Trade Stock] Skipping unavailable Survivalcraft 2 item: " + item.BlockName);
+                Log.Warning("[LivingTowns Trade Shop] Skipping unavailable item: " + item.BlockName);
                 return false;
             }
 
