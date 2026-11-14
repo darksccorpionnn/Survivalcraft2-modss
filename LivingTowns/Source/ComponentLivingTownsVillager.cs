@@ -1167,8 +1167,8 @@ namespace Game
             float bestScore = float.NegativeInfinity;
             Vector3 bestDirection = Vector3.Zero;
             for (int sign = -1; sign <= 1; sign += 2)
-            for (int distance = 1; distance <= 5; distance++)
-            for (int lateral = -2; lateral <= 2; lateral++)
+            for (int distance = 1; distance <= 8; distance++)
+            for (int lateral = -3; lateral <= 3; lateral++)
             {
                 int x = Terrain.ToCell(doorCenter.X + axis.X * sign * distance + tangent.X * lateral);
                 int z = Terrain.ToCell(doorCenter.Z + axis.Z * sign * distance + tangent.Z * lateral);
@@ -1234,13 +1234,44 @@ namespace Game
             if (m_terrain == null || !m_hasHomeDoor || (!m_hasBedCell && !m_hasFallbackRestPosition))
                 return false;
 
-            int value = m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
-            int content = Terrain.ExtractContents(value);
-            if (content <= 0 || content >= BlocksManager.Blocks.Length
-                || !(BlocksManager.Blocks[content] is DoorBlock)
-                || !DoorBlock.IsBottomPart(m_terrain.Terrain, m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z))
+            // The assigned home coordinate can occasionally point at the upper door
+            // half (or a neighboring cell after a world edit). Resolve the actual
+            // bottom half before deriving its rotation and threshold.
+            Point3 resolvedDoor = m_homeDoor;
+            bool doorFound = false;
+            int bestDoorOffset = int.MaxValue;
+            for (int dx = -1; dx <= 1; dx++)
+            for (int dy = -1; dy <= 1; dy++)
+            for (int dz = -1; dz <= 1; dz++)
+            {
+                int x = m_homeDoor.X + dx;
+                int y = m_homeDoor.Y + dy;
+                int z = m_homeDoor.Z + dz;
+                int candidateValue = m_terrain.Terrain.GetCellValue(x, y, z);
+                int candidateContent = Terrain.ExtractContents(candidateValue);
+                if (candidateContent <= 0 || candidateContent >= BlocksManager.Blocks.Length
+                    || !(BlocksManager.Blocks[candidateContent] is DoorBlock)
+                    || !DoorBlock.IsBottomPart(m_terrain.Terrain, x, y, z))
+                    continue;
+
+                int offset = Math.Abs(dx) + Math.Abs(dy) + Math.Abs(dz);
+                if (offset < bestDoorOffset)
+                {
+                    bestDoorOffset = offset;
+                    resolvedDoor = new Point3(x, y, z);
+                    doorFound = true;
+                }
+            }
+            if (!doorFound)
                 return false;
 
+            if (resolvedDoor.X != m_homeDoor.X || resolvedDoor.Y != m_homeDoor.Y || resolvedDoor.Z != m_homeDoor.Z)
+            {
+                m_homeDoor = resolvedDoor;
+                m_hasCachedHomeDoorInward = false;
+            }
+
+            int value = m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z);
             int rotation = DoorBlock.GetRotation(Terrain.ExtractData(value));
             Vector3 axis = (rotation & 1) == 0 ? Vector3.UnitZ : Vector3.UnitX;
             doorCenter = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f);
@@ -1373,8 +1404,11 @@ namespace Game
                         m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z))) + ").");
             }
 
-            Vector3 outsidePoint = doorCenter - inward * 1.10f;
-            Vector3 insidePoint = doorCenter + inward * 1.10f;
+            // ComponentBody.Position is at standing height, one block above the door's bottom cell.
+            // Targeting the raw door-cell Y made larger models stop below the threshold.
+            Vector3 doorwayPoint = doorCenter + Vector3.UnitY;
+            Vector3 outsidePoint = doorwayPoint - inward * 1.10f;
+            Vector3 insidePoint = doorwayPoint + inward * 1.10f;
             if (m_homeDoorRouteCachedApproachVariant != m_homeDoorApproachVariant)
             {
                 m_homeDoorRouteOutsideApproach = FindHomeDoorApproachPoint(doorCenter, inward, false);
@@ -1453,7 +1487,7 @@ namespace Game
 
             routeTarget = m_homeDoorRouteStage == 0
                 ? (entering ? outsideApproach : insideApproach)
-                : m_homeDoorRouteStage == 1 ? doorCenter
+                : m_homeDoorRouteStage == 1 ? doorwayPoint
                 : (entering ? insidePoint : outsidePoint);
             return true;
         }
@@ -1495,7 +1529,7 @@ namespace Game
             m_homeDoorRouteStage = 0;
             m_homeDoorApproachVariant = 0;
             m_homeDoorRouteCachedApproachVariant = -1;
-            m_homeDoorRouteFinalTarget = doorCenter - inward * 1.10f;
+            m_homeDoorRouteFinalTarget = doorCenter + Vector3.UnitY - inward * 1.10f;
             ResetHomeReturnProgress();
             return true;
         }
@@ -1513,7 +1547,7 @@ namespace Game
                 return false;
             }
 
-            Vector3 exitTarget = doorCenter - inward * 1.10f;
+            Vector3 exitTarget = doorCenter + Vector3.UnitY - inward * 1.10f;
             if (Vector3.Distance(m_body.Position, exitTarget) <= 0.70f)
             {
                 ReleaseHomeDoorPassage();
