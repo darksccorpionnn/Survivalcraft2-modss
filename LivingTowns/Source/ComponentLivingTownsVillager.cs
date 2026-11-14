@@ -83,6 +83,7 @@ namespace Game
         private bool m_sleepPhysicsSaved;
         private readonly List<Point3> m_autoOpenedDoors = new List<Point3>();
         private readonly List<FailedWorkPosition> m_failedWorkPositions = new List<FailedWorkPosition>();
+        private readonly List<FailedWorkPosition> m_failedObstacleDetours = new List<FailedWorkPosition>();
         private Point3 m_workTarget;
         private int m_workTask;
         private bool m_hasWorkTarget;
@@ -2443,29 +2444,51 @@ namespace Game
             // When the direct route stops making progress, briefly route to a nearby
             // clear standing cell. The normal job/home routine will resume its real
             // destination as soon as this side-step waypoint is reached.
+            bool forceNewObstacleDetour = false;
+            bool detourPathSearchPending = m_pathfinding.m_pathfindingResult?.IsInProgress == true;
             if (m_obstacleDetourActive)
             {
                 if (Vector3.DistanceSquared(m_body.Position, m_obstacleDetourTarget) <= 1.10f * 1.10f)
                 {
                     m_obstacleDetourActive = false;
-                    m_nextObstacleDetourTime = 0.35;
+                    m_nextObstacleDetourTime = 0.25;
+                }
+                else if (!detourPathSearchPending
+                    && (m_pathfinding.IsStuck || m_managedNoProgressTime >= 2.2))
+                {
+                    // A detour waypoint can itself be unreachable (tight corridors,
+                    // fences or uneven terrain). Blacklist it briefly and try another
+                    // point around the obstruction instead of retrying it forever.
+                    RejectObstacleDetour(m_obstacleDetourTarget, 12.0);
+                    m_pathfinding.Stop();
+                    m_obstacleDetourActive = false;
+                    m_nextObstacleDetourTime = 0.0;
+                    m_managedNoProgressTime = 0.20;
+                    m_hasManagedDestination = false;
+                    m_hasManagedProgressSample = false;
+                    forceNewObstacleDetour = true;
+                    Log.Warning("[LivingTowns] " + m_villagerName
+                        + " rejected an unreachable detour point and is searching another way around.");
                 }
                 else
                     destination = m_obstacleDetourTarget;
             }
-            else if (m_nextObstacleDetourTime <= 0.0 && m_managedNoProgressTime >= 0.20)
+
+            if (!m_obstacleDetourActive
+                && m_nextObstacleDetourTime <= 0.0
+                && (m_managedNoProgressTime >= 0.20 || forceNewObstacleDetour))
             {
                 if (TryChooseObstacleDetour(destination, out Vector3 detour))
                 {
                     m_obstacleDetourActive = true;
                     m_obstacleDetourTarget = detour;
-                    m_nextObstacleDetourTime = 2.0;
+                    m_nextObstacleDetourTime = 0.35;
                     destination = detour;
                     Log.Information("[LivingTowns] " + m_villagerName
-                        + " is taking a clear side route around an obstacle.");
+                        + " is taking a wider clear side route around an obstacle.");
                 }
                 else
-                    m_nextObstacleDetourTime = 1.5;
+                    m_nextObstacleDetourTime = 0.8;
             }
 
             Vector3? current = m_pathfinding.Destination;
@@ -2503,7 +2526,7 @@ namespace Game
 
             bool allowRandomRecovery = useRandomMovements
                 || (allowRandomRecoveryOnFailure && (stuck || stalled));
-            int pathBudget = Math.Max(maxPathfindingPositions, 700);
+            int pathBudget = Math.Max(maxPathfindingPositions, m_obstacleDetourActive ? 1800 : 700);
             m_pathfinding.SetDestination(destination, speed, range, pathBudget,
                 allowRandomRecovery, ignoreHeightDifference, raycastDestination, doNotAvoidBody);
             m_managedDestination = destination;
@@ -2533,9 +2556,9 @@ namespace Game
             int cz = Terrain.ToCell(m_body.Position.Z);
             int currentFloor = Terrain.ToCell(m_body.Position.Y) - 1;
 
-            // Sample complete rings around the villager. Side and diagonal cells let
-            // it step around corners instead of repeatedly pushing into the same wall.
-            for (int radius = 1; radius <= 3; radius++)
+            // Search a much wider six-block radius and allow two-block elevation
+            // changes. This helps with long walls, fences, house corners and uneven ground.
+            for (int radius = 1; radius <= 6; radius++)
             for (int dx = -radius; dx <= radius; dx++)
             for (int dz = -radius; dz <= radius; dz++)
             {
@@ -2543,14 +2566,15 @@ namespace Game
                     continue;
                 int x = cx + dx;
                 int z = cz + dz;
-                for (int floorY = Math.Max(1, currentFloor - 1); floorY <= Math.Min(250, currentFloor + 1); floorY++)
+                for (int floorY = Math.Max(1, currentFloor - 2); floorY <= Math.Min(250, currentFloor + 2); floorY++)
                 {
                     if (!IsValidStandingCell(x, floorY, z))
                         continue;
 
                     Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
-                    if (Vector3.DistanceSquared(candidate, m_body.Position) < 1.15f * 1.15f
-                        || Vector3.DistanceSquared(candidate, goal) < 1.0f)
+                    if (Vector3.DistanceSquared(candidate, m_body.Position) < 1.45f * 1.45f
+                        || Vector3.DistanceSquared(candidate, goal) < 1.0f
+                        || IsFailedObstacleDetour(x, floorY + 1, z))
                         continue;
 
                     int openNeighbors = 0;
@@ -2566,11 +2590,19 @@ namespace Game
                     Vector3 candidateDirection = candidate - m_body.Position;
                     candidateDirection.Y = 0f;
                     float sideStep = Math.Abs(candidateDirection.X * toGoal.Z - candidateDirection.Z * toGoal.X);
+                    float forwardProgress = candidateDirection.X * toGoal.X + candidateDirection.Z * toGoal.Z;
+                    if (forwardProgress < -2.0f)
+                        continue;
+
                     float progressPenalty = Vector3.DistanceSquared(candidate, goal);
-                    float travelPenalty = Vector3.DistanceSquared(candidate, m_body.Position) * 0.30f;
-                    float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 2.0f;
+                    float travelPenalty = Vector3.DistanceSquared(candidate, m_body.Position) * 0.22f;
+                    float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 2.8f;
+                    // Prefer open cells with a meaningful lateral offset, so the next
+                    // waypoint actually takes the villager around the wall instead of
+                    // sending it straight back into the blocked face.
                     float score = progressPenalty + travelPenalty + verticalPenalty
-                        + (8 - openNeighbors) * 0.45f - sideStep * 0.20f;
+                        + (8 - openNeighbors) * 0.65f - sideStep * 0.75f
+                        - Math.Max(0f, forwardProgress) * 0.20f;
 
                     if (!found || score < bestScore)
                     {
@@ -2653,6 +2685,50 @@ namespace Game
                 if (m_failedWorkPositions[i].RemainingSeconds <= 0.0)
                     m_failedWorkPositions.RemoveAt(i);
             }
+
+            for (int i = m_failedObstacleDetours.Count - 1; i >= 0; i--)
+            {
+                m_failedObstacleDetours[i].RemainingSeconds -= dt;
+                if (m_failedObstacleDetours[i].RemainingSeconds <= 0.0)
+                    m_failedObstacleDetours.RemoveAt(i);
+            }
+        }
+
+        private bool IsFailedObstacleDetour(int x, int y, int z)
+        {
+            for (int i = 0; i < m_failedObstacleDetours.Count; i++)
+            {
+                Point3 cell = m_failedObstacleDetours[i].Cell;
+                if (cell.X == x && cell.Y == y && cell.Z == z)
+                    return true;
+            }
+            return false;
+        }
+
+        private void RejectObstacleDetour(Vector3 position, double seconds)
+        {
+            Point3 cell = new Point3(
+                Terrain.ToCell(position.X),
+                Terrain.ToCell(position.Y),
+                Terrain.ToCell(position.Z));
+
+            for (int i = 0; i < m_failedObstacleDetours.Count; i++)
+            {
+                FailedWorkPosition failed = m_failedObstacleDetours[i];
+                if (failed.Cell.X == cell.X && failed.Cell.Y == cell.Y && failed.Cell.Z == cell.Z)
+                {
+                    failed.RemainingSeconds = Math.Max(failed.RemainingSeconds, seconds);
+                    return;
+                }
+            }
+
+            if (m_failedObstacleDetours.Count >= 32)
+                m_failedObstacleDetours.RemoveAt(0);
+            m_failedObstacleDetours.Add(new FailedWorkPosition
+            {
+                Cell = cell,
+                RemainingSeconds = seconds
+            });
         }
 
         private bool IsFailedWorkPosition(int x, int y, int z)
