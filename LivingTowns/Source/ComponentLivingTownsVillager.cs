@@ -134,6 +134,11 @@ namespace Game
         private bool m_homeDoorRouteEntering;
         private bool m_waitingForHomeDoorPassage;
         private int m_homeDoorApproachVariant;
+        private int m_homeDoorRouteCachedApproachVariant = -1;
+        private Vector3 m_homeDoorRouteOutsideApproach;
+        private Vector3 m_homeDoorRouteInsideApproach;
+        private bool m_hasCachedHomeDoorInward;
+        private Vector3 m_cachedHomeDoorInward;
         private int m_homeDoorRouteStage;
         private Vector3 m_homeDoorRouteFinalTarget;
         private bool m_isLeavingHome;
@@ -234,6 +239,8 @@ namespace Game
             m_bedAssignmentFailureTime = 0.0;
             m_sleepDoorRouteBypassed = false;
             m_homeDoorApproachVariant = 0;
+            m_homeDoorRouteCachedApproachVariant = -1;
+            m_hasCachedHomeDoorInward = false;
         }
 
         public void Update(float dt)
@@ -1292,6 +1299,12 @@ namespace Game
             int rotation = DoorBlock.GetRotation(Terrain.ExtractData(value));
             Vector3 axis = (rotation & 1) == 0 ? Vector3.UnitZ : Vector3.UnitX;
             doorCenter = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y, m_homeDoor.Z + 0.5f);
+            if (m_hasCachedHomeDoorInward)
+            {
+                inward = m_cachedHomeDoorInward;
+                return true;
+            }
+
             Vector3 bedPosition = m_hasBedCell
                 ? new Vector3(m_bedCell.X + 0.5f, m_bedCell.Y + 1f, m_bedCell.Z + 0.5f)
                 : m_fallbackRestPosition;
@@ -1299,9 +1312,18 @@ namespace Game
             if (Math.Abs(side) >= 0.45f)
             {
                 inward = side > 0f ? axis : -axis;
+                m_cachedHomeDoorInward = inward;
+                m_hasCachedHomeDoorInward = true;
                 return true;
             }
-            return TryInferHomeDoorInsideDirection(doorCenter, axis, out inward);
+
+            if (TryInferHomeDoorInsideDirection(doorCenter, axis, out inward))
+            {
+                m_cachedHomeDoorInward = inward;
+                m_hasCachedHomeDoorInward = true;
+                return true;
+            }
+            return false;
         }
 
         private string GetHomeDoorReservationKey()
@@ -1390,6 +1412,7 @@ namespace Game
                 m_homeDoorRouteEntering = entering;
                 m_homeDoorRouteStage = 0;
                 m_homeDoorApproachVariant = 0;
+                m_homeDoorRouteCachedApproachVariant = -1;
                 m_homeDoorRouteFinalTarget = finalTarget;
 
                 // Open a normal wooden door as soon as the return route is established.
@@ -1407,8 +1430,14 @@ namespace Game
 
             Vector3 outsidePoint = doorCenter - inward * 1.10f;
             Vector3 insidePoint = doorCenter + inward * 1.10f;
-            Vector3 outsideApproach = FindHomeDoorApproachPoint(doorCenter, inward, false);
-            Vector3 insideApproach = FindHomeDoorApproachPoint(doorCenter, inward, true);
+            if (m_homeDoorRouteCachedApproachVariant != m_homeDoorApproachVariant)
+            {
+                m_homeDoorRouteOutsideApproach = FindHomeDoorApproachPoint(doorCenter, inward, false);
+                m_homeDoorRouteInsideApproach = FindHomeDoorApproachPoint(doorCenter, inward, true);
+                m_homeDoorRouteCachedApproachVariant = m_homeDoorApproachVariant;
+            }
+            Vector3 outsideApproach = m_homeDoorRouteOutsideApproach;
+            Vector3 insideApproach = m_homeDoorRouteInsideApproach;
 
             // Only one villager may occupy the doorway route at a time. A second
             // villager waits safely away from the threshold until the passage is free.
@@ -1520,6 +1549,7 @@ namespace Game
             m_homeDoorRouteEntering = false;
             m_homeDoorRouteStage = 0;
             m_homeDoorApproachVariant = 0;
+            m_homeDoorRouteCachedApproachVariant = -1;
             m_homeDoorRouteFinalTarget = doorCenter - inward * 1.10f;
             ResetHomeReturnProgress();
             return true;
