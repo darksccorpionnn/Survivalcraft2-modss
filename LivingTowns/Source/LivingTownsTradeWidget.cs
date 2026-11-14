@@ -38,22 +38,29 @@ namespace Game
         }
 
         public Project Project => m_project;
-        public int SlotsCount => m_offers.Count;
+        public int SlotsCount => m_offers.Count * 2;
         public int VisibleSlotsCount { get => SlotsCount; set { } }
         public int ActiveSlotIndex { get => -1; set { } }
 
         public int GetSlotValue(int slotIndex)
         {
-            return slotIndex >= 0 && slotIndex < m_offers.Count ? m_offers[slotIndex].ResultValue : 0;
+            if (slotIndex < 0 || slotIndex >= SlotsCount)
+                return 0;
+
+            LivingTownsTradeOffer offer = m_offers[slotIndex / 2];
+            return slotIndex % 2 == 0 ? offer.CostValue : offer.ResultValue;
         }
 
         public int GetSlotCount(int slotIndex)
         {
-            if (slotIndex < 0 || slotIndex >= m_offers.Count)
+            if (slotIndex < 0 || slotIndex >= SlotsCount)
                 return 0;
 
-            LivingTownsTradeOffer offer = m_offers[slotIndex];
-            return offer.Stock > 0 ? offer.ResultCount : 0;
+            LivingTownsTradeOffer offer = m_offers[slotIndex / 2];
+            if (offer.Stock <= 0)
+                return 0;
+
+            return slotIndex % 2 == 0 ? offer.CostCount : offer.ResultCount;
         }
 
         // This inventory is display-only. Purchases are processed atomically by the villager.
@@ -129,11 +136,23 @@ namespace Game
                 LivingTownsTradeOffer offer = offers[i];
                 CanvasWidget tile = new CanvasWidget { Size = new Vector2(136f, 132f) };
 
-                LivingTownsTradeOfferSlotWidget resultSlot = new LivingTownsTradeOfferSlotWidget();
-                resultSlot.AssignInventorySlot(m_offerInventory, i);
-                resultSlot.TradeAction = () => CompleteTrade(i);
+                int offerIndex = i;
+                LivingTownsTradeOfferSlotWidget costSlot = new LivingTownsTradeOfferSlotWidget
+                {
+                    Size = new Vector2(64f, 64f)
+                };
+                costSlot.AssignInventorySlot(m_offerInventory, i * 2);
+                tile.Children.Add(costSlot);
+                CanvasWidget.SetPosition(costSlot, new Vector2(2f, 0f));
+
+                LivingTownsTradeOfferSlotWidget resultSlot = new LivingTownsTradeOfferSlotWidget
+                {
+                    Size = new Vector2(64f, 64f)
+                };
+                resultSlot.AssignInventorySlot(m_offerInventory, i * 2 + 1);
+                resultSlot.TradeAction = () => CompleteTrade(offerIndex);
                 tile.Children.Add(resultSlot);
-                CanvasWidget.SetPosition(resultSlot, new Vector2(32f, 0f));
+                CanvasWidget.SetPosition(resultSlot, new Vector2(70f, 0f));
 
                 LabelWidget costLabel = new LabelWidget
                 {
@@ -144,7 +163,7 @@ namespace Game
                     Color = Color.White
                 };
                 tile.Children.Add(costLabel);
-                CanvasWidget.SetPosition(costLabel, new Vector2(0f, 76f));
+                CanvasWidget.SetPosition(costLabel, new Vector2(0f, 72f));
 
                 m_offerLabels.Add(costLabel);
                 tradeGrid.Children.Add(tile);
@@ -197,7 +216,7 @@ namespace Game
         {
             string costName = GetItemName(offer.CostValue);
             return offer.Stock > 0
-                ? "Ver: " + offer.CostCount + " x " + costName + "\nStok: " + offer.Stock + " | Dokun: Takas"
+                ? "Stok: " + offer.Stock + " | Ürüne dokun: Takas"
                 : "Stok tükendi";
         }
 
