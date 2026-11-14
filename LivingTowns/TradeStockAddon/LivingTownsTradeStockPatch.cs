@@ -47,26 +47,36 @@ namespace Game
             PatchMethod(harmony, villagerType, "Load", nameof(LoadPostfix));
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
 
-            // The original LivingTowns hit prefix calls ComponentLivingTownsVillager.OpenTradeScreen().
-            // Patch that exact method: suppressing another Hit prefix is not sufficient because
-            // Harmony may still execute side-effecting prefixes installed by the base mod.
-            MethodInfo openTrade = AccessTools.Method(villagerType, "OpenTradeScreen",
-                new Type[] { typeof(ComponentPlayer) });
-            MethodInfo shopPrefix = typeof(LivingTownsTradeStockPatch).GetMethod(
-                nameof(OpenTradeScreenPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+            // The base mod's Hit prefix calls LivingTownsVillagerInteractionPatch.Prefix,
+            // which then opens the old chest transfer panel. Patch that exact callback body.
+            Type interactionType = AccessTools.TypeByName("Game.LivingTownsVillagerInteractionPatch");
+            MethodInfo legacyPrefix = interactionType == null ? null : AccessTools.Method(interactionType, "Prefix");
+            MethodInfo replacementPrefix = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(ReplaceLegacyInteractionPrefix), BindingFlags.Static | BindingFlags.NonPublic);
 
-            if (openTrade != null && shopPrefix != null)
+            if (legacyPrefix != null && replacementPrefix != null)
             {
-                HarmonyMethod openPatch = new HarmonyMethod(shopPrefix);
-                openPatch.priority = Priority.First;
-                harmony.Patch(openTrade, prefix: openPatch);
-                Log.Information("[LivingTowns Trade Shop] Replaced OpenTradeScreen directly; legacy free-transfer panel is blocked.");
+                HarmonyMethod replacement = new HarmonyMethod(replacementPrefix);
+                replacement.priority = Priority.First;
+                harmony.Patch(legacyPrefix, prefix: replacement);
+                Log.Information("[LivingTowns Trade Shop] Replaced LivingTownsVillagerInteractionPatch.Prefix directly.");
             }
             else
             {
-                Log.Error("[LivingTowns Trade Shop] Could not find OpenTradeScreen(ComponentPlayer); shop cannot replace the old panel.");
+                Log.Error("[LivingTowns Trade Shop] Could not locate the legacy villager interaction Prefix.");
             }
 
+            // Also block the legacy free-transfer helper as a hard safety barrier.
+            Type tradeWidgetType = AccessTools.TypeByName("Game.LivingTownsTradeWidget");
+            MethodInfo transferMethod = tradeWidgetType == null ? null
+                : AccessTools.Method(tradeWidgetType, "TransferTradeItem");
+            MethodInfo blockTransfer = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(BlockLegacyTransfer), BindingFlags.Static | BindingFlags.NonPublic);
+            if (transferMethod != null && blockTransfer != null)
+            {
+                harmony.Patch(transferMethod, prefix: new HarmonyMethod(blockTransfer));
+                Log.Information("[LivingTowns Trade Shop] Blocked legacy TransferTradeItem helper.");
+            }
             Log.Information("[LivingTowns Trade Shop] Currency shop patch installation completed.");
         }
 
@@ -128,30 +138,47 @@ namespace Game
             }
         }
 
-        private static bool OpenTradeScreenPrefix(object __instance, ComponentPlayer __0)
+        private static bool ReplaceLegacyInteractionPrefix(object[] __args)
         {
-            if (__instance == null || __0 == null)
-                return false;
+            ComponentMiner miner = null;
+            ComponentBody body = null;
 
-            try
+            if (__args != null)
             {
-                OpenShop(__instance, __0);
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[LivingTowns Trade Shop] Direct OpenTradeScreen interception failed: " + ex);
-                __0.ComponentGui?.DisplaySmallMessage(
-                    "Ticaret ekranı açılamadı. Ücretsiz aktarım kapalı.", Color.White, true, false);
+                for (int i = 0; i < __args.Length; i++)
+                {
+                    if (__args[i] is ComponentMiner foundMiner)
+                        miner = foundMiner;
+                    else if (__args[i] is ComponentBody foundBody)
+                        body = foundBody;
+                }
             }
 
-            // Always suppress the original chest-style free-transfer UI.
+            OpenShop(miner, body);
+            // Never execute the original callback which opens the free-transfer chest.
             return false;
         }
 
-        private static void OpenShop(object villager, ComponentPlayer player)
+        private static bool BlockLegacyTransfer()
         {
-            if (player?.ComponentGui == null || villager == null)
+            // The old UI's direct inventory transfer route is never allowed.
+            return false;
+        }
+
+        private static void OpenShop(ComponentMiner miner, ComponentBody componentBody)
+        {
+            if (miner?.ComponentPlayer == null || componentBody?.Entity == null)
                 return;
+
+            Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
+            if (villagerType == null)
+                return;
+
+            object villager = componentBody.Entity.FindComponent(villagerType, null, false);
+            if (villager == null)
+                return;
+
+            ComponentPlayer player = miner.ComponentPlayer;
             try
             {
                 SeedTradeInventory(villager);
@@ -159,7 +186,7 @@ namespace Game
                 if (stock == null)
                 {
                     player.ComponentGui?.DisplaySmallMessage(
-                        "Köylünün ticaret stoğu okunamadı.", Color.White, true, false);
+                        "Köylünün ticaret stoğu okunamadı. Ücretsiz aktarım kapalı.", Color.White, true, false);
                     return;
                 }
 
@@ -174,10 +201,8 @@ namespace Game
             {
                 Log.Warning("[LivingTowns Trade Shop] Could not open shop: " + ex);
                 player.ComponentGui?.DisplaySmallMessage(
-                    "Ticaret ekranı açılamadı. Hata günlüğünü kontrol et.", Color.White, true, false);
+                    "Ticaret ekranı açılamadı. Ücretsiz aktarım kapalı.", Color.White, true, false);
             }
-
-            // The original OpenTradeScreen is always suppressed by its Harmony prefix.
         }
 
         private static void HitPostfix(
