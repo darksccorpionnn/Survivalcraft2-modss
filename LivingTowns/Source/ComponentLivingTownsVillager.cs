@@ -750,6 +750,21 @@ namespace Game
             }
         }
 
+        private void TickJob()
+        {
+            switch (m_job)
+            {
+                case LivingTownsJob.Farmer: TickFarmer(); break;
+                case LivingTownsJob.Lumberjack: TickLumberjack(); break;
+                case LivingTownsJob.Guard: TickGuard(); break;
+                case LivingTownsJob.Miner: TickMiner(); break;
+                case LivingTownsJob.Blacksmith: TickBlacksmith(); break;
+                case LivingTownsJob.Merchant: TickMerchant(); break;
+                case LivingTownsJob.Healer: TickHealer(); break;
+                default: TickPatrol(2.5f, 5.0f); break;
+            }
+        }
+
         private bool EnsureAssignedBed(float dt)
         {
             if (!m_hasHomeDoor)
