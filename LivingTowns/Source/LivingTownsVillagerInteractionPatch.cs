@@ -19,7 +19,7 @@ namespace Game
             if (villager == null)
                 return true;
 
-            villager.ShowJobMenu(__instance.ComponentPlayer);
+            villager.OpenTradeScreen(__instance.ComponentPlayer);
             return false;
         }
     }
