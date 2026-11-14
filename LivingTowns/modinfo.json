@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.49",
+  "Version": "0.4.50",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers use adaptive side-step routes around obstacles, search wider for home doors, choose safe approach cells, and return home from farther away.",
+  "Description": "Villagers react to obstacles after 0.20 seconds with adaptive side-step routes, search wider for home doors, choose safe approach cells, and return home from farther away.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
