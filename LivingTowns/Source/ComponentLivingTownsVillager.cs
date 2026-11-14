@@ -385,19 +385,14 @@ namespace Game
         {
             if (player == null)
                 return;
+
             List<string> options = new List<string>
             {
-                "Meslek: İşsiz (ev çevresinde dolaş)",
-                "Meslek: Çiftçi (otomatik tarım)",
-                "Meslek: Oduncu (ağaç kes)",
-                "Meslek: Muhafız (devriye gez)",
-                "Meslek: Madenci (cevher çıkar)",
-                "Meslek: Demirci (fırın yanında çalış)",
-                "Meslek: Tüccar (köylülerle buluş)",
                 "Eldeki eşyayı NPC'ye ver"
             };
+
             DialogsManager.ShowDialog(null, new ListSelectionDialog(
-                (string.IsNullOrEmpty(m_villagerName) ? "Köylü" : m_villagerName) + " | Görevler",
+                (string.IsNullOrEmpty(m_villagerName) ? "Köylü" : m_villagerName) + " | Etkileşim",
                 options,
                 60f,
                 item => item == null ? string.Empty : item.ToString(),
@@ -409,77 +404,13 @@ namespace Game
         {
             try
             {
-                switch ((choice ?? string.Empty).Trim())
-                {
-                    case "Meslek: İşsiz (ev çevresinde dolaş)": SetJob(LivingTownsJob.Unemployed, player); break;
-                    case "Meslek: Çiftçi (otomatik tarım)": SetJob(LivingTownsJob.Farmer, player); break;
-                    case "Meslek: Oduncu (ağaç kes)": SetJob(LivingTownsJob.Lumberjack, player); break;
-                    case "Meslek: Muhafız (devriye gez)": SetJob(LivingTownsJob.Guard, player); break;
-                    case "Meslek: Madenci (cevher çıkar)": SetJob(LivingTownsJob.Miner, player); break;
-                    case "Meslek: Demirci (fırın yanında çalış)": SetJob(LivingTownsJob.Blacksmith, player); break;
-                    case "Meslek: Tüccar (köylülerle buluş)": SetJob(LivingTownsJob.Merchant, player); break;
-                    case "Eldeki eşyayı NPC'ye ver": GiveHeldItems(player); break;
-                }
+                if (string.Equals((choice ?? string.Empty).Trim(), "Eldeki eşyayı NPC'ye ver", StringComparison.Ordinal))
+                    GiveHeldItems(player);
             }
             catch (Exception ex)
             {
-                Log.Error("[LivingTowns] Villager job menu action failed safely: " + ex);
-                player?.ComponentGui?.DisplaySmallMessage("Meslek atanırken hata oluştu; ayrıntı günlüğe yazıldı.", Color.White, true, false);
-            }
-        }
-
-        private void SetJob(LivingTownsJob job, ComponentPlayer player)
-        {
-            m_job = job;
-            m_hasWorkTarget = false;
-            m_hasWorkApproach = false;
-            m_workApproachRetryCount = 0;
-            m_workTask = 0;
-            m_nextWorkSearchTime = 0.0;
-            m_hasLumberTreeLock = false;
-            m_isReturningForStorage = false;
-            m_lumberjackTreesSinceStorage = 0;
-            m_lumberjackWorkTimeSinceStorage = 0.0;
-            ResetLumberSearch();
-            ResetWorkRouteProgress();
-            ResetHomeReturnProgress();
-            m_patrolPause = 0.0;
-            EndConversation(false);
-            m_chatCooldown = 12.0;
-            m_nextThinkTime = 0.0;
-            m_hasManagedDestination = false;
-            m_destinationRetryCooldown = 0.0;
-            StopManagedPath();
-
-            if (job == LivingTownsJob.Farmer)
-            {
-                try
-                {
-                    EnsureFarmerKit();
-                }
-                catch (Exception ex)
-                {
-                    Log.Error("[LivingTowns] Farmer job assigned, but starter kit failed safely: " + ex);
-                }
-            }
-
-            string message = "NPC görevi: " + JobName(job);
-            if (job == LivingTownsJob.Farmer)
-                message += " — demir tırmık ve çavdar tohumu verildi.";
-            player.ComponentGui?.DisplaySmallMessage(message, Color.White, true, false);
-        }
-
-        private static string JobName(LivingTownsJob job)
-        {
-            switch (job)
-            {
-                case LivingTownsJob.Farmer: return "Çiftçi";
-                case LivingTownsJob.Lumberjack: return "Oduncu";
-                case LivingTownsJob.Guard: return "Muhafız";
-                case LivingTownsJob.Miner: return "Madenci";
-                case LivingTownsJob.Blacksmith: return "Demirci";
-                case LivingTownsJob.Merchant: return "Tüccar";
-                default: return "İşsiz";
+                Log.Error("[LivingTowns] Villager item-transfer menu action failed safely: " + ex);
+                player?.ComponentGui?.DisplaySmallMessage("Eşya aktarılırken hata oluştu; ayrıntı günlüğe yazıldı.", Color.White, true, false);
             }
         }
 
