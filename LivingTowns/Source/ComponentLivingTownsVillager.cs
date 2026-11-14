@@ -2393,7 +2393,7 @@ namespace Game
                 else
                     destination = m_obstacleDetourTarget;
             }
-            else if (m_nextObstacleDetourTime <= 0.0 && m_managedNoProgressTime >= 1.35)
+            else if (m_nextObstacleDetourTime <= 0.0 && m_managedNoProgressTime >= 0.20)
             {
                 if (TryChooseObstacleDetour(destination, out Vector3 detour))
                 {
