@@ -79,6 +79,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LivingTowns-0.4.61-ProfessionCurrencyShop
-          path: LivingTowns-0.4.60-TradeStockAddon.scmod
+          path: LivingTowns-0.4.61-ProfessionCurrencyShop.scmod
           if-no-files-found: error
           retention-days: 14
