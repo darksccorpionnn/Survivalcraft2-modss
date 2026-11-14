@@ -1,4 +1,4 @@
-# Living Towns 0.4.46
+# Living Towns 0.4.53
 
 - Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
 - Each villager is assigned a unique home door and named wall-sign sleeping position.
@@ -15,3 +15,12 @@
 Build validation confirms compilation and package integrity. Actual Android in-game behavior still requires testing in the user's world.
 
 - Version 0.4.46 resolves the assigned door bottom-half coordinate, aligns entry/exit waypoints to villager standing height, and fails safely instead of routing directly through a wall when the home door cannot be resolved.
+
+
+## Version 0.4.53
+
+- Profession detection now matches custom model route names case-insensitively across folder/file names, common aliases, file extensions and either slash direction.
+- If a custom model publishes its route after the villager component loads, the controller retries role detection once per second until a profession is recognized.
+- Farmer, lumberjack, guard, miner, blacksmith, merchant and healer role IDs are mapped to their existing AI routines. Healer currently patrols; guard currently patrols and does not yet have combat AI.
+- The shared villager day/night, home-return and sleep routines remain unchanged.
+- This source repository currently contains C# source and text notes, not the new GLB/XDB model templates. The workflow compiles and uploads the assembly only; model-template packaging and in-game behavior still need confirmation in the target world.
