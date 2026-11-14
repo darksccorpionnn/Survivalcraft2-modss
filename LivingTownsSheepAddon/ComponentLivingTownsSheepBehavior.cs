@@ -31,6 +31,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private SubsystemTime m_time;
     private SubsystemAudio m_audio;
     private bool m_fleeBleatPlayed;
+    private SheepMode m_appliedMode;
+    private Vector3? m_lastOwnedDestination;
     private ComponentPlayer m_target;
     private ComponentPlayer m_fleeTarget;
     private SheepMode m_mode;
@@ -65,14 +67,32 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
     public void Update(float dt)
     {
-        if (m_creature == null || m_creature.ComponentHealth.Health <= 0f)
+        if (m_creature == null)
             return;
 
         RefreshTargets();
+        if (m_creature.ComponentHealth.Health <= 0f)
+        {
+            StopOwnedPath();
+            return;
+        }
+
         if (m_mode != SheepMode.Flee)
             m_fleeBleatPlayed = false;
+
         if (!IsActive)
+        {
+            StopOwnedPath();
+            m_appliedMode = SheepMode.None;
             return;
+        }
+
+        if (m_mode != m_appliedMode)
+        {
+            StopOwnedPath();
+            m_nextPathUpdate = 0;
+            m_appliedMode = m_mode;
+        }
 
         switch (m_mode)
         {
@@ -145,6 +165,19 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         return contents == GrassBlock.Index || contents == TallGrassBlock.Index;
     }
 
+
+    private void StopOwnedPath()
+    {
+        if (!m_lastOwnedDestination.HasValue)
+            return;
+
+        if (m_pathfinding.Destination.HasValue &&
+            Vector3.DistanceSquared(m_pathfinding.Destination.Value, m_lastOwnedDestination.Value) < 0.04f)
+            m_pathfinding.Stop();
+
+        m_lastOwnedDestination = null;
+    }
+
     private void UpdateFollow()
     {
         if (m_target == null)
@@ -156,7 +189,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
         if (distanceSquared <= FollowStopDistance * FollowStopDistance)
         {
-            m_pathfinding.Stop();
+            StopOwnedPath();
             return;
         }
 
@@ -166,6 +199,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             m_pathfinding.SetDestination(targetPosition, FollowSpeed, 1.2f, 200,
                 useRandomMovements: true, ignoreHeightDifference: false,
                 raycastDestination: true, doNotAvoidBody: m_target.ComponentBody);
+            m_lastOwnedDestination = targetPosition;
         }
     }
 
@@ -196,6 +230,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             m_pathfinding.SetDestination(destination, FleeSpeed, 1.2f, 200,
                 useRandomMovements: false, ignoreHeightDifference: true,
                 raycastDestination: false, doNotAvoidBody: m_fleeTarget.ComponentBody);
+            m_lastOwnedDestination = destination;
         }
     }
 }
