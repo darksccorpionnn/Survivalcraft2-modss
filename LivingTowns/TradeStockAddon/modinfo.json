@@ -7,9 +7,11 @@
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10001,
   "NonPersistentMod": false,
-  "GameplayImpactLevel": "Major",
+  "GameplayImpactLevel": "Assist",
   "Link": "https://github.com/darksccorpionnn/Survivalcraft2-modss",
   "Author": "darksccorpionnn",
   "PackageName": "darksccorpionnn.LivingTownsTradeStockAddon",
-  "Dependencies": {}
+  "Dependencies": {
+    "darksccorpionnn.LivingTowns": "0.4.59"
+  }
 }
