@@ -990,7 +990,7 @@ namespace Game
             int value = m_terrain.Terrain.GetCellValue(x, y, z);
             int content = Terrain.ExtractContents(value);
             if (content <= 0 || content >= BlocksManager.Blocks.Length
-                || !(BlocksManager.Blocks[content] is AttachedSignBlock))
+                || !IsSupportedWorkSignBlock(content))
                 return false;
 
             Point3 signCell = new Point3(x, y, z);
@@ -1010,7 +1010,7 @@ namespace Game
             int value = m_terrain.Terrain.GetCellValue(signCell.X, signCell.Y, signCell.Z);
             int content = Terrain.ExtractContents(value);
             if (content <= 0 || content >= BlocksManager.Blocks.Length
-                || !(BlocksManager.Blocks[content] is AttachedSignBlock))
+                || !IsSupportedWorkSignBlock(content))
                 return false;
             return IsWorkLocationSign(m_signBehavior.GetSignData(signCell));
         }
@@ -1033,6 +1033,19 @@ namespace Game
             return hasName && hasWorkMarker;
         }
 
+        private bool IsSupportedWorkSignBlock(int content)
+        {
+            if (content <= 0 || content >= BlocksManager.Blocks.Length)
+                return false;
+
+            // Attached wall signs expose a face. Ground-placed signs use the
+            // regular SignBlock implementation in the supported game API.
+            string typeName = BlocksManager.Blocks[content]?.GetType().Name ?? string.Empty;
+            return BlocksManager.Blocks[content] is AttachedSignBlock
+                || string.Equals(typeName, "SignBlock", StringComparison.OrdinalIgnoreCase)
+                || typeName.IndexOf("StandingSignBlock", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private bool TryGetWorkSignApproach(Point3 signCell, out Vector3 approach)
         {
             approach = Vector3.Zero;
@@ -1040,33 +1053,51 @@ namespace Game
                 return false;
 
             int signValue = m_terrain.Terrain.GetCellValue(signCell.X, signCell.Y, signCell.Z);
-            Point3 outward = CellFace.FaceToPoint3(AttachedSignBlock.GetFace(Terrain.ExtractData(signValue)));
-            if (outward.X == 0 && outward.Z == 0)
+            bool attached = BlocksManager.Blocks[Terrain.ExtractContents(signValue)] is AttachedSignBlock;
+            Point3 outward = attached
+                ? CellFace.FaceToPoint3(AttachedSignBlock.GetFace(Terrain.ExtractData(signValue)))
+                : new Point3(0, 0, 0);
+            if (attached && outward.X == 0 && outward.Z == 0)
                 return false;
 
-            Point3 tangent = new Point3(-outward.Z, 0, outward.X);
             bool found = false;
             float bestScore = float.MaxValue;
-            for (int distance = 1; distance <= 4; distance++)
-            for (int lateral = -3; lateral <= 3; lateral++)
-            for (int floorY = Math.Max(1, signCell.Y - 4); floorY <= Math.Min(250, signCell.Y + 1); floorY++)
-            {
-                int x = signCell.X + outward.X * distance + tangent.X * lateral;
-                int z = signCell.Z + outward.Z * distance + tangent.Z * lateral;
-                if (!IsValidStandingCell(x, floorY, z)
-                    || IsFailedWorkPosition(x, floorY + 1, z))
-                    continue;
-
-                Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
-                float score = Vector3.DistanceSquared(m_body.Position, candidate)
-                    + Math.Abs(lateral) * 0.75f
-                    + Math.Abs(floorY - (signCell.Y - 2)) * 1.5f
-                    + (distance - 1) * 0.8f;
-                if (!found || score < bestScore)
+            // Wall signs have a known front. A standing sign can be approached
+            // from any horizontal side, so test all four cardinal directions.
+            Point3[] directions = attached
+                ? new Point3[] { outward }
+                : new Point3[]
                 {
-                    found = true;
-                    bestScore = score;
-                    approach = candidate;
+                    new Point3(1, 0, 0), new Point3(-1, 0, 0),
+                    new Point3(0, 0, 1), new Point3(0, 0, -1)
+                };
+
+            foreach (Point3 direction in directions)
+            {
+                Point3 tangent = new Point3(-direction.Z, 0, direction.X);
+                int maxDistance = attached ? 4 : 2;
+                int maxLateral = attached ? 3 : 1;
+                for (int distance = 1; distance <= maxDistance; distance++)
+                for (int lateral = -maxLateral; lateral <= maxLateral; lateral++)
+                for (int floorY = Math.Max(1, signCell.Y - 3); floorY <= Math.Min(250, signCell.Y + 1); floorY++)
+                {
+                    int x = signCell.X + direction.X * distance + tangent.X * lateral;
+                    int z = signCell.Z + direction.Z * distance + tangent.Z * lateral;
+                    if (!IsValidStandingCell(x, floorY, z)
+                        || IsFailedWorkPosition(x, floorY + 1, z))
+                        continue;
+
+                    Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                    float score = Vector3.DistanceSquared(m_body.Position, candidate)
+                        + Math.Abs(lateral) * 0.75f
+                        + Math.Abs(floorY - (signCell.Y - 1)) * 1.5f
+                        + (distance - 1) * 0.8f;
+                    if (!found || score < bestScore)
+                    {
+                        found = true;
+                        bestScore = score;
+                        approach = candidate;
+                    }
                 }
             }
             return found;
