@@ -963,8 +963,31 @@ namespace Game
             float dz = m_body.Position.Z - target.Z;
             // Different villager models can have slightly different body origins.
             // Judge bed arrival in the horizontal plane while keeping a vertical safety bound.
-            bool reached = dx * dx + dz * dz <= 0.90f * 0.90f
+            // The four profession GLBs have a slightly larger visual/approach footprint
+            // than the original villagers. Their pathfinder can stop just outside the
+            // old 0.90-block threshold beside the assigned bed and keep turning forever.
+            // Accept a safe, nearby final position for these models, then settle them
+            // onto the already-validated personal sleep cell.
+            bool expandedSleepArrival = m_job == LivingTownsJob.Blacksmith
+                || m_job == LivingTownsJob.Merchant
+                || m_job == LivingTownsJob.Healer
+                || m_job == LivingTownsJob.Guard;
+            float sleepArrivalRadius = expandedSleepArrival ? 1.45f : 0.90f;
+            bool reached = dx * dx + dz * dz <= sleepArrivalRadius * sleepArrivalRadius
                 && Math.Abs(m_body.Position.Y - target.Y) <= 1.75f;
+
+            // If one of the new models is already indoors but cannot close the final
+            // few steps because of bed/furniture collision, stop the endless approach
+            // after a short no-progress period. Never bypass an active doorway crossing.
+            if (!reached && expandedSleepArrival && !m_homeDoorRouteActive
+                && m_homeReturnNoProgressTime >= 2.0
+                && dx * dx + dz * dz <= 1.90f * 1.90f
+                && Math.Abs(m_body.Position.Y - target.Y) <= 1.75f)
+            {
+                reached = true;
+                Log.Warning("[LivingTowns] " + m_villagerName
+                    + " settled at its assigned bed after a blocked final approach.");
+            }
             if (reached)
             {
                 ReleaseHomeDoorPassage();
