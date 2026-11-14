@@ -153,7 +153,7 @@ namespace Game
         private const double LumberjackMaxWorkSecondsPerTrip = 150.0;
         private const float LumberjackStorageReturnDistance = 18f;
         private const float LumberjackMaxApproachDistanceFromHome = 16.5f;
-        private const int HomeReturnPathfindingPositions = 14000;
+        private const int HomeReturnPathfindingPositions = 30000;
         private const int LumberjackWorkPathfindingPositions = 10000;
         private const int LumberjackTreeMaxHeight = 25;
         private const int LumberjackScanColumnsPerUpdate = 900;
@@ -1235,6 +1235,42 @@ namespace Game
             return found ? best : ideal;
         }
 
+        private bool TryFindDoorSearchApproach(out Vector3 approach)
+        {
+            approach = Vector3.Zero;
+            if (m_terrain == null || m_body == null || !m_hasHomeDoor)
+                return false;
+
+            bool found = false;
+            float bestScore = float.MaxValue;
+            // Search reachable standing cells around the registered entrance.
+            // This avoids asking the pathfinder to stand inside a wall or door block.
+            for (int radius = 2; radius <= 5; radius++)
+            for (int dx = -radius; dx <= radius; dx++)
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                    continue;
+                int x = m_homeDoor.X + dx;
+                int z = m_homeDoor.Z + dz;
+                for (int floorY = Math.Max(1, m_homeDoor.Y - 2); floorY <= Math.Min(250, m_homeDoor.Y + 1); floorY++)
+                {
+                    if (!IsValidStandingCell(x, floorY, z))
+                        continue;
+                    Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                    float score = Vector3.DistanceSquared(m_body.Position, candidate)
+                        + Vector3.DistanceSquared(candidate, new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y + 1f, m_homeDoor.Z + 0.5f)) * 0.20f;
+                    if (!found || score < bestScore)
+                    {
+                        found = true;
+                        bestScore = score;
+                        approach = candidate;
+                    }
+                }
+            }
+            return found;
+        }
+
         private bool TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward)
         {
             doorCenter = Vector3.Zero;
@@ -1248,12 +1284,13 @@ namespace Game
             Point3 resolvedDoor = m_homeDoor;
             bool doorFound = false;
             int bestDoorOffset = int.MaxValue;
-            // Home-door assignments can be stored on the upper half or one cell
-            // beside the actual door. Search a wider local volume so villagers do not
-            // give up on a valid entrance because of a slightly stale coordinate.
-            for (int dx = -3; dx <= 3; dx++)
-            for (int dy = -2; dy <= 2; dy++)
-            for (int dz = -3; dz <= 3; dz++)
+            // Home-door assignments may be several blocks off after house edits
+            // or old saves. Search a broad 15x7x15 volume around the registered point.
+            // Keep the nearest real bottom-half door so a neighboring house is less
+            // likely to be selected.
+            for (int dx = -7; dx <= 7; dx++)
+            for (int dy = -3; dy <= 3; dy++)
+            for (int dz = -7; dz <= 7; dz++)
             {
                 int x = m_homeDoor.X + dx;
                 int y = m_homeDoor.Y + dy;
@@ -1384,7 +1421,13 @@ namespace Game
                 // that silently converts a failed door lookup into a permanent freeze.
                 // Keep moving toward the registered doorway while the wider scan retries.
                 m_waitingForHomeDoorPassage = false;
-                routeTarget = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y + 1f, m_homeDoor.Z + 0.5f);
+                // Never path to the registered door cell itself when its geometry
+                // cannot be resolved: that cell may now be a wall. Choose a verified
+                // two-block-high standing cell beside the entrance instead.
+                if (TryFindDoorSearchApproach(out Vector3 searchApproach))
+                    routeTarget = searchApproach;
+                else
+                    routeTarget = new Vector3(m_body.Position.X, m_body.Position.Y, m_body.Position.Z);
                 return true;
             }
 
@@ -3356,7 +3399,7 @@ namespace Game
 
             // Native WalkAroundBehavior samples many positions and scores them.
             // Do the same here, but reject holes, walls and cells without headroom.
-            for (int attempt = 0; attempt < 24; attempt++)
+            for (int attempt = 0; attempt < 40; attempt++)
             {
                 float angle = (float)(s_random.NextDouble() * Math.PI * 2.0);
                 float radius = minRadius + (float)s_random.NextDouble() * (maxRadius - minRadius);
@@ -3381,7 +3424,7 @@ namespace Game
                 SetManagedDestination(destination, 2.2f, 1.1f, 900, true, false, false, null);
             else
                 StopManagedPath();
-            m_patrolPause = 1.0 + s_random.NextDouble() * 1.5;
+            m_patrolPause = 0.25 + s_random.NextDouble() * 0.65;
         }
 
         private void TickBlacksmith()
