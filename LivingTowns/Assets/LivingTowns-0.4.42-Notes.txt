@@ -1,0 +1,12 @@
+Living Towns 0.4.42 – Lumberjack Home Return and Chest Storage
+
+- Reduced the lumberjack's tree search radius from 100 to 32 blocks around its assigned home.
+- Added a controlled work cycle: the lumberjack returns home after two completed trees, ten transferable inventory items, reaching the home-distance limit, or seven minutes of work.
+- The return uses the assigned bed and existing doorway reservation/waypoint route, then leaves through the home door and resumes the job.
+- Fixed chest storage filtering so blocks that merely require a tool to harvest are not mistakenly treated as tools.
+- Chest discovery now prefers the villager's own name sign, searches a wider area, and falls back to the assigned home door if a sign cannot be resolved.
+- Chest insertion now uses the game's inventory allocator and removes only the quantity successfully accepted by the chest.
+- Added error logging for storage failures and reduced repeated full-radius scans when no tree is found.
+
+Build target: Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
+Android in-game behavior still requires confirmation in the user's world.

@@ -88,6 +88,9 @@ namespace Game
         private bool m_hasWorkApproach;
         private int m_workApproachRetryCount;
         private bool m_hasLumberTreeLock;
+        private bool m_isReturningForStorage;
+        private int m_lumberjackTreesSinceStorage;
+        private double m_lumberjackWorkTimeSinceStorage;
         private int m_lumberTreeX;
         private int m_lumberTreeZ;
         private int m_lumberTreeBaseY;
@@ -138,7 +141,11 @@ namespace Game
         private const float WorkMoveSpeed = 2.2f;
         private const int FarmerWorkRadius = 60;
         private const int FarmCellsPerScan = 512;
-        private const int LumberjackHomeRadius = 100;
+        private const int LumberjackHomeRadius = 32;
+        private const int LumberjackTreesPerStorageTrip = 2;
+        private const int LumberjackDepositItemsPerStorageTrip = 10;
+        private const double LumberjackMaxWorkSecondsPerTrip = 420.0;
+        private const float LumberjackStorageReturnDistance = 24f;
         private const int LumberjackTreeMaxHeight = 25;
         private const int LumberjackScanColumnsPerUpdate = 900;
 
@@ -209,6 +216,9 @@ namespace Game
         public void SetHomeDoor(int x, int y, int z)
         {
             ReleaseHomeDoorPassage();
+            m_isReturningForStorage = false;
+            m_lumberjackTreesSinceStorage = 0;
+            m_lumberjackWorkTimeSinceStorage = 0.0;
             m_homeDoor = new Point3(x, y, z);
             m_hasHomeDoor = true;
             m_hasBedCell = false;
@@ -272,6 +282,9 @@ namespace Game
                     m_hasFallbackRestPosition = false;
                     m_nextFallbackRestSearchTime = 0.0;
                     m_hasLumberTreeLock = false;
+                    m_isReturningForStorage = false;
+                    m_lumberjackTreesSinceStorage = 0;
+                    m_lumberjackWorkTimeSinceStorage = 0.0;
                     ResetLumberSearch();
                     ResetHomeReturnProgress();
                     Log.Information("[LivingTowns] Night routine started; work movement stopped for villager.");
@@ -293,6 +306,7 @@ namespace Game
                     m_workTask = 0;
                     m_nextWorkSearchTime = 0.0;
                     m_hasLumberTreeLock = false;
+                    m_isReturningForStorage = false;
                     ResetLumberSearch();
                     StopManagedPath();
                     ReleaseHomeDoorPassage();
@@ -411,6 +425,9 @@ namespace Game
             m_workTask = 0;
             m_nextWorkSearchTime = 0.0;
             m_hasLumberTreeLock = false;
+            m_isReturningForStorage = false;
+            m_lumberjackTreesSinceStorage = 0;
+            m_lumberjackWorkTimeSinceStorage = 0.0;
             ResetLumberSearch();
             ResetWorkRouteProgress();
             ResetHomeReturnProgress();
@@ -950,6 +967,17 @@ namespace Game
                     }
                     m_body.Velocity = Vector3.Zero;
                     SetSleepingAnimation(false);
+
+                    if (m_isReturningForStorage)
+                    {
+                        m_isReturningForStorage = false;
+                        m_lumberjackTreesSinceStorage = 0;
+                        m_lumberjackWorkTimeSinceStorage = 0.0;
+                        m_nextPersonalChestDepositTime = 0.0;
+                        m_isLeavingHome = TryBeginHomeExit();
+                        Log.Information("[LivingTowns] " + m_villagerName
+                            + " stored its collected items and is resuming the lumberjack shift.");
+                    }
                 }
             }
             else
@@ -996,41 +1024,48 @@ namespace Game
 
         private ComponentChest FindPersonalChest()
         {
-            if (m_terrain == null)
+            if (m_terrain == null || !m_hasHomeDoor)
                 return null;
 
-            if (!m_hasNamedSignCell)
+            // Prefer this villager's own name sign. If the sign is temporarily
+            // unavailable (for example after loading a chunk), still search near
+            // its assigned home door instead of giving up on storage.
+            if (!m_hasNamedSignCell && m_nextNamedSignLookupTime <= 0.0)
             {
-                if (m_nextNamedSignLookupTime > 0.0)
-                    return null;
                 m_nextNamedSignLookupTime = 10.0;
-                if (!TryFindNamedSignSleepPosition(out Point3 signCell, out Point3 ignoredFloor))
-                    return null;
-                m_namedSignCell = signCell;
-                m_hasNamedSignCell = true;
+                if (TryFindNamedSignSleepPosition(out Point3 signCell, out Point3 ignoredFloor))
+                {
+                    m_namedSignCell = signCell;
+                    m_hasNamedSignCell = true;
+                }
             }
+
+            Point3 anchor = m_hasNamedSignCell ? m_namedSignCell : m_homeDoor;
+            int horizontalRange = m_hasNamedSignCell ? 10 : 8;
+            int verticalRange = m_hasNamedSignCell ? 6 : 5;
+            int maxDistanceSquared = horizontalRange * horizontalRange;
 
             ComponentChest bestChest = null;
             float bestScore = float.MaxValue;
 
-            // Sign facing varies with house construction. Search both sides and
-            // select the closest actual chest to this villager's own named sign.
+            // Sign orientation varies with house construction. Search around both
+            // sides of the sign and retain the nearest real chest block entity.
             foreach (Entity entity in Project.Entities)
             {
                 if (entity == null)
                     continue;
+
                 ComponentChest chest = entity.FindComponent<ComponentChest>();
                 ComponentBlockEntity blockEntity = entity.FindComponent<ComponentBlockEntity>();
                 if (chest == null || blockEntity == null)
                     continue;
 
                 Point3 cell = blockEntity.Coordinates;
-                int dx = cell.X - m_namedSignCell.X;
-                int dy = cell.Y - m_namedSignCell.Y;
-                int dz = cell.Z - m_namedSignCell.Z;
-                if (Math.Abs(dx) > 6 || Math.Abs(dz) > 6 || Math.Abs(dy) > 4)
-                    continue;
-                if (dx * dx + dz * dz > 36)
+                int dx = cell.X - anchor.X;
+                int dy = cell.Y - anchor.Y;
+                int dz = cell.Z - anchor.Z;
+                if (Math.Abs(dx) > horizontalRange || Math.Abs(dz) > horizontalRange
+                    || Math.Abs(dy) > verticalRange || dx * dx + dz * dz > maxDistanceSquared)
                     continue;
 
                 int value = m_terrain.Terrain.GetCellValue(cell.X, cell.Y, cell.Z);
@@ -1061,8 +1096,7 @@ namespace Game
             string category = block.GetCategory(value) ?? string.Empty;
 
             // Keep work tools and farmer supplies in the villager's inventory.
-            if (block.GetToolLevel(value) > 0
-                || category.IndexOf("Tool", StringComparison.OrdinalIgnoreCase) >= 0
+            if (category.IndexOf("Tool", StringComparison.OrdinalIgnoreCase) >= 0
                 || category.IndexOf("Weapon", StringComparison.OrdinalIgnoreCase) >= 0
                 || typeName.IndexOf("Seed", StringComparison.OrdinalIgnoreCase) >= 0
                 || typeName.IndexOf("Axe", StringComparison.OrdinalIgnoreCase) >= 0
@@ -1095,51 +1129,65 @@ namespace Game
                 return;
 
             m_nextPersonalChestDepositTime = 4.0;
-            ComponentChest chest = FindPersonalChest();
-            if (chest == null)
+            try
             {
-                if (!m_personalChestMissingWarningShown)
+                ComponentChest chest = FindPersonalChest();
+                if (chest == null)
                 {
-                    Log.Warning("[LivingTowns] No personal chest found near the name sign for "
-                        + m_villagerName + "; collected items remain in the villager inventory.");
-                    m_personalChestMissingWarningShown = true;
+                    if (!m_personalChestMissingWarningShown)
+                    {
+                        Log.Warning("[LivingTowns] No personal chest found near the home/sign for "
+                            + m_villagerName + "; collected items remain in the villager inventory.");
+                        m_personalChestMissingWarningShown = true;
+                    }
+                    return;
                 }
-                return;
-            }
 
-            m_personalChestMissingWarningShown = false;
-            int movedItems = 0;
+                m_personalChestMissingWarningShown = false;
+                int movedItems = 0;
+                for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
+                {
+                    int value = m_inventory.GetSlotValue(i);
+                    int count = m_inventory.GetSlotCount(i);
+                    if (value == 0 || count <= 0 || IsPersonalChestProtectedItem(value))
+                        continue;
+
+                    // AcquireItems handles matching stacks and empty slots. Remove
+                    // from the villager only after the chest accepted those items.
+                    int remainder = ComponentInventoryBase.AcquireItems(chest, value, count);
+                    int inserted = count - remainder;
+                    if (inserted > 0)
+                        movedItems += m_inventory.RemoveSlotItems(i, inserted);
+                }
+
+                if (movedItems > 0)
+                    Log.Information("[LivingTowns] " + m_villagerName
+                        + " deposited " + movedItems + " collected items into its personal chest.");
+                else
+                    Log.Information("[LivingTowns] " + m_villagerName
+                        + " checked its personal chest; no transferable items or free chest slots were available.");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[LivingTowns] Personal chest deposit failed for "
+                    + m_villagerName + ": " + ex);
+            }
+        }
+
+        private int CountDepositableItems()
+        {
+            if (m_inventory == null)
+                return 0;
+
+            int total = 0;
             for (int i = 0; i < m_inventory.VisibleSlotsCount; i++)
             {
                 int value = m_inventory.GetSlotValue(i);
-                int remaining = m_inventory.GetSlotCount(i);
-                if (value == 0 || remaining <= 0 || IsPersonalChestProtectedItem(value))
-                    continue;
-
-                // Fill stacks and empty slots explicitly; only remove items after insertion.
-                for (int targetSlot = 0; targetSlot < chest.VisibleSlotsCount && remaining > 0; targetSlot++)
-                {
-                    int existingCount = chest.GetSlotCount(targetSlot);
-                    int existingValue = chest.GetSlotValue(targetSlot);
-                    if (existingCount > 0 && existingValue != value)
-                        continue;
-
-                    int capacity = chest.GetSlotCapacity(targetSlot, value);
-                    int free = capacity - existingCount;
-                    if (free <= 0)
-                        continue;
-
-                    int amount = Math.Min(remaining, free);
-                    chest.AddSlotItems(targetSlot, value, amount);
-                    m_inventory.RemoveSlotItems(i, amount);
-                    remaining -= amount;
-                    movedItems += amount;
-                }
+                int count = m_inventory.GetSlotCount(i);
+                if (value != 0 && count > 0 && !IsPersonalChestProtectedItem(value))
+                    total += count;
             }
-
-            if (movedItems > 0)
-                Log.Information("[LivingTowns] " + m_villagerName
-                    + " deposited " + movedItems + " collected items into its personal chest.");
+            return total;
         }
 
         private bool TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward)
@@ -2524,10 +2572,63 @@ namespace Game
             }
         }
 
+        private bool ShouldLumberjackReturnHomeForStorage()
+        {
+            if (!m_hasHomeDoor || m_body == null)
+                return false;
+
+            float dx = m_body.Position.X - (m_homeDoor.X + 0.5f);
+            float dz = m_body.Position.Z - (m_homeDoor.Z + 0.5f);
+            bool tooFarFromHome = dx * dx + dz * dz
+                >= LumberjackStorageReturnDistance * LumberjackStorageReturnDistance;
+
+            return tooFarFromHome
+                || m_lumberjackTreesSinceStorage >= LumberjackTreesPerStorageTrip
+                || CountDepositableItems() >= LumberjackDepositItemsPerStorageTrip
+                || m_lumberjackWorkTimeSinceStorage >= LumberjackMaxWorkSecondsPerTrip;
+        }
+
+        private void BeginLumberjackStorageReturn()
+        {
+            m_isReturningForStorage = true;
+            m_hasWorkTarget = false;
+            m_hasWorkApproach = false;
+            m_hasLumberTreeLock = false;
+            m_workApproachRetryCount = 0;
+            m_workTask = 0;
+            m_nextWorkSearchTime = 0.0;
+            m_isLeavingHome = false;
+            m_sleepDoorRouteBypassed = false;
+            m_nextPersonalChestDepositTime = 0.0;
+            ResetLumberSearch();
+            ResetWorkRouteProgress();
+            ResetHomeReturnProgress();
+            ReleaseHomeDoorPassage();
+            m_homeDoorRouteActive = false;
+            StopManagedPath();
+            Log.Information("[LivingTowns] " + m_villagerName
+                + " is returning home to store lumber and resume work.");
+        }
+
         private void TickLumberjack()
         {
             if (m_terrain == null || m_pathfinding == null)
                 return;
+
+            if (m_isReturningForStorage)
+            {
+                TickRestRoutine(0.35f, false);
+                return;
+            }
+
+            m_lumberjackWorkTimeSinceStorage += 0.35;
+            if (!m_hasWorkTarget && !m_hasLumberTreeLock
+                && ShouldLumberjackReturnHomeForStorage())
+            {
+                BeginLumberjackStorageReturn();
+                TickRestRoutine(0.35f, false);
+                return;
+            }
 
             if (m_hasWorkTarget)
             {
@@ -2579,13 +2680,24 @@ namespace Game
                             + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
                             + " including its leaves; searching for the next tree within 100 blocks of home.");
                         m_hasLumberTreeLock = false;
+                        m_lumberjackTreesSinceStorage++;
                     }
+                }
+
+                if (!m_hasWorkTarget && !m_hasLumberTreeLock
+                    && ShouldLumberjackReturnHomeForStorage())
+                {
+                    BeginLumberjackStorageReturn();
+                    TickRestRoutine(0.35f, false);
+                    return;
                 }
 
                 if (!m_hasWorkTarget)
                 {
                     m_hasWorkTarget = TryFindWorkBlock(false, out m_workTarget, out m_workApproachPosition);
                     m_hasWorkApproach = m_hasWorkTarget;
+                    if (!m_hasWorkTarget && m_lumberSearchRadius == 0 && m_lumberSearchOffset == 0)
+                        m_nextWorkSearchTime = 8.0;
                 }
                 m_workApproachRetryCount = 0;
                 ResetWorkRouteProgress();

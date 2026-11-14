@@ -1,7 +1,7 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.41",
+  "Version": "0.4.42",
   "ApiVersion": "1.9.5.1",
   "Description": "Villagers use per-sign chest storage. Lumberjacks approach from a wider 3–5 block collision-safe radius. Home-return watchdog tracks active doorway waypoints and pauses while waiting for doorway access.",
   "ScVersion": "2.4.0.0",
