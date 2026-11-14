@@ -1,11 +1,11 @@
-# Living Towns 0.4.61 - Profession Currency Shop
+# Living Towns 0.4.62 - Profession Currency Shop
 
 Companion add-on for the user's existing **LivingTowns 0.4.59** package.
 
 ## What it changes
 
 - Keeps the existing LivingTowns 0.4.59 DLL and its villager AI, home/bed routines, WORK-sign routing, animations, entity templates, and Silver/Gold Coin blocks untouched.
-- Replaces the old free-transfer trade panel at the villager interaction callback with a read-only shop panel.
+- Replaces the exact legacy LivingTownsVillagerInteractionPatch callback, blocks TransferTradeItem, and guards the dedicated trade inventory's direct Add/Remove methods. Only validated purchases can mutate stock.
 - Lists the items already held in the villager's separate persistent 10-slot trade stock.
 - Uses profession-specific product prices, denominated in silver coins.
 - Accepts Silver Coin and Gold Coin; one gold coin is worth ten silver coins.
@@ -15,11 +15,11 @@ Companion add-on for the user's existing **LivingTowns 0.4.59** package.
 
 ## Scope
 
-The add-on changes the trade interaction and purchase transaction only. It does not patch the villager's daily AI routines. The player-to-villager sell feature is not included in this first shop version.
+The add-on changes the trade interaction and purchase transaction only. The validated purchase code temporarily enables stock mutation for one transaction; the legacy chest panel cannot transfer items. It does not patch the villager's daily AI routines. The player-to-villager sell feature is not included in this first shop version.
 
 ## Install
 
-Keep the existing `LivingTowns-0.4.59-TRADE-RESTORED.scmod` installed and use the new combined `LivingTowns-0.4.61-ProfessionCurrencyShop.scmod` package, which includes the unchanged base DLL/assets plus this updated add-on DLL. Do not install the old 0.4.60 transfer-only add-on at the same time.
+Keep the existing `LivingTowns-0.4.59-TRADE-RESTORED.scmod` installed and use the new combined `LivingTowns-0.4.62-ProfessionCurrencyShop.scmod` package, which includes the unchanged base DLL/assets plus this updated add-on DLL. Do not install the old 0.4.60 transfer-only add-on at the same time.
 
 ## Verification
 
