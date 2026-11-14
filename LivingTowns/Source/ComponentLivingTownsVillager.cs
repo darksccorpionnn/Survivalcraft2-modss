@@ -128,6 +128,9 @@ namespace Game
         private Vector3 m_fallbackRestPosition;
         private double m_nextFallbackRestSearchTime;
         private double m_nextObstacleJumpTime;
+        private double m_nextObstacleDetourTime;
+        private bool m_obstacleDetourActive;
+        private Vector3 m_obstacleDetourTarget;
         private double m_bedAssignmentFailureTime;
         private bool m_sleepDoorRouteBypassed;
         private bool m_homeDoorRouteActive;
@@ -272,6 +275,9 @@ namespace Game
             m_destinationRetryCooldown -= dt;
             if (m_destinationRetryCooldown < 0.0)
                 m_destinationRetryCooldown = 0.0;
+            m_nextObstacleDetourTime -= dt;
+            if (m_nextObstacleDetourTime < 0.0)
+                m_nextObstacleDetourTime = 0.0;
             UpdateManagedPathProgress(dt);
             UpdateWorkRouteProgress(dt);
             TryJumpAtBlockingStep(dt);
@@ -2374,6 +2380,31 @@ namespace Game
             if (m_pathfinding == null)
                 return;
 
+            // When the direct route stops making progress, briefly route to a nearby
+            // clear standing cell. The normal job/home routine will resume its real
+            // destination as soon as this side-step waypoint is reached.
+            if (m_obstacleDetourActive)
+            {
+                if (Vector3.DistanceSquared(m_body.Position, m_obstacleDetourTarget) <= 1.10f * 1.10f)
+                {
+                    m_obstacleDetourActive = false;
+                    m_nextObstacleDetourTime = 0.35;
+                }
+                else
+                    destination = m_obstacleDetourTarget;
+            }
+            else if (m_nextObstacleDetourTime <= 0.0
+                && m_managedNoProgressTime >= 1.35
+                && TryChooseObstacleDetour(destination, out Vector3 detour))
+            {
+                m_obstacleDetourActive = true;
+                m_obstacleDetourTarget = detour;
+                m_nextObstacleDetourTime = 2.0;
+                destination = detour;
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " is taking a clear side route around an obstacle.");
+            }
+
             Vector3? current = m_pathfinding.Destination;
             bool sameRequestedTarget = m_hasManagedDestination
                 && Vector3.DistanceSquared(m_managedDestination, destination) <= 0.0625f;
@@ -2421,6 +2452,74 @@ namespace Game
             m_hasManagedProgressSample = true;
         }
 
+        private bool TryChooseObstacleDetour(Vector3 goal, out Vector3 detour)
+        {
+            detour = Vector3.Zero;
+            if (m_terrain == null || m_body == null || m_pathfinding == null)
+                return false;
+
+            Vector3 toGoal = goal - m_body.Position;
+            toGoal.Y = 0f;
+            if (toGoal.LengthSquared() < 1.0f)
+                return false;
+            toGoal = Vector3.Normalize(toGoal);
+
+            bool found = false;
+            float bestScore = float.MaxValue;
+            int cx = Terrain.ToCell(m_body.Position.X);
+            int cz = Terrain.ToCell(m_body.Position.Z);
+            int currentFloor = Terrain.ToCell(m_body.Position.Y) - 1;
+
+            // Sample complete rings around the villager. Side and diagonal cells let
+            // it step around corners instead of repeatedly pushing into the same wall.
+            for (int radius = 1; radius <= 3; radius++)
+            for (int dx = -radius; dx <= radius; dx++)
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
+                    continue;
+                int x = cx + dx;
+                int z = cz + dz;
+                for (int floorY = Math.Max(1, currentFloor - 1); floorY <= Math.Min(250, currentFloor + 1); floorY++)
+                {
+                    if (!IsValidStandingCell(x, floorY, z))
+                        continue;
+
+                    Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                    if (Vector3.DistanceSquared(candidate, m_body.Position) < 1.15f * 1.15f
+                        || Vector3.DistanceSquared(candidate, goal) < 1.0f)
+                        continue;
+
+                    int openNeighbors = 0;
+                    for (int nx = -1; nx <= 1; nx++)
+                    for (int nz = -1; nz <= 1; nz++)
+                    {
+                        if (nx == 0 && nz == 0)
+                            continue;
+                        if (IsValidStandingCell(x + nx, floorY, z + nz))
+                            openNeighbors++;
+                    }
+
+                    Vector3 candidateDirection = candidate - m_body.Position;
+                    candidateDirection.Y = 0f;
+                    float sideStep = Math.Abs(candidateDirection.X * toGoal.Z - candidateDirection.Z * toGoal.X);
+                    float progressPenalty = Vector3.DistanceSquared(candidate, goal);
+                    float travelPenalty = Vector3.DistanceSquared(candidate, m_body.Position) * 0.30f;
+                    float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 2.0f;
+                    float score = progressPenalty + travelPenalty + verticalPenalty
+                        + (8 - openNeighbors) * 0.45f - sideStep * 0.20f;
+
+                    if (!found || score < bestScore)
+                    {
+                        found = true;
+                        bestScore = score;
+                        detour = candidate;
+                    }
+                }
+            }
+            return found;
+        }
+
         private void StopManagedPath()
         {
             if (m_pathfinding != null && m_pathfinding.Destination.HasValue)
@@ -2430,6 +2529,8 @@ namespace Game
             m_managedNoProgressTime = 0.0;
             m_managedProgressDistance = 0f;
             m_hasManagedProgressSample = false;
+            m_obstacleDetourActive = false;
+            m_nextObstacleDetourTime = 0.0;
         }
 
         private bool TryGetWorkApproach(int x, int y, int z, out Vector3 approach)
