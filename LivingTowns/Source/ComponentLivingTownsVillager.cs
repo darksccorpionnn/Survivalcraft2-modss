@@ -1439,7 +1439,10 @@ namespace Game
                 return false;
 
             float currentSide = Vector3.Dot(m_body.Position - doorCenter, inward);
-            if (currentSide <= 0.60f)
+            // A shallow inside position still needs to use the door. The old
+            // 0.60 threshold could leave a villager at the inner door edge and
+            // let its next job start without crossing the doorway.
+            if (currentSide <= 0.10f)
                 return false;
 
             m_homeDoorRouteActive = true;
