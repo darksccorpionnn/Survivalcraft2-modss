@@ -46,7 +46,17 @@ namespace Game
 
             PatchMethod(harmony, villagerType, "Load", nameof(LoadPostfix));
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
-            PatchMethod(harmony, villagerType, "OpenTradeScreen", nameof(OpenTradeScreenPostfix));
+
+            // Patch the same native hit entry used by the 0.4.58/0.4.59 villager interaction
+            // hook. Seeding must happen before the existing prefix creates the trade panel.
+            MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
+                new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
+            MethodInfo hitPrefix = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(HitPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+            if (hit == null || hitPrefix == null)
+                Log.Warning("[LivingTowns Trade Stock] ComponentMiner.Hit entry point was not found.");
+            else
+                harmony.Patch(hit, prefix: new HarmonyMethod(hitPrefix));
         }
 
         private static void PatchMethod(Harmony harmony, Type type, string targetName, string postfixName)
@@ -107,7 +117,24 @@ namespace Game
             }
         }
 
-        private static void OpenTradeScreenPostfix(object __instance)
+        [HarmonyPriority(Priority.First)]
+        private static void HitPrefix(ComponentMiner __instance, ComponentBody componentBody, Engine.Vector3 hitPoint, Engine.Vector3 hitDirection)
+        {
+            if (componentBody?.Entity == null)
+                return;
+
+            Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
+            if (villagerType == null)
+                return;
+
+            object villager = componentBody.Entity.FindComponent(villagerType, null, false);
+            if (villager == null)
+                return;
+
+            SeedTradeInventory(villager);
+        }
+
+        private static void SeedTradeInventory(object __instance)
         {
             if (__instance == null)
                 return;
