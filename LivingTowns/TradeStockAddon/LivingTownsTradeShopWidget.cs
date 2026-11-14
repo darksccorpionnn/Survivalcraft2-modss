@@ -359,6 +359,16 @@ namespace Game
                     break;
             }
 
+            // Generic stock for villagers without a profession (for example, ordinary male/female villagers).
+            switch (blockName)
+            {
+                case "StickBlock": return 1;
+                case "BreadBlock": return 2;
+                case "TorchBlock": return 2;
+                case "StoneChunkBlock": return 1;
+                case "SeedsBlock": return 1;
+            }
+
             return 0;
         }
 
