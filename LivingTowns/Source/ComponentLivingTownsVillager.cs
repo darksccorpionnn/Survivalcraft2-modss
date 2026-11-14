@@ -242,7 +242,7 @@ namespace Game
             if (string.IsNullOrWhiteSpace(modelRoute) || roleNames == null || roleNames.Length == 0)
                 return false;
 
-            string normalizedRoute = modelRoute.Replace('\\\\', '/');
+            string normalizedRoute = modelRoute.Replace('\\', '/');
             string[] segments = normalizedRoute.Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string segment in segments)
             {
