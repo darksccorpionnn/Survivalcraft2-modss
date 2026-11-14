@@ -47,23 +47,24 @@ namespace Game
             PatchMethod(harmony, villagerType, "Load", nameof(LoadPostfix));
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
 
-            // Intercept the native player hit before the legacy villager transfer prefix.
-            // For villagers, open this shop and return false so the old free-transfer panel never runs.
-            MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
-                new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
-            MethodInfo hitReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
-                nameof(TradeScreenHitPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+            // The original LivingTowns hit prefix calls ComponentLivingTownsVillager.OpenTradeScreen().
+            // Patch that exact method: suppressing another Hit prefix is not sufficient because
+            // Harmony may still execute side-effecting prefixes installed by the base mod.
+            MethodInfo openTrade = AccessTools.Method(villagerType, "OpenTradeScreen",
+                new Type[] { typeof(ComponentPlayer) });
+            MethodInfo shopPrefix = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(OpenTradeScreenPrefix), BindingFlags.Static | BindingFlags.NonPublic);
 
-            if (hit != null && hitReplacement != null)
+            if (openTrade != null && shopPrefix != null)
             {
-                HarmonyMethod hitPatch = new HarmonyMethod(hitReplacement);
-                hitPatch.priority = Priority.First;
-                harmony.Patch(hit, prefix: hitPatch);
-                Log.Information("[LivingTowns Trade Shop] Installed high-priority player-hit interception.");
+                HarmonyMethod openPatch = new HarmonyMethod(shopPrefix);
+                openPatch.priority = Priority.First;
+                harmony.Patch(openTrade, prefix: openPatch);
+                Log.Information("[LivingTowns Trade Shop] Replaced OpenTradeScreen directly; legacy free-transfer panel is blocked.");
             }
             else
             {
-                Log.Warning("[LivingTowns Trade Shop] Could not locate ComponentMiner.Hit.");
+                Log.Error("[LivingTowns Trade Shop] Could not find OpenTradeScreen(ComponentPlayer); shop cannot replace the old panel.");
             }
 
             Log.Information("[LivingTowns Trade Shop] Currency shop patch installation completed.");
@@ -127,29 +128,30 @@ namespace Game
             }
         }
 
-        private static bool TradeScreenHitPrefix(
-            ComponentMiner __instance,
-            ComponentBody componentBody,
-            Engine.Vector3 hitPoint,
-            Engine.Vector3 hitDirection)
+        private static bool OpenTradeScreenPrefix(object __instance, ComponentPlayer __0)
         {
-            return OpenShop(__instance, componentBody);
+            if (__instance == null || __0 == null)
+                return false;
+
+            try
+            {
+                OpenShop(__instance, __0);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("[LivingTowns Trade Shop] Direct OpenTradeScreen interception failed: " + ex);
+                __0.ComponentGui?.DisplaySmallMessage(
+                    "Ticaret ekranı açılamadı. Ücretsiz aktarım kapalı.", Color.White, true, false);
+            }
+
+            // Always suppress the original chest-style free-transfer UI.
+            return false;
         }
 
-        private static bool OpenShop(ComponentMiner miner, ComponentBody componentBody)
+        private static void OpenShop(object villager, ComponentPlayer player)
         {
-            if (miner?.ComponentPlayer == null || componentBody?.Entity == null)
-                return true;
-
-            Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
-            if (villagerType == null)
-                return true;
-
-            object villager = componentBody.Entity.FindComponent(villagerType, null, false);
-            if (villager == null)
-                return true;
-
-            ComponentPlayer player = miner.ComponentPlayer;
+            if (player?.ComponentGui == null || villager == null)
+                return;
             try
             {
                 SeedTradeInventory(villager);
@@ -158,7 +160,7 @@ namespace Game
                 {
                     player.ComponentGui?.DisplaySmallMessage(
                         "Köylünün ticaret stoğu okunamadı.", Color.White, true, false);
-                    return false;
+                    return;
                 }
 
                 string job = GetJobName(villager);
@@ -175,8 +177,7 @@ namespace Game
                     "Ticaret ekranı açılamadı. Hata günlüğünü kontrol et.", Color.White, true, false);
             }
 
-            // Suppress the old panel even if shop initialization fails: no free stock transfer.
-            return false;
+            // The original OpenTradeScreen is always suppressed by its Harmony prefix.
         }
 
         private static void HitPostfix(
