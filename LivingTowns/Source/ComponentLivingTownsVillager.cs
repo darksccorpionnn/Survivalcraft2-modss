@@ -3579,7 +3579,7 @@ namespace Game
                     {
                         Log.Information("[LivingTowns] " + m_villagerName + " finished the locked tree at "
                             + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
-                            + " including its leaves; searching for the next tree within 24 blocks of home.");
+                            + " including its leaves; searching for the next tree within 24 blocks of its work area.");
                         m_hasLumberTreeLock = false;
                         m_lumberjackTreesSinceStorage++;
                     }
@@ -3727,9 +3727,10 @@ namespace Game
         {
             target = new Point3(0, 0, 0);
             approach = Vector3.Zero;
-            int centerX = m_hasHomeDoor ? m_homeDoor.X : Terrain.ToCell(m_body.Position.X);
-            int centerZ = m_hasHomeDoor ? m_homeDoor.Z : Terrain.ToCell(m_body.Position.Z);
-            int centerY = m_hasHomeDoor ? m_homeDoor.Y : Terrain.ToCell(m_body.Position.Y);
+            Point3 workCenter = GetWorkCenterCell();
+            int centerX = workCenter.X;
+            int centerZ = workCenter.Z;
+            int centerY = workCenter.Y;
             int columnsLeft = LumberjackScanColumnsPerUpdate;
 
             while (m_lumberSearchRadius <= LumberjackWorkRadius && columnsLeft > 0)
@@ -3855,7 +3856,7 @@ namespace Game
             {
                 ResetLumberSearch();
                 Log.Information("[LivingTowns] " + m_villagerName
-                    + " finished scanning the 24-block home radius; no reachable tree was found.");
+                    + " finished scanning the 24-block work-area radius; no reachable tree was found.");
             }
             return false;
         }
