@@ -876,11 +876,10 @@ namespace Game
                 SetSleepingAnimation(false);
                 // A missing sign/bed assignment must not freeze the villager at dusk.
                 // Keep it moving to the registered home entrance and retry the bed scan.
-                if (m_hasHomeDoor)
+                if (m_hasHomeDoor && TryFindDoorSearchApproach(out Vector3 doorSearchTarget))
                 {
-                    Vector3 doorSearchTarget = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y + 1f, m_homeDoor.Z + 0.5f);
                     SetManagedDestination(doorSearchTarget, 2.2f, 0.65f,
-                        HomeReturnPathfindingPositions * 2, false, false, false, null, false);
+                        HomeReturnPathfindingPositions, false, false, false, null, false);
                 }
                 return;
             }
@@ -1245,7 +1244,7 @@ namespace Game
             float bestScore = float.MaxValue;
             // Search reachable standing cells around the registered entrance.
             // This avoids asking the pathfinder to stand inside a wall or door block.
-            for (int radius = 2; radius <= 5; radius++)
+            for (int radius = 2; radius <= 8; radius++)
             for (int dx = -radius; dx <= radius; dx++)
             for (int dz = -radius; dz <= radius; dz++)
             {
