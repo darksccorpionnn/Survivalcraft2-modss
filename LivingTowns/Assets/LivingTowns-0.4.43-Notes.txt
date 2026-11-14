@@ -1,0 +1,12 @@
+Living Towns 0.4.43 – Lumberjack Work-Loop and Home-Door Routing Fix
+
+- Fixed the endless locked-tree loop: after two unreachable approach attempts the villager now blacklists that tree, releases the tree lock and immediately returns home.
+- The home-return deadline is now evaluated before processing the current tree target, so an active/stuck target cannot suppress the return check.
+- Reduced the lumberjack work radius and work cycle, and filter candidate approach points by distance from the home door so the job cannot select an approach point beyond the safe home zone.
+- The lumberjack prefers outer, more open standing positions and tests direct corridor passability when selecting a work approach.
+- Fixed home return logic that previously bypassed the doorway sequence after a short navigation stall, sending the villager directly toward the bed through the house wall.
+- Home-door entry now opens the door as soon as the route is established, uses alternate approach sides when the initial approach fails, and retries the active doorway stage instead of abandoning it.
+- Added logs for entry/exit route start, route retries, and successful doorway crossing.
+
+Build target: Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
+Android in-game testing is still required.

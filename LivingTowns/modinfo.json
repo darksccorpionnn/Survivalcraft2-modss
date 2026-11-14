@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.42",
+  "Version": "0.4.43",
   "ApiVersion": "1.9.5.1",
-  "Description": "Lumberjacks work within 32 blocks of home and return to store items after two trees, ten transferable items, a 24-block home-distance limit or seven minutes. Chest lookup has a home fallback and transfers use the game inventory allocator.",
+  "Description": "Lumberjacks use a restricted home work zone, prefer open approach points and return even when a tree path is stuck. Unreachable trees are abandoned and blacklisted. Home returns keep the door waypoint route active, open the door early and retry alternate approach sides instead of routing through walls.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

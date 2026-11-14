@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s LivingTowns/bin/Release/net10.0/LivingTowns.dll
-          grep -q '"Version": "0.4.42"' LivingTowns/modinfo.json
+          grep -q '"Version": "0.4.43"' LivingTowns/modinfo.json
           echo "Compiled DLL:"
           ls -lh LivingTowns/bin/Release/net10.0/LivingTowns.dll
           mkdir -p package
@@ -59,7 +59,7 @@ jobs:
       - name: Upload compiled assembly
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.42-package
+          name: LivingTowns-0.4.43-package
           path: |
             LivingTowns/bin/Release/net10.0/LivingTowns.dll
             LivingTowns-0.4.42.scmod

@@ -133,6 +133,7 @@ namespace Game
         private bool m_homeDoorRouteActive;
         private bool m_homeDoorRouteEntering;
         private bool m_waitingForHomeDoorPassage;
+        private int m_homeDoorApproachVariant;
         private int m_homeDoorRouteStage;
         private Vector3 m_homeDoorRouteFinalTarget;
         private bool m_isLeavingHome;
@@ -141,11 +142,12 @@ namespace Game
         private const float WorkMoveSpeed = 2.2f;
         private const int FarmerWorkRadius = 60;
         private const int FarmCellsPerScan = 512;
-        private const int LumberjackHomeRadius = 32;
-        private const int LumberjackTreesPerStorageTrip = 2;
-        private const int LumberjackDepositItemsPerStorageTrip = 10;
-        private const double LumberjackMaxWorkSecondsPerTrip = 420.0;
-        private const float LumberjackStorageReturnDistance = 24f;
+        private const int LumberjackHomeRadius = 24;
+        private const int LumberjackTreesPerStorageTrip = 1;
+        private const int LumberjackDepositItemsPerStorageTrip = 8;
+        private const double LumberjackMaxWorkSecondsPerTrip = 150.0;
+        private const float LumberjackStorageReturnDistance = 18f;
+        private const float LumberjackMaxApproachDistanceFromHome = 16.5f;
         private const int LumberjackTreeMaxHeight = 25;
         private const int LumberjackScanColumnsPerUpdate = 900;
 
@@ -229,6 +231,7 @@ namespace Game
             m_nextFallbackRestSearchTime = 0.0;
             m_bedAssignmentFailureTime = 0.0;
             m_sleepDoorRouteBypassed = false;
+            m_homeDoorApproachVariant = 0;
         }
 
         public void Update(float dt)
@@ -992,33 +995,40 @@ namespace Game
                     TryGetHomeDoorRouteDestination(target, true, out routeTarget);
                 UpdateHomeReturnProgress(routeTarget, dt);
 
-                // Waiting for another villager to clear the shared doorway is intentional,
-                // not a failed path. The progress tracker pauses during that reservation.
-                if (m_homeReturnNoProgressTime >= 5.0)
+                // Never bypass the doorway when the villager is stuck outside:
+                // doing so sends it directly to the bed through the house wall.
+                // Retry the current waypoint and vary the outside approach instead.
+                if (m_homeReturnNoProgressTime >= 6.0)
                 {
-                    if (!m_sleepDoorRouteBypassed && m_homeDoorRouteActive)
+                    if (m_homeDoorRouteActive)
+                    {
+                        if (m_homeDoorRouteStage == 0)
+                        {
+                            m_homeDoorApproachVariant = (m_homeDoorApproachVariant + 1) % 3;
+                            Log.Warning("[LivingTowns] " + m_villagerName
+                                + " could not reach the home-door approach; trying alternate side "
+                                + m_homeDoorApproachVariant + ".");
+                        }
+                        else
+                        {
+                            // The villager is already at the threshold. Re-open the door
+                            // and retry the same crossing stage rather than routing through a wall.
+                            OpenHomeDoorForRoute();
+                            Log.Warning("[LivingTowns] " + m_villagerName
+                                + " is retrying home-door crossing stage " + m_homeDoorRouteStage + ".");
+                        }
+                    }
+                    else
                     {
                         Log.Warning("[LivingTowns] " + m_villagerName
-                            + " home doorway waypoint made no progress; bypassing the waypoint sequence.");
-                        ReleaseHomeDoorPassage();
-                        m_homeDoorRouteActive = false;
-                        m_sleepDoorRouteBypassed = true;
-                        StopManagedPath();
-                        ResetHomeReturnProgress();
-                        routeTarget = target;
+                            + " is retrying its home destination after a navigation stall.");
                     }
-                    else if (m_homeReturnNoProgressTime >= 9.0)
-                    {
-                        // Force a clean direct-route retry even if the pathfinder
-                        // silently cleared Destination while the villager was stalled.
-                        StopManagedPath();
-                        ResetHomeReturnProgress();
-                        routeTarget = target;
-                    }
+
+                    StopManagedPath();
+                    ResetHomeReturnProgress();
                 }
-                // Random recovery is intentionally disabled: the direct fallback keeps
-                // the named resting target and avoids wandering through the house.
-                SetManagedDestination(routeTarget, 2.2f, 0.65f, 2200, false, false, false, null, false);
+
+                SetManagedDestination(routeTarget, 2.2f, 0.65f, 2600, false, false, false, null, false);
             }
         }
 
@@ -1303,11 +1313,29 @@ namespace Game
                 m_homeDoorRouteActive = true;
                 m_homeDoorRouteEntering = entering;
                 m_homeDoorRouteStage = 0;
+                m_homeDoorApproachVariant = 0;
                 m_homeDoorRouteFinalTarget = finalTarget;
+
+                // Open a normal wooden door as soon as the return route is established.
+                // Waiting until the pathfinder reaches the threshold can deadlock when
+                // its first closed-door path search returns no route.
+                if (entering)
+                    OpenHomeDoorForRoute();
+
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " started " + (entering ? "entry" : "exit")
+                    + " route through home door at " + m_homeDoor.X + "," + m_homeDoor.Y + "," + m_homeDoor.Z
+                    + " (rotation " + DoorBlock.GetRotation(Terrain.ExtractData(
+                        m_terrain.Terrain.GetCellValue(m_homeDoor.X, m_homeDoor.Y, m_homeDoor.Z))) + ").");
             }
 
             Vector3 outsidePoint = doorCenter - inward * 1.10f;
             Vector3 insidePoint = doorCenter + inward * 1.10f;
+            Vector3 tangent = new Vector3(-inward.Z, 0f, inward.X);
+            Vector3 sideOffset = m_homeDoorApproachVariant == 1 ? tangent * 0.90f
+                : m_homeDoorApproachVariant == 2 ? tangent * -0.90f : Vector3.Zero;
+            Vector3 outsideApproach = outsidePoint + sideOffset;
+            Vector3 insideApproach = insidePoint + sideOffset;
 
             // Only one villager may occupy the doorway route at a time. A second
             // villager waits safely away from the threshold until the passage is free.
@@ -1328,12 +1356,18 @@ namespace Game
             // waypoints. Full 3D distance to the door center is unreliable for
             // different villager body origins and can leave larger models oscillating
             // at the doorway forever.
-            float outsideDx = m_body.Position.X - outsidePoint.X;
-            float outsideDz = m_body.Position.Z - outsidePoint.Z;
-            float insideDx = m_body.Position.X - insidePoint.X;
-            float insideDz = m_body.Position.Z - insidePoint.Z;
+            float outsideDx = m_body.Position.X - outsideApproach.X;
+            float outsideDz = m_body.Position.Z - outsideApproach.Z;
+            float insideDx = m_body.Position.X - insideApproach.X;
+            float insideDz = m_body.Position.Z - insideApproach.Z;
             float outsideDistanceSquared = outsideDx * outsideDx + outsideDz * outsideDz;
             float insideDistanceSquared = insideDx * insideDx + insideDz * insideDz;
+            float outsideDoorDistanceSquared =
+                (m_body.Position.X - outsidePoint.X) * (m_body.Position.X - outsidePoint.X)
+                + (m_body.Position.Z - outsidePoint.Z) * (m_body.Position.Z - outsidePoint.Z);
+            float insideDoorDistanceSquared =
+                (m_body.Position.X - insidePoint.X) * (m_body.Position.X - insidePoint.X)
+                + (m_body.Position.Z - insidePoint.Z) * (m_body.Position.Z - insidePoint.Z);
 
             if (entering)
             {
@@ -1342,7 +1376,7 @@ namespace Game
                 if (m_homeDoorRouteStage == 1 && currentSide >= -0.10f)
                     m_homeDoorRouteStage = 2;
                 if (m_homeDoorRouteStage == 2
-                    && (insideDistanceSquared <= 0.60f * 0.60f || currentSide >= 0.50f))
+                    && (insideDoorDistanceSquared <= 0.60f * 0.60f || currentSide >= 0.50f))
                     m_homeDoorRouteStage = 3;
             }
             else
@@ -1352,7 +1386,7 @@ namespace Game
                 if (m_homeDoorRouteStage == 1 && currentSide <= 0.10f)
                     m_homeDoorRouteStage = 2;
                 if (m_homeDoorRouteStage == 2
-                    && (outsideDistanceSquared <= 0.60f * 0.60f || currentSide <= -0.50f))
+                    && (outsideDoorDistanceSquared <= 0.60f * 0.60f || currentSide <= -0.50f))
                     m_homeDoorRouteStage = 3;
             }
 
@@ -1360,6 +1394,9 @@ namespace Game
             {
                 ReleaseHomeDoorPassage();
                 m_homeDoorRouteActive = false;
+                m_homeDoorApproachVariant = 0;
+                Log.Information("[LivingTowns] " + m_villagerName
+                    + " crossed the home doorway successfully.");
                 return false;
             }
 
@@ -1368,7 +1405,7 @@ namespace Game
                 OpenHomeDoorForRoute();
 
             routeTarget = m_homeDoorRouteStage == 0
-                ? (entering ? outsidePoint : insidePoint)
+                ? (entering ? outsideApproach : insideApproach)
                 : m_homeDoorRouteStage == 1 ? doorCenter
                 : (entering ? insidePoint : outsidePoint);
             return true;
@@ -2310,7 +2347,8 @@ namespace Game
 
         private bool TryRetryWorkApproach(string jobName)
         {
-            if (!m_hasWorkTarget || !m_hasWorkApproach || m_workApproachRetryCount >= 4)
+            int maximumApproaches = m_job == LivingTownsJob.Lumberjack ? 2 : 4;
+            if (!m_hasWorkTarget || !m_hasWorkApproach || m_workApproachRetryCount >= maximumApproaches)
                 return false;
 
             Point3 failedApproach = new Point3(
@@ -2346,7 +2384,8 @@ namespace Game
             m_hasWorkApproach = true;
             m_workApproachRetryCount++;
             Log.Warning("[LivingTowns] " + jobName + " for " + m_villagerName
-                + " found an alternate approach (" + m_workApproachRetryCount + "/4) after an obstacle blocked the first route.");
+                + " found an alternate approach (" + m_workApproachRetryCount + "/" + maximumApproaches
+                + ") after an obstacle blocked the first route.");
             return true;
         }
 
@@ -2364,12 +2403,11 @@ namespace Game
 
             if (m_job == LivingTownsJob.Lumberjack && m_hasLumberTreeLock)
             {
-                // When a whole route attempt fails, replace the persistent tree
-                // approach so the next block does not reuse the rejected waypoint.
-                if (TryGetLumberjackApproach(m_lumberTreeX, m_lumberTreeBaseY, m_lumberTreeZ, out Vector3 alternate))
-                    m_lumberTreeApproachPosition = alternate;
-                else
-                    m_hasLumberTreeLock = false;
+                // The old implementation kept the same tree lock and swapped in a
+                // new waypoint. If every side was unreachable, this recreated the
+                // same tree target forever and the villager circled beneath its canopy.
+                RejectWorkPosition(new Point3(m_lumberTreeX, m_lumberTreeBaseY, m_lumberTreeZ), 180.0);
+                m_hasLumberTreeLock = false;
             }
 
             Log.Warning("[LivingTowns] " + jobName + " abandoned an unreachable work target for "
@@ -2585,7 +2623,8 @@ namespace Game
             return tooFarFromHome
                 || m_lumberjackTreesSinceStorage >= LumberjackTreesPerStorageTrip
                 || CountDepositableItems() >= LumberjackDepositItemsPerStorageTrip
-                || m_lumberjackWorkTimeSinceStorage >= LumberjackMaxWorkSecondsPerTrip;
+                || m_lumberjackWorkTimeSinceStorage >= LumberjackMaxWorkSecondsPerTrip
+                || (m_hasWorkTarget && m_workRouteNoProgressTime >= 8.0);
         }
 
         private void BeginLumberjackStorageReturn()
@@ -2599,6 +2638,7 @@ namespace Game
             m_nextWorkSearchTime = 0.0;
             m_isLeavingHome = false;
             m_sleepDoorRouteBypassed = false;
+            m_homeDoorApproachVariant = 0;
             m_nextPersonalChestDepositTime = 0.0;
             ResetLumberSearch();
             ResetWorkRouteProgress();
@@ -2622,7 +2662,10 @@ namespace Game
             }
 
             m_lumberjackWorkTimeSinceStorage += 0.35;
-            if (!m_hasWorkTarget && ShouldLumberjackReturnHomeForStorage())
+
+            // This deadline is checked before validating/approaching the current tree.
+            // A target that keeps circling under foliage must never suppress the return.
+            if (ShouldLumberjackReturnHomeForStorage())
             {
                 BeginLumberjackStorageReturn();
                 TickRestRoutine(0.35f, false);
@@ -2654,6 +2697,8 @@ namespace Game
                     return;
                 }
                 AbandonCurrentWorkTarget("Lumberjack");
+                BeginLumberjackStorageReturn();
+                TickRestRoutine(0.35f, false);
                 ResetWorkRouteProgress();
                 return;
             }
@@ -2677,7 +2722,7 @@ namespace Game
                     {
                         Log.Information("[LivingTowns] " + m_villagerName + " finished the locked tree at "
                             + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
-                            + " including its leaves; searching for the next tree within 32 blocks of home.");
+                            + " including its leaves; searching for the next tree within 24 blocks of home.");
                         m_hasLumberTreeLock = false;
                         m_lumberjackTreesSinceStorage++;
                     }
@@ -2921,8 +2966,18 @@ namespace Game
                     if (woodAbove && y < baseY + LumberjackTreeMaxHeight)
                         continue;
 
-                    if (!TryGetLumberjackApproach(x, baseY, z, out Vector3 candidateApproach))
+                    if (IsFailedWorkPosition(x, baseY, z)
+                        || !TryGetLumberjackApproach(x, baseY, z, out Vector3 candidateApproach))
                         continue;
+
+                    if (m_hasHomeDoor)
+                    {
+                        float homeDx = candidateApproach.X - (m_homeDoor.X + 0.5f);
+                        float homeDz = candidateApproach.Z - (m_homeDoor.Z + 0.5f);
+                        if (homeDx * homeDx + homeDz * homeDz
+                            > LumberjackMaxApproachDistanceFromHome * LumberjackMaxApproachDistanceFromHome)
+                            continue;
+                    }
 
                     float distance = Vector3.DistanceSquared(m_body.Position, candidateApproach)
                         + Math.Abs(y - baseY) * 0.20f;
@@ -2942,7 +2997,7 @@ namespace Game
             {
                 ResetLumberSearch();
                 Log.Information("[LivingTowns] " + m_villagerName
-                    + " finished scanning the 32-block home radius; no reachable tree was found.");
+                    + " finished scanning the 24-block home radius; no reachable tree was found.");
             }
             return false;
         }
@@ -3043,12 +3098,18 @@ namespace Game
         private bool TryGetLumberjackApproach(int x, int baseY, int z, out Vector3 approach)
         {
             approach = Vector3.Zero;
-            float bestDistance = float.MaxValue;
-            bool found = false;
-            // Look for a clear standing cell around the trunk, not only the four
-            // immediately adjacent cells. Leaves, dropped blocks and neighboring
-            // trunks can occupy those cells; a 2-3 block perimeter often has a route.
-            for (int radius = 3; radius <= 5; radius++)
+            float bestDirectScore = float.MaxValue;
+            float bestFallbackScore = float.MaxValue;
+            Vector3 bestDirect = Vector3.Zero;
+            Vector3 bestFallback = Vector3.Zero;
+            bool foundDirect = false;
+            bool foundFallback = false;
+
+            // Do not choose a standing point immediately beneath the canopy.
+            // Search the outer edge of the tree and prefer cells with open space
+            // around them. A clear direct corridor is preferred over a cell that
+            // merely has two empty blocks above it but is unreachable from here.
+            for (int radius = 5; radius <= 8; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++)
@@ -3064,20 +3125,63 @@ namespace Game
                             || IsFailedWorkPosition(sx, standY, sz))
                             continue;
 
+                        int openNeighbors = 0;
+                        for (int nx = -1; nx <= 1; nx++)
+                        for (int nz = -1; nz <= 1; nz++)
+                        {
+                            if (nx == 0 && nz == 0)
+                                continue;
+                            if (IsValidStandingCell(sx + nx, standY - 1, sz + nz))
+                                openNeighbors++;
+                        }
+
                         Vector3 candidate = new Vector3(sx + 0.5f, standY, sz + 0.5f);
                         float score = Vector3.DistanceSquared(m_body.Position, candidate)
                             + Math.Abs(candidate.Y - m_body.Position.Y) * 4f
-                            + (5 - radius) * 0.20f;
-                        if (score < bestDistance)
+                            + (8 - openNeighbors) * 2f
+                            + (8 - radius) * 0.65f;
+
+                        if (!foundFallback || score < bestFallbackScore)
                         {
-                            bestDistance = score;
-                            approach = candidate;
-                            found = true;
+                            foundFallback = true;
+                            bestFallbackScore = score;
+                            bestFallback = candidate;
+                        }
+
+                        // Only test direct visibility for candidates that could
+                        // improve the current direct-route choice. This avoids a
+                        // raycast for every valid cell around every scanned tree.
+                        if (!foundDirect && m_pathfinding?.m_subsystemPathfinding != null)
+                        {
+                            if (m_pathfinding.m_subsystemPathfinding.IsPassable(m_body.Position, candidate, m_body.BoxSize))
+                            {
+                                foundDirect = true;
+                                bestDirectScore = score;
+                                bestDirect = candidate;
+                            }
+                        }
+                        else if (foundDirect && score < bestDirectScore
+                            && m_pathfinding?.m_subsystemPathfinding != null
+                            && m_pathfinding.m_subsystemPathfinding.IsPassable(m_body.Position, candidate, m_body.BoxSize))
+                        {
+                            bestDirectScore = score;
+                            bestDirect = candidate;
                         }
                     }
                 }
             }
-            return found;
+
+            if (foundDirect)
+            {
+                approach = bestDirect;
+                return true;
+            }
+            if (foundFallback)
+            {
+                approach = bestFallback;
+                return true;
+            }
+            return false;
         }
 
         private void HarvestBlock(int x, int y, int z)
