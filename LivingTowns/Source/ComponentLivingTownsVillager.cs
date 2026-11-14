@@ -70,6 +70,7 @@ namespace Game
         private Vector3 m_bedFramePosition;
         private double m_nextBedTryTime;
         private double m_nextThinkTime;
+        private double m_nextJobResolveTime;
         private double m_nextDoorCheckTime;
         private double m_nextWorkSearchTime;
         private double m_chatCooldown;
@@ -184,9 +185,10 @@ namespace Game
             m_pickables = Project.FindSubsystem<SubsystemPickables>(true);
             m_signBehavior = Project.FindSubsystem<SubsystemSignBlockBehavior>(true);
 
-            // Villager role is determined by the model template, never by a menu assignment
-            // or stale saved Job value. This keeps the Farmer model and male/female models isolated.
+            // Resolve the profession from the model template. Some custom models expose
+            // ModelRoute only after their first update, so Update() also performs a safe retry.
             m_job = GetJobForModelRoute(m_model?.ModelRoute);
+            m_nextJobResolveTime = 1.0;
             m_villagerName = valuesDictionary.GetValue<string>("VillagerName", string.Empty);
             m_hasHomeDoor = valuesDictionary.GetValue<bool>("HasHomeDoor", false);
             m_homeDoor = new Point3(
@@ -215,18 +217,49 @@ namespace Game
 
         private static LivingTownsJob GetJobForModelRoute(string modelRoute)
         {
-            if (string.Equals(modelRoute, "Models/Farmer/Farmer", StringComparison.OrdinalIgnoreCase))
+            // Match role names in any route segment instead of requiring one exact path.
+            // This supports folders, renamed model files, file extensions and Android path separators.
+            if (ModelRouteContainsAny(modelRoute, "Farmer", "FarmWorker"))
                 return LivingTownsJob.Farmer;
-            if (string.Equals(modelRoute, "Models/Blacksmith/Blacksmith", StringComparison.OrdinalIgnoreCase))
-                return LivingTownsJob.Blacksmith;
-            if (string.Equals(modelRoute, "Models/Merchant/Merchant", StringComparison.OrdinalIgnoreCase))
-                return LivingTownsJob.Merchant;
-            if (string.Equals(modelRoute, "Models/Healer/Healer", StringComparison.OrdinalIgnoreCase))
-                return LivingTownsJob.Healer;
-            if (string.Equals(modelRoute, "Models/Guard/Guard", StringComparison.OrdinalIgnoreCase))
+            if (ModelRouteContainsAny(modelRoute, "Lumberjack", "Woodcutter", "Logger"))
+                return LivingTownsJob.Lumberjack;
+            if (ModelRouteContainsAny(modelRoute, "Guard", "Guardian", "Soldier"))
                 return LivingTownsJob.Guard;
+            if (ModelRouteContainsAny(modelRoute, "Miner", "MiningVillager"))
+                return LivingTownsJob.Miner;
+            if (ModelRouteContainsAny(modelRoute, "Blacksmith", "Smith"))
+                return LivingTownsJob.Blacksmith;
+            if (ModelRouteContainsAny(modelRoute, "Merchant", "Trader"))
+                return LivingTownsJob.Merchant;
+            if (ModelRouteContainsAny(modelRoute, "Healer", "Medic"))
+                return LivingTownsJob.Healer;
 
             return LivingTownsJob.Unemployed;
+        }
+
+        private static bool ModelRouteContainsAny(string modelRoute, params string[] roleNames)
+        {
+            if (string.IsNullOrWhiteSpace(modelRoute) || roleNames == null || roleNames.Length == 0)
+                return false;
+
+            string normalizedRoute = modelRoute.Replace('\\\\', '/');
+            string[] segments = normalizedRoute.Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string segment in segments)
+            {
+                string candidate = segment.Trim();
+                int extensionIndex = candidate.LastIndexOf('.');
+                if (extensionIndex > 0)
+                    candidate = candidate.Substring(0, extensionIndex);
+
+                foreach (string roleName in roleNames)
+                {
+                    if (!string.IsNullOrEmpty(roleName)
+                        && candidate.IndexOf(roleName, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
@@ -269,6 +302,21 @@ namespace Game
         {
             if (m_body == null)
                 return;
+
+            // Retry profession detection briefly because some custom model templates publish
+            // ModelRoute after ComponentLivingTownsVillager.Load has already run.
+            m_nextJobResolveTime -= dt;
+            if (m_job == LivingTownsJob.Unemployed && m_nextJobResolveTime <= 0.0)
+            {
+                m_nextJobResolveTime = 1.0;
+                LivingTownsJob detectedJob = GetJobForModelRoute(m_model?.ModelRoute);
+                if (detectedJob != LivingTownsJob.Unemployed)
+                {
+                    m_job = detectedJob;
+                    Log.Information("[LivingTowns] Profession resolved after model load; job=" + m_job
+                        + ", modelRoute=" + m_model?.ModelRoute);
+                }
+            }
 
             // Grant the farmer kit after every component has completed loading.
             if (m_job == LivingTownsJob.Farmer && !m_farmerKitGranted)
