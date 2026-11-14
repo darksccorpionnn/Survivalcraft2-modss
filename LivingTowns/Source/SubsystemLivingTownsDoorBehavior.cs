@@ -14,7 +14,11 @@ namespace Game
         {
             "LivingTowns_MaleVillager",
             "LivingTowns_FemaleVillager",
-            "LivingTowns_Farmer"
+            "LivingTowns_Farmer",
+            "LivingTowns_Blacksmith",
+            "LivingTowns_Merchant",
+            "LivingTowns_Healer",
+            "LivingTowns_Guard"
         };
 
         public override int[] HandledBlocks => BlocksManager.Blocks
