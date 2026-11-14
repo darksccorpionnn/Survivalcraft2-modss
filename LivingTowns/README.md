@@ -1,4 +1,4 @@
-# Living Towns 0.4.41
+# Living Towns 0.4.46
 
 - Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
 - Each villager is assigned a unique home door and named wall-sign sleeping position.
@@ -10,6 +10,8 @@
 - Home-return progress is measured against the active doorway waypoint rather than the final bed. A villager waiting for a shared doorway reservation no longer triggers a false stuck-route bypass.
 - Failed work approaches are temporarily rejected so the villager can try a different side rather than orbiting a blocked trunk.
 - Personal storage uses the villager's own named wall sign to locate the closest chest on either side of the sign. Gathered items transfer during the home/night routine; job tools and seeds remain in the villager inventory.
-- The build workflow verifies the C# assembly, modinfo version and packaged output.
+- The GitHub Actions workflow compiles and verifies the C# assembly and modinfo version. The distributable package contains the compiled assembly and modinfo.json.
 
 Build validation confirms compilation and package integrity. Actual Android in-game behavior still requires testing in the user's world.
+
+- Version 0.4.46 resolves the assigned door bottom-half coordinate, aligns entry/exit waypoints to villager standing height, and fails safely instead of routing directly through a wall when the home door cannot be resolved.
