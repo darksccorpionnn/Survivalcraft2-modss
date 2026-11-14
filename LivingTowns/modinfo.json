@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.56",
+  "Version": "0.4.57",
   "ApiVersion": "1.9.5.1",
-  "Description": "Adds individual outdoor WORK-sign destinations within 200 blocks for each villager, with obstacle-aware routing, while preserving all seven villager templates and existing day/night routines.",
+  "Description": "Adds individual outdoor WORK-sign destinations within 200 blocks for each villager; detects both wall-mounted and upright posted signs and routes villagers to their own work areas.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
