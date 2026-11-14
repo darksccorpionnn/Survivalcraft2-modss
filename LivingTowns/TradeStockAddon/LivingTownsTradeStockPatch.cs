@@ -48,7 +48,7 @@ namespace Game
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
 
             // Patch the same native hit entry used by the 0.4.58/0.4.59 villager interaction
-            // hook. Seeding must happen before the existing prefix creates the trade panel.
+            // hook. The postfix runs after the existing interaction prefix creates the trade panel.
             MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
                 new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
             MethodInfo hitPostfix = typeof(LivingTownsTradeStockPatch).GetMethod(
