@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.54",
+  "Version": "0.4.55",
   "ApiVersion": "1.9.5.1",
-  "Description": "Expands obstacle detours to a six-block radius, retries unreachable detour points and improves path search around walls, fences and uneven terrain.",
+  "Description": "Fixes night-time bed arrival for the four new profession villagers, preventing repeated turning beside assigned beds.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
