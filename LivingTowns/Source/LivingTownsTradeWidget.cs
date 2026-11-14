@@ -32,7 +32,7 @@ namespace Game
                 throw new InvalidOperationException("Native inventory grids could not be found.");
 
             if (tradeLabel != null)
-                tradeLabel.Text = (string.IsNullOrEmpty(villager.VillagerName) ? "Köylü" : villager.VillagerName) + " - Takas Stoğu";
+                tradeLabel.Text = "Köylü Takas Stoğu";
             if (playerLabel != null)
                 playerLabel.Text = "Oyuncu Envanteri";
 
