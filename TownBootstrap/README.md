@@ -1,53 +1,39 @@
 # Town Bootstrap - Two-Storey Village Generator
 
-## Target
+## Target and version
 
+- Version: **0.6.4**
 - Survivalcraft: 2.4.0.0
 - Survivalcraft API: 1.9.5.1
 - .NET: 10
 - Package: `TownBootstrap.scmod`
 
-## Version 0.3.0
+## Generation
 
-This is the first procedural village-generation stage. After the player entity loads, it searches 30-60 blocks from the player's initial loaded position for a clear, nearly flat 41x41 area.
-
-The village layout contains:
-
-- Six two-storey timber-and-stone houses around a central square.
-- Stone foundations and lower courses, timber framing, plank walls and pitched roofs.
-- Ground-floor and upper-floor interiors, with carpet areas on both levels.
-- Chests, a work corner, indoor torches and a two-block doorway where the wooden-door block is available.
-- Glass windows, an internal stair run and a special stone chimney on the blacksmith house.
-- A cobblestone well/fountain, market stall, connecting paths, lamp posts and a small fenced garden plot.
+- The world is divided into 256×256-block grid cells. The generator allows one town per cell and attempts generation around the player's loaded position the first time that cell is visited.
+- It retries when the nearby terrain does not yet provide a suitable site and uses a town marker to avoid duplicating an existing town in the same grid cell.
+- A Village Egg can also be placed to request generation near that position. The egg is consumed when generation succeeds and restored when no suitable site is found.
+- A town contains six two-storey houses around a central square, connecting roads, and town lights.
+- The block palette uses spruce wood, planks, cobblestone, framed glass, wooden stairs, wooden doors, and wicker lamps. Required blocks are resolved from the game registry; the generator does not silently substitute unrelated blocks when required palette blocks are unavailable.
 
 ## Safety and limitations
 
-- The generator searches for a flat, clear site before making changes.
-- Every placement checks that the target cell is air. Existing blocks are not intentionally replaced.
-- The block types are resolved through the API block registry; optional decorations are skipped if their block class cannot be resolved.
-- A four-block granite feature in the central well is used as a nearby duplicate-generation marker.
-- This version generates the buildings and props only. Villager NPCs, schedules, trading and work AI are not included yet.
-- The site search uses the player's first loaded position as its reference. It may skip generation if no sufficiently flat and clear 41x41 area is found nearby.
+- The generator searches for a suitable, nearly level site before building.
+- Block placement checks the target terrain cells; unsuitable or occupied sites can cause an attempt to be skipped and retried.
+- This package generates buildings and props. Villager NPC schedules, jobs, sleeping, and work AI are provided by the separate **Living Towns** mod.
+- Build verification checks that the compiled assembly, version, database registration, Village Egg block registration, CSV block registry entry, and texture are included. It does not replace testing in an actual Android world.
 
 ## Build
+
+From the repository root:
 
 ```bash
 dotnet restore TownBootstrap/TownBootstrap.csproj --configfile nuget.config
 dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release
 ```
 
-The build target creates `TownBootstrap.scmod` above the output folder. The package must contain:
+The build target creates `TownBootstrap.scmod` in `TownBootstrap/bin/Release/`. The package includes the compiled DLL, `modinfo.json`, the database, the block registry CSV, and the Village Egg texture.
 
-- `TownBootstrap.dll`
-- `modinfo.json`
-- `Assets/TownBootstrapDatabase.xdb`
+## Installation
 
-## Android installation
-
-Replace the previous TownBootstrap test package with the new `.scmod` in:
-
-```
-/storage/emulated/0/download/Survivalcraft/Mods/
-```
-
-Keep any separate villager mod installed. Restart the API client, create or open a test world, and check the surrounding area for the generated village. A newly created world in a suitable flat area is the best first test.
+Install `TownBootstrap.scmod` and `LivingTowns-0.4.44-Full.scmod` as two separate mod files in the Survivalcraft API client's Mods folder. Do not merge the two packages into one `.scmod`. Restart the API client after replacing the files.
