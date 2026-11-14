@@ -106,6 +106,8 @@ namespace Game
         private float m_lumberScanBestDistance = float.MaxValue;
         private bool m_wasDusk;
         private double m_nextTradeTime;
+        private double m_nextHealerTreatmentTime;
+        private double m_nextGuardAttackTime;
         private bool m_farmerKitGranted;
         private int m_farmSearchRadius;
         private int m_farmSearchDx;
@@ -497,13 +499,11 @@ namespace Game
             {
                 case LivingTownsJob.Farmer: TickFarmer(); break;
                 case LivingTownsJob.Lumberjack: TickLumberjack(); break;
-                case LivingTownsJob.Guard: TickPatrol(7f, 12f); break;
+                case LivingTownsJob.Guard: TickGuard(); break;
                 case LivingTownsJob.Miner: TickMiner(); break;
                 case LivingTownsJob.Blacksmith: TickBlacksmith(); break;
                 case LivingTownsJob.Merchant: TickMerchant(); break;
-                // The healer currently uses a calm town patrol until a dedicated treatment
-                // interaction is introduced; its model and villager life cycle remain standard.
-                case LivingTownsJob.Healer: TickPatrol(3.5f, 6.0f); break;
+                case LivingTownsJob.Healer: TickHealer(); break;
                 default: TickPatrol(2.5f, 5.0f); break;
             }
         }
@@ -3730,6 +3730,122 @@ namespace Game
                 }
             }
             return bestDistance != int.MaxValue;
+        }
+
+        private void TickHealer()
+        {
+            if (m_creatureSpawn == null || m_pathfinding == null)
+            {
+                TickPatrol(3.5f, 6.0f);
+                return;
+            }
+
+            ComponentCreature patient = null;
+            float bestDistance = 8.5f;
+            foreach (ComponentCreature creature in m_creatureSpawn.Creatures)
+            {
+                if (creature == null || creature.Entity == Entity
+                    || creature.ComponentBody == null || creature.ComponentHealth == null
+                    || creature.ComponentHealth.Health <= 0f || creature.ComponentHealth.Health >= 0.98f)
+                    continue;
+
+                // Healers treat LivingTowns villagers only; they do not change players,
+                // wild animals or unrelated creatures.
+                if (creature.Entity.FindComponent<ComponentLivingTownsVillager>() == null)
+                    continue;
+
+                float distance = Vector3.Distance(m_body.Position, creature.ComponentBody.Position);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    patient = creature;
+                }
+            }
+
+            if (patient == null)
+            {
+                TickPatrol(3.5f, 6.0f);
+                return;
+            }
+
+            Vector3 patientPosition = patient.ComponentBody.Position;
+            if (bestDistance > 2.1f)
+            {
+                Vector3 direction = m_body.Position - patientPosition;
+                direction.Y = 0f;
+                if (direction.LengthSquared() < 0.01f)
+                    direction = Vector3.UnitX;
+                direction = Vector3.Normalize(direction);
+                SetManagedDestination(patientPosition + direction * 1.55f, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
+                return;
+            }
+
+            StopManagedPath();
+            m_nextHealerTreatmentTime -= 0.35;
+            if (m_nextHealerTreatmentTime <= 0.0)
+            {
+                patient.ComponentHealth.Heal(0.08f);
+                m_nextHealerTreatmentTime = 1.75;
+            }
+        }
+
+        private void TickGuard()
+        {
+            if (m_creatureSpawn == null || m_pathfinding == null)
+            {
+                TickPatrol(7f, 12f);
+                return;
+            }
+
+            ComponentCreature threat = null;
+            float bestDistance = 10f;
+            foreach (ComponentCreature creature in m_creatureSpawn.Creatures)
+            {
+                if (creature == null || creature.Entity == Entity
+                    || creature.ComponentBody == null || creature.ComponentHealth == null
+                    || creature.ComponentHealth.Health <= 0f
+                    || creature.Category != CreatureCategory.LandPredator)
+                    continue;
+
+                // Never target players or any villager controlled by this mod.
+                if (creature.Entity.FindComponent<ComponentPlayer>() != null
+                    || creature.Entity.FindComponent<ComponentLivingTownsVillager>() != null)
+                    continue;
+
+                float distance = Vector3.Distance(m_body.Position, creature.ComponentBody.Position);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    threat = creature;
+                }
+            }
+
+            if (threat == null)
+            {
+                TickPatrol(7f, 12f);
+                return;
+            }
+
+            Vector3 threatPosition = threat.ComponentBody.Position;
+            if (bestDistance > 2.0f)
+            {
+                Vector3 direction = m_body.Position - threatPosition;
+                direction.Y = 0f;
+                if (direction.LengthSquared() < 0.01f)
+                    direction = Vector3.UnitX;
+                direction = Vector3.Normalize(direction);
+                SetManagedDestination(threatPosition + direction * 1.35f, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
+                return;
+            }
+
+            StopManagedPath();
+            m_nextGuardAttackTime -= 0.35;
+            if (m_nextGuardAttackTime <= 0.0)
+            {
+                ComponentCreature attacker = Entity.FindComponent<ComponentCreature>();
+                threat.ComponentHealth.Injure(0.12f, attacker, false, "LivingTowns muhafız saldırısı");
+                m_nextGuardAttackTime = 1.2;
+            }
         }
 
         private void TickMerchant()
