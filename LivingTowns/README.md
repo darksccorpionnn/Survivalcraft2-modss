@@ -1,11 +1,11 @@
-# Living Towns 0.4.54
+# Living Towns 0.4.55
 
 - Target: Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
 - Original male, female and farmer villagers keep their existing daily routines.
 - Blacksmith, merchant, healer and guard templates use the same villager controller, body, locomotion, human model, spawn and inventory components.
 - All seven villager templates can be selected by the existing door-based random spawn system.
 - Profession routes are matched case-insensitively across folder/file names, aliases, extensions and either slash direction. If a custom model publishes its route after the controller loads, profession detection retries once per second until resolved.
-- At dusk all villagers stop work and return home; at night they sleep; at dawn they leave through their own door. The shared bed, home-door and obstacle-navigation systems were not rewritten for this release.
+- At dusk all villagers stop work and return home; at night they sleep; at dawn they leave through their own door. The four new profession models use a wider final bed-arrival radius and a short blocked-approach fallback so they do not keep turning beside their assigned bed. Original male, female and farmer arrival behavior remains unchanged.
 - Healers seek injured LivingTowns villagers within range and restore health. They do not heal players or unrelated creatures.
 - Guards patrol and defend against nearby land predators. They do not target players or LivingTowns villagers.
 - Blacksmith and merchant keep their existing profession routines.
@@ -14,7 +14,7 @@
 - Build succeeded with Survivalcraft API 1.9.5.1. Actual Android in-game behavior still requires testing in the user's world.
 
 
-## Version 0.4.54
+## Version 0.4.55
 
 - Obstacle detour search radius increased from 3 to 6 blocks.
 - Standing-cell search now checks floor levels up to 2 blocks above/below the villager.
@@ -22,3 +22,10 @@
 - Unreachable detour waypoints are temporarily blacklisted for 12 seconds; the villager then searches for a different route instead of retrying the same point indefinitely.
 - Detour pathfinding budget increased to 1,800 positions.
 - Shared villager home, sleep, work and profession routines remain unchanged.
+
+
+## Version 0.4.55
+
+- Blacksmith, merchant, healer and guard now accept a 1.45-block horizontal arrival radius at their own assigned sleep cell.
+- If one of these four models remains indoors within 1.90 blocks of the assigned sleep position without progress for 2 seconds, it settles into that validated sleep position instead of repeatedly trying to close the final steps.
+- The fallback does not bypass an active home-door crossing; the original male, female and farmer sleep-arrival thresholds are unchanged.
