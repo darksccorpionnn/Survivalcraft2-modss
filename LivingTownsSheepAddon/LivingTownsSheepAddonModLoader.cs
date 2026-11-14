@@ -9,11 +9,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     public override void __ModInitialize()
     {
         ModsManager.RegisterHook("OnLoadingFinished", this);
-        Log.Information("[LivingTowns Sheep] Sheep follow/flee behavior component registered.");
     }
 
     public override void OnLoadingFinished(List<Action> actions)
     {
-        Log.Information("[LivingTowns Sheep] Loaded. Grass-follow and player-flee AI is ready.");
+        // The component is discovered by the database Class mapping.
     }
 }
