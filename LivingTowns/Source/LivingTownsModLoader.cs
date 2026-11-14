@@ -13,12 +13,12 @@ namespace Game
         {
             new Harmony(PackageName + ".VillagerInteraction").PatchAll();
             ModsManager.RegisterHook("OnLoadingFinished", this);
-            Log.Information("[LivingTowns] 0.4.52 initialized.");
+            Log.Information("[LivingTowns] 0.4.53 initialized.");
         }
 
         public override void OnLoadingFinished(List<Action> actions)
         {
-            Log.Information("[LivingTowns] 0.4.52 villagers, persistent unique names, named wall-sign sleep positions, exclusive rest cells, safe home-rest fallback, controlled obstacle jumping, 100-block locked tree harvesting with leaves, 25-block canopy height, dusk return, night-only sleeping and sign-linked personal chest storage ready.");
+            Log.Information("[LivingTowns] 0.4.53 villagers, late-resolved profession routes, persistent unique names, named wall-sign sleep positions, exclusive rest cells, safe home-rest fallback, controlled obstacle jumping, 100-block locked tree harvesting with leaves, 25-block canopy height, dusk return, night-only sleeping and sign-linked personal chest storage ready.");
         }
     }
 }
