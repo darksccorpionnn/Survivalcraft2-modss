@@ -2,7 +2,7 @@ name: Living Towns build
 
 on:
   push:
-    branches: [ livingtowns-0.4.0-dev, livingtowns-0.4.33-villager-ai, livingtowns-0.4.33-sleep-stability, livingtowns-0.4.44-development ]
+    branches: [ livingtowns-0.4.0-dev, livingtowns-0.4.33-villager-ai, livingtowns-0.4.33-sleep-stability, livingtowns-0.4.44-development, livingtowns-0.4.58-trading-ui ]
     paths:
       - 'LivingTowns/**'
       - '.github/workflows/livingtowns-build.yml'
@@ -47,13 +47,13 @@ jobs:
         run: |
           set -euo pipefail
           test -s LivingTowns/bin/Release/net10.0/LivingTowns.dll
-          grep -q '"Version": "0.4.57"' LivingTowns/modinfo.json
+          grep -q '"Version": "0.4.58"' LivingTowns/modinfo.json
           echo "Compiled DLL:"
           ls -lh LivingTowns/bin/Release/net10.0/LivingTowns.dll
       - name: Upload compiled assembly
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.57-assembly
+          name: LivingTowns-0.4.58-assembly
           path: |
             LivingTowns/bin/Release/net10.0/LivingTowns.dll
           if-no-files-found: error
