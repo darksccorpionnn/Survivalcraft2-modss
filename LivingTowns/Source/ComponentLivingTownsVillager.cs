@@ -1006,7 +1006,7 @@ namespace Game
                         {
                             m_homeDoorApproachVariant = (m_homeDoorApproachVariant + 1) % 3;
                             Log.Warning("[LivingTowns] " + m_villagerName
-                                + " could not reach the home-door approach; trying alternate side "
+                                + " could not reach the home-door approach; trying approach distance variant "
                                 + m_homeDoorApproachVariant + ".");
                         }
                         else
@@ -1331,11 +1331,13 @@ namespace Game
 
             Vector3 outsidePoint = doorCenter - inward * 1.10f;
             Vector3 insidePoint = doorCenter + inward * 1.10f;
-            Vector3 tangent = new Vector3(-inward.Z, 0f, inward.X);
-            Vector3 sideOffset = m_homeDoorApproachVariant == 1 ? tangent * 0.90f
-                : m_homeDoorApproachVariant == 2 ? tangent * -0.90f : Vector3.Zero;
-            Vector3 outsideApproach = outsidePoint + sideOffset;
-            Vector3 insideApproach = insidePoint + sideOffset;
+            // Vary the approach distance along the doorway axis, not sideways
+            // into the wall beside the door. Sideways offsets can place the NPC
+            // inside a solid wall block and make the route look like a door failure.
+            float approachDistance = m_homeDoorApproachVariant == 0 ? 1.10f
+                : m_homeDoorApproachVariant == 1 ? 2.10f : 3.10f;
+            Vector3 outsideApproach = doorCenter - inward * approachDistance;
+            Vector3 insideApproach = doorCenter + inward * approachDistance;
 
             // Only one villager may occupy the doorway route at a time. A second
             // villager waits safely away from the threshold until the passage is free.
@@ -1443,7 +1445,9 @@ namespace Game
             m_homeDoorRouteActive = true;
             m_homeDoorRouteEntering = false;
             m_homeDoorRouteStage = 0;
+            m_homeDoorApproachVariant = 0;
             m_homeDoorRouteFinalTarget = doorCenter - inward * 1.10f;
+            ResetHomeReturnProgress();
             return true;
         }
 
@@ -1466,7 +1470,9 @@ namespace Game
                 ReleaseHomeDoorPassage();
                 m_isLeavingHome = false;
                 m_homeDoorRouteActive = false;
+                m_homeDoorApproachVariant = 0;
                 StopManagedPath();
+                ResetHomeReturnProgress();
                 return false;
             }
 
@@ -1477,10 +1483,31 @@ namespace Game
                 ReleaseHomeDoorPassage();
                 m_isLeavingHome = false;
                 StopManagedPath();
+                ResetHomeReturnProgress();
                 return false;
             }
 
-            SetManagedDestination(routeTarget, 2.2f, 0.35f, 1400, false, false, false, null, false);
+            UpdateHomeReturnProgress(routeTarget, 0.35f);
+            if (m_homeReturnNoProgressTime >= 6.0)
+            {
+                if (m_homeDoorRouteStage == 0)
+                {
+                    m_homeDoorApproachVariant = (m_homeDoorApproachVariant + 1) % 3;
+                    Log.Warning("[LivingTowns] " + m_villagerName
+                        + " is retrying the home exit approach distance variant "
+                        + m_homeDoorApproachVariant + ".");
+                }
+                else
+                {
+                    OpenHomeDoorForRoute();
+                    Log.Warning("[LivingTowns] " + m_villagerName
+                        + " is retrying home exit doorway stage " + m_homeDoorRouteStage + ".");
+                }
+                StopManagedPath();
+                ResetHomeReturnProgress();
+            }
+
+            SetManagedDestination(routeTarget, 2.2f, 0.45f, 2200, false, false, false, null, false);
             return true;
         }
 
@@ -3098,17 +3125,12 @@ namespace Game
         private bool TryGetLumberjackApproach(int x, int baseY, int z, out Vector3 approach)
         {
             approach = Vector3.Zero;
-            float bestDirectScore = float.MaxValue;
-            float bestFallbackScore = float.MaxValue;
-            Vector3 bestDirect = Vector3.Zero;
-            Vector3 bestFallback = Vector3.Zero;
-            bool foundDirect = false;
-            bool foundFallback = false;
+            float bestScore = float.MaxValue;
+            bool found = false;
 
             // Do not choose a standing point immediately beneath the canopy.
-            // Search the outer edge of the tree and prefer cells with open space
-            // around them. A clear direct corridor is preferred over a cell that
-            // merely has two empty blocks above it but is unreachable from here.
+            // Search the outer edge of the tree and prefer positions with room
+            // to turn and move. The route watchdog handles the rare blocked corridor.
             for (int radius = 5; radius <= 8; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
@@ -3140,48 +3162,16 @@ namespace Game
                             + Math.Abs(candidate.Y - m_body.Position.Y) * 4f
                             + (8 - openNeighbors) * 2f
                             + (8 - radius) * 0.65f;
-
-                        if (!foundFallback || score < bestFallbackScore)
+                        if (!found || score < bestScore)
                         {
-                            foundFallback = true;
-                            bestFallbackScore = score;
-                            bestFallback = candidate;
-                        }
-
-                        // Only test direct visibility for candidates that could
-                        // improve the current direct-route choice. This avoids a
-                        // raycast for every valid cell around every scanned tree.
-                        if (!foundDirect && m_pathfinding?.m_subsystemPathfinding != null)
-                        {
-                            if (m_pathfinding.m_subsystemPathfinding.IsPassable(m_body.Position, candidate, m_body.BoxSize))
-                            {
-                                foundDirect = true;
-                                bestDirectScore = score;
-                                bestDirect = candidate;
-                            }
-                        }
-                        else if (foundDirect && score < bestDirectScore
-                            && m_pathfinding?.m_subsystemPathfinding != null
-                            && m_pathfinding.m_subsystemPathfinding.IsPassable(m_body.Position, candidate, m_body.BoxSize))
-                        {
-                            bestDirectScore = score;
-                            bestDirect = candidate;
+                            bestScore = score;
+                            approach = candidate;
+                            found = true;
                         }
                     }
                 }
             }
-
-            if (foundDirect)
-            {
-                approach = bestDirect;
-                return true;
-            }
-            if (foundFallback)
-            {
-                approach = bestFallback;
-                return true;
-            }
-            return false;
+            return found;
         }
 
         private void HarvestBlock(int x, int y, int z)
