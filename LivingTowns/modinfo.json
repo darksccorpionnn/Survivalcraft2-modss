@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.47",
+  "Version": "0.4.48",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers return home as dusk begins, keep moving while resolving the assigned doorway, search a wider area for the door, and never freeze at the current position when door lookup fails.",
+  "Description": "Villagers search a much wider area for their assigned home door, use safe standing approach points instead of targeting walls, retry bed assignment while moving, return from farther away, and roam more continuously during the day.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
