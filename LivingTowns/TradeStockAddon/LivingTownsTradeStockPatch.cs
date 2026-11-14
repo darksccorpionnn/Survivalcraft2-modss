@@ -51,12 +51,12 @@ namespace Game
             // hook. Seeding must happen before the existing prefix creates the trade panel.
             MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
                 new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
-            MethodInfo hitPrefix = typeof(LivingTownsTradeStockPatch).GetMethod(
-                nameof(HitPrefix), BindingFlags.Static | BindingFlags.NonPublic);
-            if (hit == null || hitPrefix == null)
+            MethodInfo hitPostfix = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(HitPostfix), BindingFlags.Static | BindingFlags.NonPublic);
+            if (hit == null || hitPostfix == null)
                 Log.Warning("[LivingTowns Trade Stock] ComponentMiner.Hit entry point was not found.");
             else
-                harmony.Patch(hit, prefix: new HarmonyMethod(hitPrefix));
+                harmony.Patch(hit, postfix: new HarmonyMethod(hitPostfix));
         }
 
         private static void PatchMethod(Harmony harmony, Type type, string targetName, string postfixName)
@@ -117,8 +117,7 @@ namespace Game
             }
         }
 
-        [HarmonyPriority(Priority.First)]
-        private static void HitPrefix(ComponentMiner __instance, ComponentBody componentBody, Engine.Vector3 hitPoint, Engine.Vector3 hitDirection)
+        private static void HitPostfix(ComponentMiner __instance, ComponentBody componentBody, Engine.Vector3 hitPoint, Engine.Vector3 hitDirection)
         {
             if (componentBody?.Entity == null)
                 return;
