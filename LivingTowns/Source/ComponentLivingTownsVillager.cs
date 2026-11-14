@@ -15,7 +15,8 @@ namespace Game
         Guard = 3,
         Miner = 4,
         Blacksmith = 5,
-        Merchant = 6
+        Merchant = 6,
+        Healer = 7
     }
 
     public sealed class ComponentLivingTownsVillager : Component, IUpdateable
@@ -216,6 +217,14 @@ namespace Game
         {
             if (string.Equals(modelRoute, "Models/Farmer/Farmer", StringComparison.OrdinalIgnoreCase))
                 return LivingTownsJob.Farmer;
+            if (string.Equals(modelRoute, "Models/Blacksmith/Blacksmith", StringComparison.OrdinalIgnoreCase))
+                return LivingTownsJob.Blacksmith;
+            if (string.Equals(modelRoute, "Models/Merchant/Merchant", StringComparison.OrdinalIgnoreCase))
+                return LivingTownsJob.Merchant;
+            if (string.Equals(modelRoute, "Models/Healer/Healer", StringComparison.OrdinalIgnoreCase))
+                return LivingTownsJob.Healer;
+            if (string.Equals(modelRoute, "Models/Guard/Guard", StringComparison.OrdinalIgnoreCase))
+                return LivingTownsJob.Guard;
 
             return LivingTownsJob.Unemployed;
         }
@@ -444,6 +453,9 @@ namespace Game
                 case LivingTownsJob.Miner: TickMiner(); break;
                 case LivingTownsJob.Blacksmith: TickBlacksmith(); break;
                 case LivingTownsJob.Merchant: TickMerchant(); break;
+                // The healer currently uses a calm town patrol until a dedicated treatment
+                // interaction is introduced; its model and villager life cycle remain standard.
+                case LivingTownsJob.Healer: TickPatrol(3.5f, 6.0f); break;
                 default: TickPatrol(2.5f, 5.0f); break;
             }
         }
