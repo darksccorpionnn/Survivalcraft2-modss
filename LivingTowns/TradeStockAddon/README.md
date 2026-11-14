@@ -10,6 +10,10 @@ This is a companion addon for the user's existing **LivingTowns 0.4.59** package
 - Uses different stock lists for Farmer, Lumberjack, Miner, Blacksmith, Guard, Healer, and Merchant.
 - Writes an initialization marker to the villager's saved ValuesDictionary so depleted inventories are not refilled every time the trade panel is opened.
 
+## Load order
+
+The add-on declares a dependency on `darksccorpionnn.LivingTowns` version `0.4.59`, so the base villager assembly is loaded before the Harmony patch.
+
 ## Install
 
 Keep the existing `LivingTowns-0.4.59-TRADE-RESTORED.scmod` installed. Install the generated `LivingTowns-0.4.60-TradeStockAddon.scmod` alongside it as a second mod. Do not replace or rename the existing 0.4.59 package.
