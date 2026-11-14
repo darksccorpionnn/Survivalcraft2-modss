@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.44",
+  "Version": "0.4.45",
   "ApiVersion": "1.9.5.1",
-  "Description": "Lumberjacks approach outside the tree canopy, wait for native path searches to complete, and use larger route budgets. Home-door routing selects grounded approach cells and infers the indoor side from enclosed terrain.",
+  "Description": "Villager roles are bound to their model type: Farmer models farm automatically, while male and female villagers remain unemployed. The interaction menu only transfers held items.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
