@@ -433,7 +433,7 @@ namespace Game
                 }
             }
 
-            int removedFromStock = m_stockInventory.RemoveSlotItems(offer.StockSlotIndex, 1);
+            int removedFromStock = LivingTownsTradeStockPatch.RemoveShopStockItem(m_stockInventory, offer.StockSlotIndex, 1);
             if (removedFromStock != 1)
             {
                 if (change > 0)
@@ -448,7 +448,7 @@ namespace Game
             if (productLeftover > 0)
             {
                 RemoveItems(playerInventory, offer.ItemValue, 1 - productLeftover);
-                m_stockInventory.AddSlotItems(offer.StockSlotIndex, offer.ItemValue, 1);
+                LivingTownsTradeStockPatch.RestoreShopStockItem(m_stockInventory, offer.StockSlotIndex, offer.ItemValue, 1);
                 if (change > 0)
                     RemoveItems(playerInventory, silverValue, change);
                 RestoreRemovedCoins(playerInventory, removedCoins);
