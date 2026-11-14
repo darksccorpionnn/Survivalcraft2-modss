@@ -1,0 +1,9 @@
+LivingTowns 0.4.53
+- Made profession detection tolerant of model folder/file naming, route separators, aliases and file extensions.
+- Added a safe retry for profession resolution when custom ModelRoute values become available after component loading.
+- Added Blacksmith, Merchant, Healer and Guard templates to the existing door-based random villager spawn list.
+- Healer finds injured LivingTowns villagers nearby and restores their health.
+- Guard patrols and attacks nearby LandPredator creatures; it never targets players or LivingTowns villagers.
+- Preserved the complete XDB, supplied GLB models, animation configs, localization and unique GUIDs.
+- The common day/night, home-return, sleeping and obstacle navigation code is unchanged.
+- New code compiled with Survivalcraft API 1.9.5.1. Actual Android in-game behavior still needs testing.
