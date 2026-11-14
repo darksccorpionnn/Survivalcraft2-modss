@@ -1,0 +1,84 @@
+name: Living Towns 0.4.60 Trade Stock Addon
+
+on:
+  push:
+    branches: [ livingtowns-0.4.60-trade-stock ]
+    paths:
+      - 'LivingTowns/TradeStockAddon/**'
+      - '.github/workflows/livingtowns-trade-addon-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Fetch Survivalcraft API source
+        run: git clone --depth 1 --branch SCAPI1.9 https://github.com/GGigHub/SurvivalcraftApi.git api
+
+      - name: Remove unavailable optional FLAC decoder for compile-only API reference
+        run: |
+          sed -i '/NAudio.Flac.Unknown.Mod/d' api/Engine/Engine.props api/Survivalcraft/Survivalcraft.props
+          cat > api/Engine/Engine.Media/Flac.cs <<'CS'
+          using System;
+          using System.IO;
+          namespace Engine.Media
+          {
+              public static class Flac
+              {
+                  public static bool IsFlacStream(Stream stream) => false;
+                  public static StreamingSource Stream(Stream stream) => throw new NotSupportedException("FLAC decoder omitted from compile-only API reference.");
+                  public static SoundData Load(Stream stream) => throw new NotSupportedException("FLAC decoder omitted from compile-only API reference.");
+              }
+          }
+          CS
+
+      - name: Restore
+        run: dotnet restore LivingTowns/TradeStockAddon/LivingTownsTradeStockAddon.csproj --configfile LivingTowns/nuget.org.config
+
+      - name: Build
+        run: dotnet build LivingTowns/TradeStockAddon/LivingTownsTradeStockAddon.csproj --configuration Release --no-restore
+
+      - name: Package and verify addon
+        run: |
+          set -euo pipefail
+          output="LivingTowns/TradeStockAddon/bin/Release/net10.0"
+          test -s "$output/LivingTownsTradeStockAddon.dll"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+
+          root = Path("LivingTowns/TradeStockAddon")
+          output = root / "bin/Release/net10.0"
+          package = Path("LivingTowns-0.4.60-TradeStockAddon.scmod")
+          info = json.loads((root / "modinfo.json").read_text(encoding="utf-8"))
+          assert info["Version"] == "0.4.60"
+          assert info["PackageName"] == "darksccorpionnn.LivingTownsTradeStockAddon"
+          with ZipFile(package, "w", ZIP_DEFLATED) as archive:
+              archive.write(output / "LivingTownsTradeStockAddon.dll", "LivingTownsTradeStockAddon.dll")
+              archive.write(root / "modinfo.json", "modinfo.json")
+          with ZipFile(package) as archive:
+              names = set(archive.namelist())
+              assert names == {"LivingTownsTradeStockAddon.dll", "modinfo.json"}
+              assert len(archive.read("LivingTownsTradeStockAddon.dll")) > 0
+          print(f"Verified {package} ({package.stat().st_size} bytes)")
+          PY
+
+      - name: Upload .scmod artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LivingTowns-0.4.60-TradeStockAddon
+          path: LivingTowns-0.4.60-TradeStockAddon.scmod
+          if-no-files-found: error
+          retention-days: 14
