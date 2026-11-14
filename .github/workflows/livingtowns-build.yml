@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s LivingTowns/bin/Release/net10.0/LivingTowns.dll
-          grep -q '"Version": "0.4.45"' LivingTowns/modinfo.json
+          grep -q '"Version": "0.4.46"' LivingTowns/modinfo.json
           echo "Compiled DLL:"
           ls -lh LivingTowns/bin/Release/net10.0/LivingTowns.dll
       - name: Upload compiled assembly
