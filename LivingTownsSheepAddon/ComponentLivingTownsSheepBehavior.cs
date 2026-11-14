@@ -103,7 +103,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
                 UpdateFlee();
                 break;
             default:
-                m_pathfinding.Stop();
+                StopOwnedPath();
                 break;
         }
     }
