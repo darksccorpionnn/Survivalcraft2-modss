@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.46",
+  "Version": "0.4.47",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers resolve and use their assigned home doorway for entry and exit; doorway waypoints align with standing height and invalid door routes fail safely. Farmer models farm automatically, while male and female villagers remain unemployed.",
+  "Description": "Villagers return home as dusk begins, keep moving while resolving the assigned doorway, search a wider area for the door, and never freeze at the current position when door lookup fails.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
