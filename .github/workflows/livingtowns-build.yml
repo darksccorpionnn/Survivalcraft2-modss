@@ -53,7 +53,7 @@ jobs:
       - name: Upload compiled assembly
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.45-assembly
+          name: LivingTowns-0.4.46-assembly
           path: |
             LivingTowns/bin/Release/net10.0/LivingTowns.dll
           if-no-files-found: error
