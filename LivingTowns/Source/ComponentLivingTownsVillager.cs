@@ -1038,11 +1038,14 @@ namespace Game
             if (content <= 0 || content >= BlocksManager.Blocks.Length)
                 return false;
 
-            // Attached wall signs expose a face. Ground-placed signs use the
-            // regular SignBlock implementation in the supported game API.
-            string typeName = BlocksManager.Blocks[content]?.GetType().Name ?? string.Empty;
-            return BlocksManager.Blocks[content] is AttachedSignBlock
-                || string.Equals(typeName, "SignBlock", StringComparison.OrdinalIgnoreCase)
+            // Both wall-mounted signs (AttachedSignBlock) and ordinary upright
+            // signs (PostedSignBlock) derive from SignBlock. The previous check
+            // only accepted AttachedSignBlock and the literal base type name
+            // "SignBlock"; concrete posted signs are named PostedSignBlock and
+            // were therefore silently ignored by the WORK-sign scanner.
+            Block block = BlocksManager.Blocks[content];
+            string typeName = block?.GetType().Name ?? string.Empty;
+            return block is SignBlock
                 || typeName.IndexOf("StandingSignBlock", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
