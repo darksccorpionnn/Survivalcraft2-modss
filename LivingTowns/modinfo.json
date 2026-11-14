@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns - Villager AI Fix",
-  "Version": "0.4.48",
+  "Version": "0.4.49",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers search a much wider area for their assigned home door, use safe standing approach points instead of targeting walls, retry bed assignment while moving, return from farther away, and roam more continuously during the day.",
+  "Description": "Villagers use adaptive side-step routes around obstacles, search wider for home doors, choose safe approach cells, and return home from farther away.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
