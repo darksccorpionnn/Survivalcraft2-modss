@@ -47,26 +47,8 @@ namespace Game
             PatchMethod(harmony, villagerType, "Load", nameof(LoadPostfix));
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
 
-            // Replace the original villager interaction callback where available.
-            Type interactionType = AccessTools.TypeByName("Game.LivingTownsVillagerInteractionPatch");
-            MethodInfo oldPrefix = interactionType == null ? null : AccessTools.Method(interactionType, "Prefix");
-            MethodInfo callbackReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
-                nameof(TradeScreenCallbackPrefix), BindingFlags.Static | BindingFlags.NonPublic);
-
-            if (oldPrefix != null && callbackReplacement != null)
-            {
-                HarmonyMethod callbackPatch = new HarmonyMethod(callbackReplacement);
-                callbackPatch.priority = Priority.First;
-                harmony.Patch(oldPrefix, prefix: callbackPatch);
-                Log.Information("[LivingTowns Trade Shop] Replaced the original villager interaction callback.");
-            }
-            else
-            {
-                Log.Warning("[LivingTowns Trade Shop] Original interaction callback was not found; using the hit hook.");
-            }
-
-            // Also intercept the actual player hit. This runs before the old bool prefix and suppresses
-            // it for villagers, guaranteeing that the free-transfer panel cannot replace the shop.
+            // Intercept the native player hit before the legacy villager transfer prefix.
+            // For villagers, open this shop and return false so the old free-transfer panel never runs.
             MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
                 new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
             MethodInfo hitReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
@@ -145,17 +127,6 @@ namespace Game
             }
         }
 
-        // The original interaction callback is static, so its arguments are bound by position.
-        private static bool TradeScreenCallbackPrefix(
-            ComponentMiner __0,
-            ComponentBody __1,
-            Engine.Vector3 __2,
-            Engine.Vector3 __3)
-        {
-            return OpenShop(__0, __1);
-        }
-
-        // Fallback when the base mod does not expose its Harmony interaction callback.
         private static bool TradeScreenHitPrefix(
             ComponentMiner __instance,
             ComponentBody componentBody,
