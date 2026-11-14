@@ -35,6 +35,9 @@ namespace Game
         private static readonly ConditionalWeakTable<object, SeedState> s_states =
             new ConditionalWeakTable<object, SeedState>();
 
+        // Allows only the validated shop transaction to mutate the villager stock.
+        private static bool s_allowShopStockMutation;
+
         public static void Install(Harmony harmony)
         {
             Type villagerType = AccessTools.TypeByName("Game.ComponentLivingTownsVillager");
@@ -83,6 +86,62 @@ namespace Game
             {
                 harmony.Patch(villagerTransferMethod, prefix: new HarmonyMethod(blockTransfer));
                 Log.Information("[LivingTowns Trade Shop] Blocked legacy TransferTradeItem helper on villager.");
+            }
+
+            // Find every old transfer helper in the base LivingTowns assembly, regardless of
+            // which class owns it. This closes alternate drag/drop paths too.
+            int blockedHelpers = 0;
+            try
+            {
+                foreach (Type type in villagerType.Assembly.GetTypes())
+                {
+                    foreach (MethodInfo method in type.GetMethods(
+                        BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+                    {
+                        if (!string.Equals(method.Name, "TransferTradeItem", StringComparison.Ordinal))
+                            continue;
+                        harmony.Patch(method, prefix: new HarmonyMethod(blockTransfer));
+                        blockedHelpers++;
+                    }
+                }
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                foreach (Type type in ex.Types)
+                {
+                    if (type == null) continue;
+                    MethodInfo method = AccessTools.Method(type, "TransferTradeItem");
+                    if (method != null)
+                    {
+                        harmony.Patch(method, prefix: new HarmonyMethod(blockTransfer));
+                        blockedHelpers++;
+                    }
+                }
+            }
+            Log.Information("[LivingTowns Trade Shop] Blocked " + blockedHelpers + " legacy transfer helper(s).");
+
+            // The 0.4.59 chest panel mutates this dedicated inventory directly. Guard its
+            // Add/Remove methods so dragging cannot bypass the shop transaction.
+            Type tradeInventoryType = AccessTools.TypeByName("Game.LivingTownsTradeInventory");
+            if (tradeInventoryType != null)
+            {
+                MethodInfo add = AccessTools.Method(tradeInventoryType, "AddSlotItems");
+                MethodInfo remove = AccessTools.Method(tradeInventoryType, "RemoveSlotItems");
+                MethodInfo addGuard = typeof(LivingTownsTradeStockPatch).GetMethod(
+                    nameof(GuardLegacyStockAdd), BindingFlags.Static | BindingFlags.NonPublic);
+                MethodInfo removeGuard = typeof(LivingTownsTradeStockPatch).GetMethod(
+                    nameof(GuardLegacyStockRemove), BindingFlags.Static | BindingFlags.NonPublic);
+
+                if (add != null && addGuard != null)
+                    harmony.Patch(add, prefix: new HarmonyMethod(addGuard));
+                if (remove != null && removeGuard != null)
+                    harmony.Patch(remove, prefix: new HarmonyMethod(removeGuard));
+
+                Log.Information("[LivingTowns Trade Shop] Guarded direct trade inventory Add/Remove methods.");
+            }
+            else
+            {
+                Log.Warning("[LivingTowns Trade Shop] LivingTownsTradeInventory type was not found; transfer helper guards remain active.");
             }
             Log.Information("[LivingTowns Trade Shop] Currency shop patch installation completed.");
         }
@@ -170,6 +229,46 @@ namespace Game
         {
             // The old UI's direct inventory transfer route is never allowed.
             return false;
+        }
+
+        private static bool GuardLegacyStockAdd()
+        {
+            return s_allowShopStockMutation;
+        }
+
+        private static bool GuardLegacyStockRemove(ref int __result)
+        {
+            if (s_allowShopStockMutation)
+                return true;
+
+            __result = 0;
+            return false;
+        }
+
+        internal static int RemoveShopStockItem(IInventory inventory, int slotIndex, int count)
+        {
+            s_allowShopStockMutation = true;
+            try
+            {
+                return inventory.RemoveSlotItems(slotIndex, count);
+            }
+            finally
+            {
+                s_allowShopStockMutation = false;
+            }
+        }
+
+        internal static void RestoreShopStockItem(IInventory inventory, int slotIndex, int value, int count)
+        {
+            s_allowShopStockMutation = true;
+            try
+            {
+                inventory.AddSlotItems(slotIndex, value, count);
+            }
+            finally
+            {
+                s_allowShopStockMutation = false;
+            }
         }
 
         private static void OpenShop(ComponentMiner miner, ComponentBody componentBody)
