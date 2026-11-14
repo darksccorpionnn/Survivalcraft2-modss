@@ -2393,16 +2393,19 @@ namespace Game
                 else
                     destination = m_obstacleDetourTarget;
             }
-            else if (m_nextObstacleDetourTime <= 0.0
-                && m_managedNoProgressTime >= 1.35
-                && TryChooseObstacleDetour(destination, out Vector3 detour))
+            else if (m_nextObstacleDetourTime <= 0.0 && m_managedNoProgressTime >= 1.35)
             {
-                m_obstacleDetourActive = true;
-                m_obstacleDetourTarget = detour;
-                m_nextObstacleDetourTime = 2.0;
-                destination = detour;
-                Log.Information("[LivingTowns] " + m_villagerName
-                    + " is taking a clear side route around an obstacle.");
+                if (TryChooseObstacleDetour(destination, out Vector3 detour))
+                {
+                    m_obstacleDetourActive = true;
+                    m_obstacleDetourTarget = detour;
+                    m_nextObstacleDetourTime = 2.0;
+                    destination = detour;
+                    Log.Information("[LivingTowns] " + m_villagerName
+                        + " is taking a clear side route around an obstacle.");
+                }
+                else
+                    m_nextObstacleDetourTime = 1.5;
             }
 
             Vector3? current = m_pathfinding.Destination;
