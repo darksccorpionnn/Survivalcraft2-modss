@@ -874,6 +874,14 @@ namespace Game
                 // terrain around the door is temporarily unavailable, the next
                 // two-second scan can recover once its chunk becomes ready.
                 SetSleepingAnimation(false);
+                // A missing sign/bed assignment must not freeze the villager at dusk.
+                // Keep it moving to the registered home entrance and retry the bed scan.
+                if (m_hasHomeDoor)
+                {
+                    Vector3 doorSearchTarget = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y + 1f, m_homeDoor.Z + 0.5f);
+                    SetManagedDestination(doorSearchTarget, 2.2f, 0.65f,
+                        HomeReturnPathfindingPositions * 2, false, false, false, null, false);
+                }
                 return;
             }
 
@@ -1240,9 +1248,12 @@ namespace Game
             Point3 resolvedDoor = m_homeDoor;
             bool doorFound = false;
             int bestDoorOffset = int.MaxValue;
-            for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dz = -1; dz <= 1; dz++)
+            // Home-door assignments can be stored on the upper half or one cell
+            // beside the actual door. Search a wider local volume so villagers do not
+            // give up on a valid entrance because of a slightly stale coordinate.
+            for (int dx = -3; dx <= 3; dx++)
+            for (int dy = -2; dy <= 2; dy++)
+            for (int dz = -3; dz <= 3; dz++)
             {
                 int x = m_homeDoor.X + dx;
                 int y = m_homeDoor.Y + dy;
@@ -1369,8 +1380,11 @@ namespace Game
                 m_homeDoorRouteActive = true;
                 m_homeDoorRouteEntering = entering;
                 m_homeDoorRouteFinalTarget = finalTarget;
-                m_waitingForHomeDoorPassage = true;
-                routeTarget = m_body.Position;
+                // Never use the villager's current position as its destination:
+                // that silently converts a failed door lookup into a permanent freeze.
+                // Keep moving toward the registered doorway while the wider scan retries.
+                m_waitingForHomeDoorPassage = false;
+                routeTarget = new Vector3(m_homeDoor.X + 0.5f, m_homeDoor.Y + 1f, m_homeDoor.Z + 0.5f);
                 return true;
             }
 
