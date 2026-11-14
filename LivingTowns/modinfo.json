@@ -3,7 +3,7 @@
   "Name": "Living Towns - Villager AI Fix",
   "Version": "0.4.42",
   "ApiVersion": "1.9.5.1",
-  "Description": "Villagers use per-sign chest storage. Lumberjacks approach from a wider 3–5 block collision-safe radius. Home-return watchdog tracks active doorway waypoints and pauses while waiting for doorway access.",
+  "Description": "Lumberjacks work within 32 blocks of home and return to store items after two trees, ten transferable items, a 24-block home-distance limit or seven minutes. Chest lookup has a home fallback and transfers use the game inventory allocator.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

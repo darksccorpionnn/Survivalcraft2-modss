@@ -2622,8 +2622,7 @@ namespace Game
             }
 
             m_lumberjackWorkTimeSinceStorage += 0.35;
-            if (!m_hasWorkTarget && !m_hasLumberTreeLock
-                && ShouldLumberjackReturnHomeForStorage())
+            if (!m_hasWorkTarget && ShouldLumberjackReturnHomeForStorage())
             {
                 BeginLumberjackStorageReturn();
                 TickRestRoutine(0.35f, false);
@@ -2678,14 +2677,13 @@ namespace Game
                     {
                         Log.Information("[LivingTowns] " + m_villagerName + " finished the locked tree at "
                             + m_lumberTreeX + "," + m_lumberTreeBaseY + "," + m_lumberTreeZ
-                            + " including its leaves; searching for the next tree within 100 blocks of home.");
+                            + " including its leaves; searching for the next tree within 32 blocks of home.");
                         m_hasLumberTreeLock = false;
                         m_lumberjackTreesSinceStorage++;
                     }
                 }
 
-                if (!m_hasWorkTarget && !m_hasLumberTreeLock
-                    && ShouldLumberjackReturnHomeForStorage())
+                if (!m_hasWorkTarget && ShouldLumberjackReturnHomeForStorage())
                 {
                     BeginLumberjackStorageReturn();
                     TickRestRoutine(0.35f, false);
@@ -2944,7 +2942,7 @@ namespace Game
             {
                 ResetLumberSearch();
                 Log.Information("[LivingTowns] " + m_villagerName
-                    + " finished scanning the 100-block home radius; no reachable tree was found.");
+                    + " finished scanning the 32-block home radius; no reachable tree was found.");
             }
             return false;
         }
