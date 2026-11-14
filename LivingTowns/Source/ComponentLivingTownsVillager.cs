@@ -228,6 +228,13 @@ namespace Game
             m_personalChestMissingWarningShown = false;
             EnsureVillagerName();
             m_farmerKitGranted = valuesDictionary.GetValue<bool>("FarmerKitGranted", false);
+            m_tradeStockInitialized = valuesDictionary.GetValue<bool>("TradeStockInitialized", false);
+            for (int i = 0; i < m_tradeStock.Length; i++)
+            {
+                m_tradeStock[i] = valuesDictionary.GetValue<int>("TradeStock" + i, -1);
+                if (m_tradeStock[i] < 0)
+                    m_tradeStockInitialized = false;
+            }
 
             if (m_locomotion != null)
                 m_locomotion.WalkSpeed = VillagerWalkSpeed;
@@ -297,6 +304,9 @@ namespace Game
             valuesDictionary.SetValue("BedY", m_bedCell.Y);
             valuesDictionary.SetValue("BedZ", m_bedCell.Z);
             valuesDictionary.SetValue("FarmerKitGranted", m_farmerKitGranted);
+            valuesDictionary.SetValue("TradeStockInitialized", m_tradeStockInitialized);
+            for (int i = 0; i < m_tradeStock.Length; i++)
+                valuesDictionary.SetValue("TradeStock" + i, m_tradeStock[i]);
         }
 
         public void SetHomeDoor(int x, int y, int z)
@@ -494,90 +504,250 @@ namespace Game
             TickJob();
         }
 
-        public void ShowJobMenu(ComponentPlayer player)
+        public string VillagerName => m_villagerName;
+
+        private const int TradeOfferCount = 4;
+        private readonly int[] m_tradeStock = new int[TradeOfferCount];
+        private bool m_tradeStockInitialized;
+
+        public void OpenTradeScreen(ComponentPlayer player)
         {
-            if (player == null)
+            if (player?.ComponentGui == null)
                 return;
 
-            List<string> options = new List<string>
+            // Profession names can become available one update after the entity loads.
+            if (m_job == LivingTownsJob.Unemployed)
             {
-                "Eldeki eşyayı NPC'ye ver"
-            };
+                LivingTownsJob detectedJob = GetJobForModelRoute(m_model?.ModelRoute);
+                if (detectedJob != LivingTownsJob.Unemployed)
+                    m_job = detectedJob;
+            }
 
-            DialogsManager.ShowDialog(null, new ListSelectionDialog(
-                (string.IsNullOrEmpty(m_villagerName) ? "Köylü" : m_villagerName) + " | Etkileşim",
-                options,
-                60f,
-                item => item == null ? string.Empty : item.ToString(),
-                item => HandleMenuChoice(player, item == null ? string.Empty : item.ToString())
-            ));
+            List<LivingTownsTradeOffer> offers = CreateTradeOffers();
+            if (offers.Count == 0)
+            {
+                player.ComponentGui.DisplaySmallMessage("Bu köylü için uygun takas bulunamadı.", Color.White, true, false);
+                return;
+            }
+
+            if (!m_tradeStockInitialized)
+            {
+                for (int i = 0; i < m_tradeStock.Length; i++)
+                    m_tradeStock[i] = 12;
+                m_tradeStockInitialized = true;
+            }
+
+            for (int i = 0; i < offers.Count && i < m_tradeStock.Length; i++)
+                offers[i].Stock = Math.Max(0, m_tradeStock[i]);
+
+            player.ComponentGui.ModalPanelWidget = new LivingTownsTradeWidget(player, this, offers);
         }
 
-        private void HandleMenuChoice(ComponentPlayer player, string choice)
+        private List<LivingTownsTradeOffer> CreateTradeOffers()
         {
-            try
-            {
-                if (string.Equals((choice ?? string.Empty).Trim(), "Eldeki eşyayı NPC'ye ver", StringComparison.Ordinal))
-                    GiveHeldItems(player);
-            }
-            catch (Exception ex)
-            {
-                Log.Error("[LivingTowns] Villager item-transfer menu action failed safely: " + ex);
-                player?.ComponentGui?.DisplaySmallMessage("Eşya aktarılırken hata oluştu; ayrıntı günlüğe yazıldı.", Color.White, true, false);
-            }
-        }
+            List<LivingTownsTradeOffer> offers = new List<LivingTownsTradeOffer>();
 
-        private void TickJob()
-        {
             switch (m_job)
             {
-                case LivingTownsJob.Farmer: TickFarmer(); break;
-                case LivingTownsJob.Lumberjack: TickLumberjack(); break;
-                case LivingTownsJob.Guard: TickGuard(); break;
-                case LivingTownsJob.Miner: TickMiner(); break;
-                case LivingTownsJob.Blacksmith: TickBlacksmith(); break;
-                case LivingTownsJob.Merchant: TickMerchant(); break;
-                case LivingTownsJob.Healer: TickHealer(); break;
-                default: TickPatrol(2.5f, 5.0f); break;
+                case LivingTownsJob.Farmer:
+                    TryAddTradeOffer(offers, "SeedsBlock", 5, 6, "BreadBlock", 0, 2);
+                    TryAddTradeOffer(offers, "RyeBlock", 0, 8, "BreadBlock", 0, 3);
+                    TryAddTradeOffer(offers, "CottonBlock", 0, 4, "PumpkinBlock", 0, 1);
+                    TryAddTradeOffer(offers, "BreadBlock", 0, 2, "SeedsBlock", 5, 5);
+                    break;
+
+                case LivingTownsJob.Lumberjack:
+                    TryAddTradeOffer(offers, "OakWoodBlock", 0, 6, "PlanksBlock", 0, 12);
+                    TryAddTradeOffer(offers, "BirchWoodBlock", 0, 6, "PlanksBlock", 0, 12);
+                    TryAddTradeOffer(offers, "PlanksBlock", 0, 8, "StickBlock", 0, 12);
+                    TryAddTradeOffer(offers, "StickBlock", 0, 16, "TorchBlock", 0, 4);
+                    break;
+
+                case LivingTownsJob.Miner:
+                    TryAddTradeOffer(offers, "StoneChunkBlock", 0, 12, "CoalChunkBlock", 0, 3);
+                    TryAddTradeOffer(offers, "CoalChunkBlock", 0, 8, "IronOreChunkBlock", 0, 3);
+                    TryAddTradeOffer(offers, "CopperOreBlock", 0, 6, "CopperIngotBlock", 0, 2);
+                    TryAddTradeOffer(offers, "IronOreChunkBlock", 0, 6, "IronIngotBlock", 0, 1);
+                    break;
+
+                case LivingTownsJob.Blacksmith:
+                    TryAddTradeOffer(offers, "IronIngotBlock", 0, 8, "IronPickaxeBlock", 0, 1);
+                    TryAddTradeOffer(offers, "CopperIngotBlock", 0, 6, "CopperPickaxeBlock", 0, 1);
+                    TryAddTradeOffer(offers, "IronIngotBlock", 0, 5, "IronAxeBlock", 0, 1);
+                    TryAddTradeOffer(offers, "CopperIngotBlock", 0, 4, "CopperAxeBlock", 0, 1);
+                    break;
+
+                case LivingTownsJob.Guard:
+                    TryAddTradeOffer(offers, "IronIngotBlock", 0, 5, "IronSpearBlock", 0, 1);
+                    TryAddTradeOffer(offers, "IronIngotBlock", 0, 7, "IronPickaxeBlock", 0, 1);
+                    TryAddTradeOffer(offers, "BreadBlock", 0, 3, "CookedMeatBlock", 0, 1);
+                    TryAddTradeOffer(offers, "StickBlock", 0, 8, "TorchBlock", 0, 4);
+                    break;
+
+                case LivingTownsJob.Healer:
+                    TryAddTradeOffer(offers, "CookedMeatBlock", 0, 3, "BreadBlock", 0, 3);
+                    TryAddTradeOffer(offers, "BreadBlock", 0, 4, "CookedMeatBlock", 0, 1);
+                    TryAddTradeOffer(offers, "SeedsBlock", 5, 8, "BreadBlock", 0, 2);
+                    TryAddTradeOffer(offers, "CottonBlock", 0, 3, "PumpkinSoupBucketBlock", 0, 1);
+                    break;
+
+                case LivingTownsJob.Merchant:
+                    TryAddTradeOffer(offers, "CoalChunkBlock", 0, 5, "BreadBlock", 0, 2);
+                    TryAddTradeOffer(offers, "IronIngotBlock", 0, 2, "PlanksBlock", 0, 8);
+                    TryAddTradeOffer(offers, "StickBlock", 0, 8, "SeedsBlock", 5, 4);
+                    TryAddTradeOffer(offers, "BreadBlock", 0, 2, "TorchBlock", 0, 4);
+                    break;
+
+                default:
+                    TryAddTradeOffer(offers, "StickBlock", 0, 6, "BreadBlock", 0, 1);
+                    TryAddTradeOffer(offers, "StoneChunkBlock", 0, 6, "TorchBlock", 0, 2);
+                    TryAddTradeOffer(offers, "BreadBlock", 0, 2, "SeedsBlock", 5, 3);
+                    TryAddTradeOffer(offers, "CoalChunkBlock", 0, 4, "IronOreChunkBlock", 0, 1);
+                    break;
+            }
+
+            return offers;
+        }
+
+        private static void TryAddTradeOffer(
+            List<LivingTownsTradeOffer> offers,
+            string costBlockName,
+            int costData,
+            int costCount,
+            string resultBlockName,
+            int resultData,
+            int resultCount)
+        {
+            int costIndex = BlocksManager.GetBlockIndex(costBlockName);
+            int resultIndex = BlocksManager.GetBlockIndex(resultBlockName);
+            if (costIndex < 0 || resultIndex < 0
+                || costIndex >= BlocksManager.Blocks.Length
+                || resultIndex >= BlocksManager.Blocks.Length
+                || BlocksManager.Blocks[costIndex] == null
+                || BlocksManager.Blocks[resultIndex] == null)
+            {
+                Log.Warning("[LivingTowns] Trade offer skipped because a required item is unavailable: "
+                    + costBlockName + " -> " + resultBlockName);
+                return;
+            }
+
+            int costValue = Terrain.MakeBlockValue(costIndex, 0, costData);
+            int resultValue = Terrain.MakeBlockValue(resultIndex, 0, resultData);
+            offers.Add(new LivingTownsTradeOffer(costValue, costCount, resultValue, resultCount, 12));
+        }
+
+        public bool TryCompleteTrade(ComponentPlayer player, LivingTownsTradeOffer offer, int offerIndex)
+        {
+            IInventory inventory = player?.ComponentMiner?.Inventory;
+            if (inventory == null || offer == null
+                || offerIndex < 0 || offerIndex >= m_tradeStock.Length
+                || m_tradeStock[offerIndex] <= 0)
+            {
+                player?.ComponentGui?.DisplaySmallMessage("Bu takas şu anda kullanılamıyor.", Color.White, true, false);
+                return false;
+            }
+
+            if (CountInventoryItems(inventory, offer.CostValue) < offer.CostCount)
+            {
+                player.ComponentGui?.DisplaySmallMessage("Takas için yeterli eşyan yok.", Color.White, true, false);
+                return false;
+            }
+
+            if (GetAvailableInventoryCapacity(inventory, offer.ResultValue) < offer.ResultCount)
+            {
+                player.ComponentGui?.DisplaySmallMessage("Envanterinde yer yok.", Color.White, true, false);
+                return false;
+            }
+
+            List<KeyValuePair<int, int>> removedItems = new List<KeyValuePair<int, int>>();
+            int remainingCost = offer.CostCount;
+            for (int i = 0; i < inventory.SlotsCount && remainingCost > 0; i++)
+            {
+                if (inventory.GetSlotCount(i) <= 0
+                    || inventory.GetSlotValue(i) != offer.CostValue)
+                    continue;
+
+                int take = Math.Min(remainingCost, inventory.GetSlotCount(i));
+                int removed = inventory.RemoveSlotItems(i, take);
+                if (removed > 0)
+                {
+                    removedItems.Add(new KeyValuePair<int, int>(i, removed));
+                    remainingCost -= removed;
+                }
+            }
+
+            if (remainingCost > 0)
+            {
+                RestoreInventoryItems(inventory, offer.CostValue, removedItems);
+                player.ComponentGui?.DisplaySmallMessage("Eşyalar alınamadı; takas iptal edildi.", Color.White, true, false);
+                return false;
+            }
+
+            int leftover = ComponentInventoryBase.AcquireItems(inventory, offer.ResultValue, offer.ResultCount);
+            if (leftover > 0)
+            {
+                RemoveInventoryItems(inventory, offer.ResultValue, offer.ResultCount - leftover);
+                RestoreInventoryItems(inventory, offer.CostValue, removedItems);
+                player.ComponentGui?.DisplaySmallMessage("Takas güvenli şekilde iptal edildi; envanter alanı yetersiz.", Color.White, true, false);
+                return false;
+            }
+
+            m_tradeStock[offerIndex] = Math.Max(0, m_tradeStock[offerIndex] - 1);
+            offer.Stock = m_tradeStock[offerIndex];
+            player.ComponentGui?.DisplaySmallMessage(
+                "Takas tamamlandı: " + offer.ResultCount + " adet eşya aldın.",
+                Color.White, false, true);
+            return true;
+        }
+
+        private static int CountInventoryItems(IInventory inventory, int value)
+        {
+            int total = 0;
+            for (int i = 0; i < inventory.SlotsCount; i++)
+            {
+                if (inventory.GetSlotValue(i) == value)
+                    total += inventory.GetSlotCount(i);
+            }
+            return total;
+        }
+
+        private static int GetAvailableInventoryCapacity(IInventory inventory, int value)
+        {
+            int total = 0;
+            for (int i = 0; i < inventory.SlotsCount; i++)
+            {
+                int count = inventory.GetSlotCount(i);
+                int slotValue = inventory.GetSlotValue(i);
+                int capacity = inventory.GetSlotCapacity(i, value);
+                if (capacity > 0 && (count == 0 || slotValue == value))
+                    total += Math.Max(0, capacity - count);
+            }
+            return total;
+        }
+
+        private static void RemoveInventoryItems(IInventory inventory, int value, int count)
+        {
+            int remaining = count;
+            for (int i = 0; i < inventory.SlotsCount && remaining > 0; i++)
+            {
+                if (inventory.GetSlotCount(i) <= 0 || inventory.GetSlotValue(i) != value)
+                    continue;
+
+                int removed = inventory.RemoveSlotItems(i, Math.Min(remaining, inventory.GetSlotCount(i)));
+                remaining -= removed;
             }
         }
 
-        private void GiveHeldItems(ComponentPlayer player)
+        private static void RestoreInventoryItems(
+            IInventory inventory,
+            int value,
+            List<KeyValuePair<int, int>> removedItems)
         {
-            if (m_inventory == null || player?.ComponentMiner?.Inventory == null)
+            foreach (KeyValuePair<int, int> item in removedItems)
             {
-                player?.ComponentGui?.DisplaySmallMessage("NPC envanteri bulunamadı.", Color.White, true, false);
-                return;
+                if (item.Value > 0)
+                    inventory.AddSlotItems(item.Key, value, item.Value);
             }
-
-            IInventory source = player.ComponentMiner.Inventory;
-            int active = source.ActiveSlotIndex;
-            if (active < 0 || active >= source.SlotsCount || source.GetSlotCount(active) <= 0)
-            {
-                player.ComponentGui?.DisplaySmallMessage("Elinde verilecek eşya yok.", Color.White, true, false);
-                return;
-            }
-
-            int value = source.GetSlotValue(active);
-            int targetSlot = ComponentInventoryBase.FindAcquireSlotForItem(m_inventory, value);
-            if (targetSlot < 0)
-            {
-                player.ComponentGui?.DisplaySmallMessage("NPC envanteri dolu.", Color.White, true, false);
-                return;
-            }
-
-            int free = m_inventory.GetSlotCapacity(targetSlot, value) - m_inventory.GetSlotCount(targetSlot);
-            int amount = Math.Min(source.GetSlotCount(active), free);
-            if (amount <= 0)
-                return;
-
-            source.RemoveSlotItems(active, amount);
-            m_inventory.AddSlotItems(targetSlot, value, amount);
-            // ComponentHumanModel.DrawExtras reads the active slot through ComponentMiner.
-            // Selecting the received slot makes the block/item render with the game's normal hand pose.
-            m_inventory.ActiveSlotIndex = targetSlot;
-            m_miner?.Poke(true);
-            player.ComponentGui?.DisplaySmallMessage("NPC'ye " + amount + " adet eşya verildi; eline aldı.", Color.White, true, false);
         }
 
         private bool EnsureAssignedBed(float dt)
