@@ -3830,9 +3830,9 @@ namespace Game
 
                     if (m_hasHomeDoor || m_hasWorkSignCell)
                     {
-                        Point3 workCenter = GetWorkCenterCell();
-                        float workDx = candidateApproach.X - (workCenter.X + 0.5f);
-                        float workDz = candidateApproach.Z - (workCenter.Z + 0.5f);
+                        Point3 workAnchor = GetWorkCenterCell();
+                        float workDx = candidateApproach.X - (workAnchor.X + 0.5f);
+                        float workDz = candidateApproach.Z - (workAnchor.Z + 0.5f);
                         if (workDx * workDx + workDz * workDz
                             > LumberjackMaxApproachDistanceFromWorkArea * LumberjackMaxApproachDistanceFromWorkArea)
                             continue;
