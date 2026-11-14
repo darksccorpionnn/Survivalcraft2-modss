@@ -47,8 +47,7 @@ namespace Game
             PatchMethod(harmony, villagerType, "Load", nameof(LoadPostfix));
             PatchMethod(harmony, villagerType, "Save", nameof(SavePostfix));
 
-            // Replace the original villager interaction callback, not the game's inventory system.
-            // This prevents the old free-transfer panel from opening while leaving all villager AI intact.
+            // Replace the original villager interaction callback where available.
             Type interactionType = AccessTools.TypeByName("Game.LivingTownsVillagerInteractionPatch");
             MethodInfo oldPrefix = interactionType == null ? null : AccessTools.Method(interactionType, "Prefix");
             MethodInfo callbackReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
@@ -56,29 +55,33 @@ namespace Game
 
             if (oldPrefix != null && callbackReplacement != null)
             {
-                HarmonyMethod patch = new HarmonyMethod(callbackReplacement);
-                patch.priority = Priority.First;
-                harmony.Patch(oldPrefix, prefix: patch);
-                Log.Information("[LivingTowns Trade Shop] Replaced the old free-transfer interaction panel.");
+                HarmonyMethod callbackPatch = new HarmonyMethod(callbackReplacement);
+                callbackPatch.priority = Priority.First;
+                harmony.Patch(oldPrefix, prefix: callbackPatch);
+                Log.Information("[LivingTowns Trade Shop] Replaced the original villager interaction callback.");
             }
             else
             {
-                // Fallback for builds where the interaction callback has a different type name.
-                MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
-                    new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
-                MethodInfo hitReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
-                    nameof(TradeScreenHitPrefix), BindingFlags.Static | BindingFlags.NonPublic);
-                if (hit != null && hitReplacement != null)
-                {
-                    HarmonyMethod patch = new HarmonyMethod(hitReplacement);
-                    patch.priority = Priority.First;
-                    harmony.Patch(hit, prefix: patch);
-                    Log.Warning("[LivingTowns Trade Shop] Used fallback ComponentMiner.Hit interception.");
-                }
-                else
-                {
-                    Log.Warning("[LivingTowns Trade Shop] Could not locate the villager interaction entry point.");
-                }
+                Log.Warning("[LivingTowns Trade Shop] Original interaction callback was not found; using the hit hook.");
+            }
+
+            // Also intercept the actual player hit. This runs before the old bool prefix and suppresses
+            // it for villagers, guaranteeing that the free-transfer panel cannot replace the shop.
+            MethodInfo hit = AccessTools.Method(typeof(ComponentMiner), nameof(ComponentMiner.Hit),
+                new Type[] { typeof(ComponentBody), typeof(Engine.Vector3), typeof(Engine.Vector3) });
+            MethodInfo hitReplacement = typeof(LivingTownsTradeStockPatch).GetMethod(
+                nameof(TradeScreenHitPrefix), BindingFlags.Static | BindingFlags.NonPublic);
+
+            if (hit != null && hitReplacement != null)
+            {
+                HarmonyMethod hitPatch = new HarmonyMethod(hitReplacement);
+                hitPatch.priority = Priority.First;
+                harmony.Patch(hit, prefix: hitPatch);
+                Log.Information("[LivingTowns Trade Shop] Installed high-priority player-hit interception.");
+            }
+            else
+            {
+                Log.Warning("[LivingTowns Trade Shop] Could not locate ComponentMiner.Hit.");
             }
 
             Log.Information("[LivingTowns Trade Shop] Currency shop patch installation completed.");
