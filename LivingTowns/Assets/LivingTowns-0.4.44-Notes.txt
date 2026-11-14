@@ -1,0 +1,12 @@
+Living Towns 0.4.44 – Lumberjack Navigation and Home-Door Reliability
+
+- Root cause addressed: the native Survivalcraft pathfinder throttles repeated same-destination searches. The mod's previous 5–6 second watchdog could cancel movement before the native 8-second search interval elapsed.
+- Home entry/exit now uses a 14,000-position path budget and waits longer when an asynchronous native path search is still running.
+- Lumberjack work routes use a 10,000-position path budget and wait for the native path search before retrying or abandoning an approach.
+- Tree work approach positions moved from a 5–8 block ring to a 9–11 block ring, reducing collisions with low branches and foliage.
+- Door approach targets are selected from grounded standing cells on the correct side of the entrance instead of fixed fractional offsets.
+- If the assigned bed lies sideways relative to the door axis, the house interior side is inferred from roofed cells with multiple enclosing walls.
+- Home-door and home-exit retries no longer repeatedly cancel a still-running path search.
+
+Build target: Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
+GitHub Actions compilation and package checks are required; Android in-game behavior still needs testing.

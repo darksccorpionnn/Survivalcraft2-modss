@@ -148,6 +148,8 @@ namespace Game
         private const double LumberjackMaxWorkSecondsPerTrip = 150.0;
         private const float LumberjackStorageReturnDistance = 18f;
         private const float LumberjackMaxApproachDistanceFromHome = 16.5f;
+        private const int HomeReturnPathfindingPositions = 14000;
+        private const int LumberjackWorkPathfindingPositions = 10000;
         private const int LumberjackTreeMaxHeight = 25;
         private const int LumberjackScanColumnsPerUpdate = 900;
 
@@ -998,7 +1000,9 @@ namespace Game
                 // Never bypass the doorway when the villager is stuck outside:
                 // doing so sends it directly to the bed through the house wall.
                 // Retry the current waypoint and vary the outside approach instead.
-                if (m_homeReturnNoProgressTime >= 6.0)
+                bool homePathSearchPending = m_pathfinding?.m_pathfindingResult?.IsInProgress == true;
+                double homeRetryThreshold = homePathSearchPending ? 30.0 : 14.0;
+                if (m_homeReturnNoProgressTime >= homeRetryThreshold)
                 {
                     if (m_homeDoorRouteActive)
                     {
@@ -1028,7 +1032,8 @@ namespace Game
                     ResetHomeReturnProgress();
                 }
 
-                SetManagedDestination(routeTarget, 2.2f, 0.65f, 2600, false, false, false, null, false);
+                SetManagedDestination(routeTarget, 2.2f, 0.65f, HomeReturnPathfindingPositions,
+                    false, false, false, null, false);
             }
         }
 
@@ -1200,6 +1205,76 @@ namespace Game
             return total;
         }
 
+        private bool TryInferHomeDoorInsideDirection(Vector3 doorCenter, Vector3 axis, out Vector3 inward)
+        {
+            inward = Vector3.Zero;
+            if (m_terrain == null)
+                return false;
+            Vector3 tangent = new Vector3(-axis.Z, 0f, axis.X);
+            bool found = false;
+            float bestScore = float.NegativeInfinity;
+            Vector3 bestDirection = Vector3.Zero;
+            for (int sign = -1; sign <= 1; sign += 2)
+            for (int distance = 1; distance <= 5; distance++)
+            for (int lateral = -2; lateral <= 2; lateral++)
+            {
+                int x = Terrain.ToCell(doorCenter.X + axis.X * sign * distance + tangent.X * lateral);
+                int z = Terrain.ToCell(doorCenter.Z + axis.Z * sign * distance + tangent.Z * lateral);
+                for (int floorY = Math.Max(1, m_homeDoor.Y - 2); floorY <= Math.Min(250, m_homeDoor.Y); floorY++)
+                {
+                    if (!IsValidStandingCell(x, floorY, z)
+                        || !IsIndoorBedSpot(x, floorY, z, out int walls) || walls < 2)
+                        continue;
+                    float verticalPenalty = Math.Abs((floorY + 1f) - doorCenter.Y) * 2f;
+                    float score = walls * 10f - distance * 0.8f - Math.Abs(lateral) * 0.6f - verticalPenalty;
+                    if (!found || score > bestScore)
+                    {
+                        found = true;
+                        bestScore = score;
+                        bestDirection = axis * sign;
+                    }
+                }
+            }
+            if (found) inward = bestDirection;
+            return found;
+        }
+
+        private Vector3 FindHomeDoorApproachPoint(Vector3 doorCenter, Vector3 inward, bool inside)
+        {
+            Vector3 direction = inside ? inward : -inward;
+            float idealDistance = m_homeDoorApproachVariant == 0 ? 1.10f
+                : m_homeDoorApproachVariant == 1 ? 2.10f : 3.10f;
+            Vector3 ideal = doorCenter + direction * idealDistance;
+            Vector3 tangent = new Vector3(-direction.Z, 0f, direction.X);
+            Vector3 best = ideal;
+            float bestScore = float.MaxValue;
+            bool found = false;
+            for (int along = 1; along <= 4; along++)
+            for (int lateral = -2; lateral <= 2; lateral++)
+            {
+                int x = Terrain.ToCell(doorCenter.X + direction.X * along + tangent.X * lateral);
+                int z = Terrain.ToCell(doorCenter.Z + direction.Z * along + tangent.Z * lateral);
+                for (int floorY = Math.Max(1, m_homeDoor.Y - 2); floorY <= Math.Min(250, m_homeDoor.Y + 1); floorY++)
+                {
+                    if (!IsValidStandingCell(x, floorY, z))
+                        continue;
+                    Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                    float side = Vector3.Dot(candidate - doorCenter, direction);
+                    if (side < 0.55f || Math.Abs(candidate.Y - doorCenter.Y) > 1.75f)
+                        continue;
+                    float score = Vector3.DistanceSquared(candidate, ideal)
+                        + Math.Abs(candidate.Y - doorCenter.Y) * 2f + Math.Abs(lateral) * 0.15f;
+                    if (!found || score < bestScore)
+                    {
+                        found = true;
+                        bestScore = score;
+                        best = candidate;
+                    }
+                }
+            }
+            return found ? best : ideal;
+        }
+
         private bool TryGetHomeDoorGeometry(out Vector3 doorCenter, out Vector3 inward)
         {
             doorCenter = Vector3.Zero;
@@ -1221,11 +1296,12 @@ namespace Game
                 ? new Vector3(m_bedCell.X + 0.5f, m_bedCell.Y + 1f, m_bedCell.Z + 0.5f)
                 : m_fallbackRestPosition;
             float side = Vector3.Dot(bedPosition - doorCenter, axis);
-            if (Math.Abs(side) < 0.45f)
-                return false;
-
-            inward = side > 0f ? axis : -axis;
-            return true;
+            if (Math.Abs(side) >= 0.45f)
+            {
+                inward = side > 0f ? axis : -axis;
+                return true;
+            }
+            return TryInferHomeDoorInsideDirection(doorCenter, axis, out inward);
         }
 
         private string GetHomeDoorReservationKey()
@@ -1331,13 +1407,8 @@ namespace Game
 
             Vector3 outsidePoint = doorCenter - inward * 1.10f;
             Vector3 insidePoint = doorCenter + inward * 1.10f;
-            // Vary the approach distance along the doorway axis, not sideways
-            // into the wall beside the door. Sideways offsets can place the NPC
-            // inside a solid wall block and make the route look like a door failure.
-            float approachDistance = m_homeDoorApproachVariant == 0 ? 1.10f
-                : m_homeDoorApproachVariant == 1 ? 2.10f : 3.10f;
-            Vector3 outsideApproach = doorCenter - inward * approachDistance;
-            Vector3 insideApproach = doorCenter + inward * approachDistance;
+            Vector3 outsideApproach = FindHomeDoorApproachPoint(doorCenter, inward, false);
+            Vector3 insideApproach = FindHomeDoorApproachPoint(doorCenter, inward, true);
 
             // Only one villager may occupy the doorway route at a time. A second
             // villager waits safely away from the threshold until the passage is free.
@@ -1491,7 +1562,9 @@ namespace Game
             }
 
             UpdateHomeReturnProgress(routeTarget, 0.35f);
-            if (m_homeReturnNoProgressTime >= 6.0)
+            bool exitPathSearchPending = m_pathfinding?.m_pathfindingResult?.IsInProgress == true;
+            double exitRetryThreshold = exitPathSearchPending ? 30.0 : 14.0;
+            if (m_homeReturnNoProgressTime >= exitRetryThreshold)
             {
                 if (m_homeDoorRouteStage == 0)
                 {
@@ -1510,7 +1583,8 @@ namespace Game
                 ResetHomeReturnProgress();
             }
 
-            SetManagedDestination(routeTarget, 2.2f, 0.45f, 2200, false, false, false, null, false);
+            SetManagedDestination(routeTarget, 2.2f, 0.45f, HomeReturnPathfindingPositions,
+                false, false, false, null, false);
             return true;
         }
 
@@ -2222,7 +2296,11 @@ namespace Game
             bool sameCurrentTarget = current.HasValue
                 && Vector3.DistanceSquared(current.Value, destination) <= 0.0625f;
             bool stuck = m_pathfinding.IsStuck;
-            bool stalled = sameRequestedTarget && m_managedNoProgressTime >= 10.0;
+            bool pathSearchPending = m_pathfinding.m_pathfindingResult?.IsInProgress == true;
+            double stalledAfter = pathSearchPending ? 30.0
+                : ((m_homeDoorRouteActive || m_isLeavingHome || m_isReturningForStorage)
+                    ? 18.0 : (m_job == LivingTownsJob.Lumberjack ? 15.0 : 10.0));
+            bool stalled = sameRequestedTarget && m_managedNoProgressTime >= stalledAfter;
 
             // Important: a stuck pathfinder keeps Destination set. Never treat that as
             // proof that the route is still working; explicitly restart the route search.
@@ -2371,8 +2449,14 @@ namespace Game
             // Destination can briefly be cleared during the pathfinder's Stuck ->
             // MovingDirect transition. Check IsStuck and the progress watchdog even
             // when Destination is null so a blocked villager cannot retry forever.
-            return m_pathfinding.IsStuck || m_workRouteNoProgressTime >= 5.0
-                || m_managedNoProgressTime >= 6.0;
+            bool pathSearchPending = m_pathfinding.m_pathfindingResult?.IsInProgress == true;
+            double workRetryThreshold = pathSearchPending ? 30.0
+                : (m_job == LivingTownsJob.Lumberjack ? 14.0 : 5.0);
+            double managedRetryThreshold = pathSearchPending ? 30.0
+                : (m_job == LivingTownsJob.Lumberjack ? 16.0 : 6.0);
+            return (!pathSearchPending && m_pathfinding.IsStuck)
+                || m_workRouteNoProgressTime >= workRetryThreshold
+                || m_managedNoProgressTime >= managedRetryThreshold;
         }
 
         private bool TryRetryWorkApproach(string jobName)
@@ -2786,8 +2870,8 @@ namespace Game
             {
                 // Do not allow random recovery movement around the trunk. Move to
                 // one verified standing cell, then re-evaluate after a no-progress timeout.
-                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.45f, 2600,
-                    false, false, false, null, false);
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.45f,
+                    LumberjackWorkPathfindingPositions, false, false, false, null, false);
             }
             else
             {
@@ -3131,10 +3215,10 @@ namespace Game
             float bestScore = float.MaxValue;
             bool found = false;
 
-            // Do not choose a standing point immediately beneath the canopy.
-            // Search the outer edge of the tree and prefer positions with room
-            // to turn and move. The route watchdog handles the rare blocked corridor.
-            for (int radius = 5; radius <= 8; radius++)
+            // Stay outside the usual canopy footprint. Approaching at 5-8 blocks
+            // often places the villager beneath low branches, where its body keeps
+            // colliding with leaves and steering in circles.
+            for (int radius = 9; radius <= 11; radius++)
             {
                 for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++)
@@ -3164,7 +3248,7 @@ namespace Game
                         float score = Vector3.DistanceSquared(m_body.Position, candidate)
                             + Math.Abs(candidate.Y - m_body.Position.Y) * 4f
                             + (8 - openNeighbors) * 2f
-                            + (8 - radius) * 0.65f;
+                            + (11 - radius) * 0.75f;
                         if (!found || score < bestScore)
                         {
                             bestScore = score;
