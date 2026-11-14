@@ -1,4 +1,4 @@
-# Living Towns 0.4.53
+# Living Towns 0.4.54
 
 - Target: Survivalcraft 2.4.0.0 / Survivalcraft API 1.9.5.1.
 - Original male, female and farmer villagers keep their existing daily routines.
@@ -12,3 +12,13 @@
 - The four supplied GLB models, animation configs, localization files and XDB templates are retained in the full .scmod package. The XDB has seven entity templates and 328 unique GUIDs with no duplicates.
 - GitHub Actions compiles and uploads the C# assembly. The full .scmod package is assembled by preserving the prior model/template archive and replacing its DLL and metadata.
 - Build succeeded with Survivalcraft API 1.9.5.1. Actual Android in-game behavior still requires testing in the user's world.
+
+
+## Version 0.4.54
+
+- Obstacle detour search radius increased from 3 to 6 blocks.
+- Standing-cell search now checks floor levels up to 2 blocks above/below the villager.
+- Detour scoring favors open cells with a meaningful side-step around walls and corners.
+- Unreachable detour waypoints are temporarily blacklisted for 12 seconds; the villager then searches for a different route instead of retrying the same point indefinitely.
+- Detour pathfinding budget increased to 1,800 positions.
+- Shared villager home, sleep, work and profession routines remain unchanged.
