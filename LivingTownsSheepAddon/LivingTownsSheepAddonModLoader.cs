@@ -80,7 +80,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         creatureTypes.Add(flockType);
     }
 
-    public override void OnPlayerInputHit(
+    public void OnPlayerInputHit(
         ComponentPlayer componentPlayer,
         ref bool playerOperated,
         ref double timeIntervalHit,
