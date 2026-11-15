@@ -161,6 +161,35 @@ DumpIl("Game.SubsystemCreatureSpawn+CreatureType", ".ctor");
 DumpIl("Game.SubsystemCreatureSpawn", "CalculateSpawnSuitability");
 DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreature");
 
+
+var inspectNames = new HashSet<string>(StringComparer.Ordinal)
+{
+    "Game.ComponentMiner", "Game.ComponentPlayer", "Game.Attackment",
+    "Game.SubsystemCreatureSpawn+CreatureType", "Game.SpawnLocationType",
+    "Game.CreatureCategory", "Game.SubsystemBodies", "Game.ComponentBody"
+};
+foreach (Type type in allTypes.Where(t => inspectNames.Contains(t.FullName)).OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== DEEP TYPE " + type.FullName + " =====");
+    const BindingFlags deep = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(deep))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(deep).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(deep).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var m in type.GetMethods(deep).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
+            string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) +
+            ") public=" + m.IsPublic);
+}
+DumpIl("Game.Attackment", "CalculateInjuryAmount");
+DumpIl("Game.Injury", "Process");
+DumpIl("Game.SubsystemCreatureSpawn", "SpawnRandomCreature");
+DumpIl("Game.SubsystemCreatureSpawn", "TestSpawnPoint");
+DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreatures");
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
