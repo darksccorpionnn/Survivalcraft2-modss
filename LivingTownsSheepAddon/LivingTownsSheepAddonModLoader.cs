@@ -112,9 +112,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         object raycastResult = miner.Raycast(
             hitRay.Value,
             RaycastMode.Digging,
-            false,
             true,
-            false,
+            true,
+            true,
             meleeAttackRange);
 
         if (raycastResult is not BodyRaycastResult bodyHit ||
@@ -135,9 +135,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // the native Attackment and runs the normal health, armor and death logic.
         miner.Hit(targetBody, bodyHit.HitPoint(), hitRay.Value.Direction);
 
-        // Prevent the same tap from being processed a second time by vanilla.
-        playerOperated = true;
-        skipVanilla = true;
+        // Keep the native input path enabled as a fallback. ComponentMiner.Hit
+        // enforces its own hit interval, so the same tap cannot apply damage twice.
+        // This is important on touch controls where the miner cooldown can lag
+        // behind the UI hit-input interval by a few frames.
     }
 
     public override void OnMinerHit(
