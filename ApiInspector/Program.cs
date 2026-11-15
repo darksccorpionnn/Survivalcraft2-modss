@@ -254,6 +254,31 @@ foreach (Type parent in allTypes.Where(t => t.FullName == "Game.ComponentMiner" 
     }
 }
 
+
+// Focused HUD and touch-widget API inspection for proximity interaction buttons.
+var widgetTypeNames = new HashSet<string>(StringComparer.Ordinal)
+{
+    "Widget", "ContainerWidget", "CanvasWidget", "ButtonWidget", "BevelledButtonWidget",
+    "LabelWidget", "TextWidget", "StackPanelWidget", "GridPanelWidget", "TouchInputWidget",
+    "ViewWidget", "GameWidget", "SubsystemGameWidgets", "ComponentGui", "ComponentInput",
+    "PlayerInput", "ComponentPlayer", "SubsystemInput", "Screen", "ScreensManager",
+    "InventoryScreen", "InventoryWidget", "Dialog", "BitmapButtonWidget"
+};
+foreach (Type type in allTypes.Where(t => widgetTypeNames.Contains(t.Name)).OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== HUD WIDGET TYPE " + type.FullName + " =====");
+    const BindingFlags wf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(wf))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(wf).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(wf).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var m in type.GetMethods(wf).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
