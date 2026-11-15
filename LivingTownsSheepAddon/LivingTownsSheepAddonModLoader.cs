@@ -71,7 +71,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             m_villagerTradeCanvas.Size = buttonParent.ActualSize;
             float x = Math.Max(8f, buttonParent.ActualSize.X - 76f);
             float y = Math.Max(8f, buttonParent.ActualSize.Y * 0.5f - 30f);
-            m_villagerTradeCanvas.SetPosition(m_villagerTradeButton, new Engine.Vector2(x, y));
+            CanvasWidget.SetPosition(m_villagerTradeButton, new Engine.Vector2(x, y));
         }
 
         if (componentGui.ModalPanelWidget != null || componentGui.IsInventoryVisible())
