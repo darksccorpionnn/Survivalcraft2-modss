@@ -97,7 +97,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (!hitRay.HasValue)
             return;
 
-        object hit = componentPlayer.ComponentMiner.Raycast(
+        BodyRaycastResult bodyHit = componentPlayer.ComponentMiner.Raycast<BodyRaycastResult>(
             hitRay.Value,
             RaycastMode.Interaction,
             raycastTerrain: false,
@@ -105,7 +105,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             raycastMovingBlocks: false,
             reach: 3.25f);
 
-        if (hit is not BodyRaycastResult bodyHit || bodyHit.ComponentBody == null)
+        if (bodyHit == null || bodyHit.ComponentBody == null)
             return;
 
         if (bodyHit.ComponentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null)
