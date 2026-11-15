@@ -24,7 +24,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private SubsystemTime m_time;
     private SubsystemAudio m_audio;
     private SubsystemTerrain m_subsystemTerrain;
-    private readonly Random m_random = new Random();
+    private readonly System.Random m_random = new System.Random();
     private SheepMode m_appliedMode;
     private Vector3? m_lastOwnedDestination;
     private ComponentPlayer m_target;
