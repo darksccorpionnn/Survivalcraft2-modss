@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Game;
 
@@ -7,6 +8,16 @@ namespace Game;
 public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorMeleeTime = new();
+    private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
+        "Attack",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+        null,
+        new[] { typeof(ComponentCreature), typeof(float), typeof(float), typeof(bool) },
+        null);
+    private static readonly FieldInfo s_chaseMaxAttackRangeField =
+        typeof(ComponentChaseBehavior).GetField(
+            "MaxAttackRange", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
     private BevelledButtonWidget m_villagerTradeButton;
     private CanvasWidget m_villagerTradeCanvas;
     private ContainerWidget m_villagerTradeButtonParent;
@@ -21,6 +32,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("OnMinerHit2", this);
         ModsManager.RegisterHook("ProcessAttackment", this);
         ModsManager.RegisterHook("ChaseBehaviorScoreTarget", this);
+        ModsManager.RegisterHook("UpdateChaseBehaviorLookingForTarget", this);
+        ModsManager.RegisterHook("UpdateChaseBehaviorChasing", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -469,6 +482,166 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         chaseBehavior.AttacksNonPlayerCreature = true;
     }
 
+    private static bool IsNaturalPredator(ComponentCreature creature)
+    {
+        return creature != null &&
+            (creature.Category == CreatureCategory.LandPredator ||
+             creature.Category == CreatureCategory.WaterPredator);
+    }
+
+    private static bool IsValidAnimalPrey(
+        ComponentCreature attacker,
+        ComponentCreature target)
+    {
+        if (attacker == null || target == null || attacker == target ||
+            attacker.Entity == null || target.Entity == null ||
+            attacker.Entity == target.Entity ||
+            !attacker.Entity.IsAddedToProject || !target.Entity.IsAddedToProject)
+            return false;
+
+        if (!IsNaturalPredator(attacker) ||
+            target.Entity.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(target.Entity))
+            return false;
+
+        ComponentHealth health = target.ComponentHealth;
+        return health != null && health.Health > 0f && !health.IsInvulnerable;
+    }
+
+    /// <summary>
+    /// The native ScoreTarget hook can still be unable to produce a target when
+    /// a predator's AutoChaseMask/ChaseNonPlayerProbability excludes prey.
+    /// Explicitly start the normal native chase state for the nearest living
+    /// non-player creature when the predator has no valid current target.
+    /// </summary>
+    public override void UpdateChaseBehaviorLookingForTarget(
+        ComponentChaseBehavior chaseBehavior)
+    {
+        if (chaseBehavior == null || s_chaseAttackMethod == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (attacker == null || !IsNaturalPredator(attacker) ||
+            attacker.ComponentHealth == null || attacker.ComponentHealth.Health <= 0f)
+            return;
+
+        // This flag is also required by the native body-collision chase path.
+        chaseBehavior.AttacksNonPlayerCreature = true;
+
+        ComponentCreature currentTarget = chaseBehavior.Target;
+        if (IsValidAnimalPrey(attacker, currentTarget))
+            return;
+
+        SubsystemBodies bodies =
+            attacker.Project.FindSubsystem<SubsystemBodies>(throwOnError: true);
+        const float acquisitionRange = 18f;
+        float bestDistanceSquared = acquisitionRange * acquisitionRange;
+        ComponentCreature nearestPrey = null;
+
+        foreach (ComponentBody body in bodies.Bodies)
+        {
+            if (body == null || body.Entity == null || body.Entity == attacker.Entity)
+                continue;
+
+            ComponentCreature candidate = body.Entity.FindComponent<ComponentCreature>();
+            if (!IsValidAnimalPrey(attacker, candidate))
+                continue;
+
+            // Avoid predator-on-predator targeting. Natural predators hunt
+            // other living animals, rather than constantly fighting each other.
+            if (IsNaturalPredator(candidate))
+                continue;
+
+            float distanceSquared = Engine.Vector3.DistanceSquared(
+                attacker.ComponentBody.Position, candidate.ComponentBody.Position);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                nearestPrey = candidate;
+            }
+        }
+
+        if (nearestPrey != null)
+        {
+            // Keep the engine's own pathfinding, facing, chase timeout and
+            // animation state machine. Only seed its native Attack target.
+            s_chaseAttackMethod.Invoke(
+                chaseBehavior,
+                new object[] { nearestPrey, acquisitionRange, 8f, false });
+        }
+    }
+
+    /// <summary>
+    /// Some creature models do not expose a reliable IsAttackHitMoment to the
+    /// native chase behavior. When a predator is already chasing prey and the
+    /// bodies are in melee range, route one native miner hit at a bounded rate.
+    /// A body-only raycast prevents hits through walls or through other animals.
+    /// </summary>
+    public override void UpdateChaseBehaviorChasing(
+        ComponentChaseBehavior chaseBehavior)
+    {
+        if (chaseBehavior == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        ComponentCreature target = chaseBehavior.Target;
+        if (!IsValidAnimalPrey(attacker, target) || IsNaturalPredator(target))
+            return;
+
+        ComponentMiner miner = attacker.Entity.FindComponent<ComponentMiner>();
+        ComponentBody attackerBody = attacker.ComponentBody;
+        ComponentBody targetBody = target.ComponentBody;
+        if (miner == null || attackerBody == null || targetBody == null)
+            return;
+
+        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextPredatorMeleeTime.TryGetValue(chaseBehavior, out double nextHit) &&
+            now < nextHit)
+            return;
+
+        Engine.Vector3 start = attackerBody.BoundingBox.Center();
+        Engine.Vector3 end = targetBody.BoundingBox.Center();
+        Engine.Vector3 delta = end - start;
+        float distance = delta.Length();
+        float configuredRange = 2.4f;
+        if (s_chaseMaxAttackRangeField != null)
+        {
+            object value = s_chaseMaxAttackRangeField.GetValue(chaseBehavior);
+            if (value is float range && range > 0.25f)
+                configuredRange = range;
+        }
+
+        if (distance < 0.05f || distance > Math.Max(2.4f, configuredRange + 0.25f))
+            return;
+
+        Engine.Vector3 direction = delta / distance;
+        var ray = new Engine.Ray3(start, direction);
+        var hit = miner.Raycast<BodyRaycastResult>(
+            ray,
+            RaycastMode.Digging,
+            true,
+            true,
+            true,
+            distance + 0.35f);
+
+        if (!hit.HasValue || hit.Value.ComponentBody == null)
+            return;
+
+        ComponentBody hitBody = hit.Value.ComponentBody;
+        if (hitBody != targetBody &&
+            !hitBody.IsChildOfBody(targetBody) &&
+            !targetBody.IsChildOfBody(hitBody))
+            return;
+
+        // ComponentMiner.Hit is the exact native melee entry used by
+        // ComponentChaseBehavior.Update, so Attackment, injury, sounds,
+        // hit reactions and death handling remain on the game's own path.
+        miner.Hit(hitBody, hit.Value.HitPoint(), direction);
+        m_nextPredatorMeleeTime[chaseBehavior] = now + 1.2;
+    }
+
     /// <summary>
     /// Makes creature-vs-creature melee attacks use a non-zero native attack power.
     /// This hook is intentionally separate from player melee: AI attacks go through
@@ -497,6 +670,18 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             targetHealth == null || targetHealth.Health <= 0f ||
             targetHealth.IsInvulnerable)
             return;
+
+        // Record animation-driven native hits as well, so the bounded fallback
+        // cannot create a second strike in the same attack window.
+        ComponentChaseBehavior chaseBehavior =
+            attackment.Attacker.FindComponent<ComponentChaseBehavior>();
+        if (chaseBehavior != null && IsNaturalPredator(attackerCreature) &&
+            !IsNaturalPredator(targetCreature))
+        {
+            double now = attackment.Attacker.Project
+                .FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+            m_nextPredatorMeleeTime[chaseBehavior] = now + 1.2;
+        }
 
         // Native AI melee already created this Attackment after a successful hit
         // roll. Some creature templates expose a zero/near-zero melee power, so
