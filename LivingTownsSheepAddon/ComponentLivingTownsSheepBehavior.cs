@@ -478,9 +478,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         if (attacker == null || attacker.ComponentBody == null)
             return;
 
-        ComponentPlayer player = attacker.Entity.FindComponent<ComponentPlayer>();
-        if (player != null)
-            PropagateHerdFlee(attacker.ComponentBody);
+        // Any attacker (player or creature) triggers one coordinated flock response.
+        PropagateHerdFlee(attacker.ComponentBody);
 
         // Native runaway AI already knows how to choose a safe place relative to its herd.
         // Wake the nearby flock when one sheep is actually attacked.
