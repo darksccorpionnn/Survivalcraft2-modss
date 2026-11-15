@@ -14,7 +14,8 @@ foreach (Assembly assembly in loaded) output.AppendLine(" - " + assembly.GetName
 var wanted = new[]
 {
     "ComponentMiner", "SubsystemSeasons", "WorldSettings", "SubsystemGameInfo",
-    "ComponentCow", "Cow", "Milk", "Bucket", "Wheat", "SubsystemCreatureSpawn",
+    "ComponentCow", "Cow", "Cattle", "Milk", "Bucket", "Wheat", "WheatSeeds", "Seeds", "Grain", "Crop",
+    "SubsystemCreatureSpawn", "SubsystemBucketBlockBehavior", "BlocksManager", "Block",
     "ComponentCreature", "ComponentPlayer", "Component", "Entity"
 };
 var types = new List<Type>();
@@ -32,7 +33,10 @@ foreach (Type type in types.OrderBy(t => t.FullName))
     {
         if (wanted.Any(w => property.Name.Contains(w, StringComparison.OrdinalIgnoreCase)) ||
             type.Name.Contains("Miner") || type.Name.Contains("Seasons") || type.Name.Contains("WorldSettings") ||
-            type.Name.Contains("GameInfo") || type.Name.Contains("Cow") || type.Name.Contains("Spawn"))
+            type.Name.Contains("GameInfo") || type.Name.Contains("Cow") || type.Name.Contains("Cattle") ||
+            type.Name.Contains("BucketBlock") || type.Name.Contains("BlocksManager") || type.Name == "Block" ||
+            type.Name.Contains("Wheat") || type.Name.Contains("Seed") || type.Name.Contains("Grain") ||
+            type.Name.Contains("Crop") || type.Name.Contains("Spawn"))
             output.AppendLine("PROP " + property.PropertyType.Name + " " + property.Name +
                 " get=" + (property.GetMethod != null) + " set=" + (property.SetMethod != null));
     }
@@ -47,13 +51,23 @@ foreach (Type type in types.OrderBy(t => t.FullName))
     {
         if (wanted.Any(w => method.Name.Contains(w, StringComparison.OrdinalIgnoreCase)) ||
             type.Name.Contains("Miner") || type.Name.Contains("Seasons") || type.Name.Contains("WorldSettings") ||
-            type.Name.Contains("GameInfo") || type.Name.Contains("Cow") || type.Name.Contains("Spawn") ||
+            type.Name.Contains("GameInfo") || type.Name.Contains("Cow") || type.Name.Contains("Cattle") ||
+            type.Name.Contains("BucketBlock") || type.Name.Contains("BlocksManager") || type.Name == "Block" ||
+            type.Name.Contains("Wheat") || type.Name.Contains("Seed") || type.Name.Contains("Grain") ||
+            type.Name.Contains("Crop") || type.Name.Contains("Spawn") ||
             (type.Name == "Component" && method.Name == "Save"))
         {
             string parameters = string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name + " " + p.Name));
             output.AppendLine("METHOD " + method.ReturnType.Name + " " + method.Name + "(" + parameters + ")");
         }
     }
+}
+foreach (Type type in loaded.SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null); } })
+    .Where(t => t.IsEnum && t.Name == "Season"))
+{
+    output.AppendLine();
+    output.AppendLine("===== ENUM " + type.FullName + " =====");
+    foreach (var name in Enum.GetNames(type)) output.AppendLine("VALUE " + name + " = " + Convert.ToInt32(Enum.Parse(type, name)));
 }
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
