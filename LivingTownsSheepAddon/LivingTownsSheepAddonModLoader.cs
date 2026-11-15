@@ -20,6 +20,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("OnMinerHit", this);
         ModsManager.RegisterHook("OnMinerHit2", this);
         ModsManager.RegisterHook("ProcessAttackment", this);
+        ModsManager.RegisterHook("ChaseBehaviorScoreTarget", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -411,6 +412,61 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         attackment.AttackPower = Math.Max(attackment.AttackPower, 1f);
+    }
+
+    /// <summary>
+    /// Lets native predators choose living non-player creatures as targets even
+    /// when a species' AutoChaseMask or non-player chance excludes that category.
+    /// Herbivores are not made aggressive; only native predator categories use
+    /// this fallback. The normal ChaseBehavior still handles pursuit and attack.
+    /// </summary>
+    public override void ChaseBehaviorScoreTarget(
+        ComponentChaseBehavior chaseBehavior,
+        ComponentCreature creatureToBeTarget,
+        ref float score)
+    {
+        if (chaseBehavior == null || creatureToBeTarget == null ||
+            creatureToBeTarget.Entity == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (attacker == null || attacker == creatureToBeTarget ||
+            attacker.Entity == null || !attacker.Entity.IsAddedToProject)
+            return;
+
+        // Keep player combat settings and villagers untouched.
+        if (attacker.Entity.FindComponent<ComponentPlayer>() != null ||
+            creatureToBeTarget.Entity.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(creatureToBeTarget.Entity))
+            return;
+
+        // Only natural predators receive the broader animal-target selection.
+        bool isPredator =
+            attacker.Category == CreatureCategory.LandPredator ||
+            attacker.Category == CreatureCategory.WaterPredator;
+        if (!isPredator)
+            return;
+
+        ComponentHealth targetHealth = creatureToBeTarget.ComponentHealth;
+        if (targetHealth == null || targetHealth.Health <= 0f ||
+            targetHealth.IsInvulnerable)
+            return;
+
+        // Native target scoring can produce zero when AutoChaseMask does not
+        // include the target category or ChaseNonPlayerProbability rejects it.
+        // The candidate list is already restricted to the current chase range.
+        // Give only otherwise-rejected living animals a small positive score;
+        // native positive scores and nearest-target preference remain unchanged.
+        if (score <= 0f)
+        {
+            float distance = Engine.Vector3.Distance(
+                attacker.ComponentBody.Position,
+                creatureToBeTarget.ComponentBody.Position);
+            score = 0.01f / (1f + distance);
+        }
+
+        chaseBehavior.AttacksNonPlayerCreature = true;
     }
 
     /// <summary>
