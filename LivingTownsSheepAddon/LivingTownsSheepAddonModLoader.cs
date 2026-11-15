@@ -8,6 +8,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private BevelledButtonWidget m_villagerTradeButton;
+    private CanvasWidget m_villagerTradeCanvas;
     private ContainerWidget m_villagerTradeButtonParent;
 
     public override void __ModInitialize()
@@ -42,22 +43,35 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             {
                 Text = "≡",
                 DesiredSize = new Engine.Vector2(60f, 60f),
-                Margin = new Engine.Vector2(4f),
+                Margin = Engine.Vector2.Zero,
+                HorizontalAlignment = WidgetAlignment.Near,
+                VerticalAlignment = WidgetAlignment.Near,
                 IsVisible = false
             };
         }
 
-        ContainerWidget buttonParent =
-            componentGui.m_rightControlsContainerWidget ??
-            componentGui.m_leftControlsContainerWidget ??
-            componentGui.ControlsContainerWidget;
-
+        // ControlsContainerWidget is a full-screen layout surface. Adding a
+        // button directly stretches it over the HUD. Use a transparent Canvas
+        // and position the 60x60 button explicitly at the right-middle edge.
+        ContainerWidget buttonParent = componentGui.ControlsContainerWidget;
         if (buttonParent != null && m_villagerTradeButtonParent != buttonParent)
         {
-            if (m_villagerTradeButtonParent != null)
-                m_villagerTradeButtonParent.RemoveChildren(m_villagerTradeButton);
-            buttonParent.AddChildren(m_villagerTradeButton);
+            if (m_villagerTradeCanvas != null && m_villagerTradeButtonParent != null)
+                m_villagerTradeButtonParent.RemoveChildren(m_villagerTradeCanvas);
+
+            m_villagerTradeCanvas = new CanvasWidget();
+            m_villagerTradeCanvas.Size = buttonParent.ActualSize;
+            m_villagerTradeCanvas.AddChildren(m_villagerTradeButton);
+            buttonParent.AddChildren(m_villagerTradeCanvas);
             m_villagerTradeButtonParent = buttonParent;
+        }
+
+        if (m_villagerTradeCanvas != null)
+        {
+            m_villagerTradeCanvas.Size = buttonParent.ActualSize;
+            float x = Math.Max(8f, buttonParent.ActualSize.X - 76f);
+            float y = Math.Max(8f, buttonParent.ActualSize.Y * 0.5f - 30f);
+            m_villagerTradeCanvas.SetPosition(m_villagerTradeButton, new Engine.Vector2(x, y));
         }
 
         if (componentGui.ModalPanelWidget != null || componentGui.IsInventoryVisible())
