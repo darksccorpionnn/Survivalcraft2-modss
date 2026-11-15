@@ -434,7 +434,10 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
             ComponentLivingTownsSheepBehavior behavior =
                 creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
-            if (behavior == null)
+            // Only consider sheep that are currently able to emit an idle bleat.
+            // A feeding/following/fleeing sheep must not block the whole flock's voice.
+            if (behavior == null || behavior.m_mode != SheepMode.None ||
+                behavior.m_isGrazing || behavior.m_nextIdleBleat > m_time.GameTime)
                 continue;
 
             Vector3 p = creature.ComponentBody.Position;
