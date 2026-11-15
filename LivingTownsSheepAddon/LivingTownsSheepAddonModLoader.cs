@@ -190,6 +190,17 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         if (targetHealth.Health < healthBefore)
         {
+            // Match the native successful-hit side effects that DoMeleeHit
+            // normally performs after AttackBody.
+            miner.DamageActiveTool(1);
+            ComponentCreature attackerCreature = miner.ComponentCreature;
+            if (attackerCreature != null && attackerCreature.PlayerStats != null)
+            {
+                attackerCreature.PlayerStats.MeleeAttacks++;
+                attackerCreature.PlayerStats.MeleeHits++;
+            }
+            miner.Poke(false);
+
             // We handled this exact creature hit. Stop vanilla from applying
             // another attack for the same input and throttle held touch input.
             m_nextCreatureMeleeTime[componentPlayer] = now + timeIntervalHit;
