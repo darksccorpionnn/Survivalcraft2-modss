@@ -97,7 +97,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (!hitRay.HasValue)
             return;
 
-        BodyRaycastResult bodyHit = componentPlayer.ComponentMiner.Raycast<BodyRaycastResult>(
+        BodyRaycastResult? bodyHit = componentPlayer.ComponentMiner.Raycast<BodyRaycastResult>(
             hitRay.Value,
             RaycastMode.Interaction,
             raycastTerrain: false,
@@ -105,10 +105,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             raycastMovingBlocks: false,
             reach: 3.25f);
 
-        if (bodyHit == null || bodyHit.ComponentBody == null)
+        if (!bodyHit.HasValue || bodyHit.Value.ComponentBody == null)
             return;
 
-        if (bodyHit.ComponentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null)
+        if (bodyHit.Value.ComponentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null)
             return;
 
         // Only extend reach when the crosshair is actually on this mod's flock.
