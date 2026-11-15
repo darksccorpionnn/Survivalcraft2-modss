@@ -50,8 +50,8 @@ foreach (Type type in types.OrderBy(t => t.FullName))
             type.Name.Contains("GameInfo") || type.Name.Contains("Cow") || type.Name.Contains("Spawn") ||
             (type.Name == "Component" && method.Name == "Save"))
         {
-            string args = string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name + " " + p.Name));
-            output.AppendLine("METHOD " + method.ReturnType.Name + " " + method.Name + "(" + args + ")");
+            string parameters = string.Join(", ", method.GetParameters().Select(p => p.ParameterType.Name + " " + p.Name));
+            output.AppendLine("METHOD " + method.ReturnType.Name + " " + method.Name + "(" + parameters + ")");
         }
     }
 }
