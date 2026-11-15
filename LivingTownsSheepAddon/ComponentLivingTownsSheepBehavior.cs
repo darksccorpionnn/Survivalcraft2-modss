@@ -16,7 +16,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private const float GrazeApproachSpeed = 0.42f;
     private const float HerdScanRange = 32f;
     private string m_voiceSet = "Sheep";
-    private double m_nextIdleBleat;
 
     private enum SheepMode { None, Follow, Flee }
 
@@ -91,7 +90,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_mode = SheepMode.None;
         m_appliedMode = SheepMode.None;
         m_nextGrassSearch = m_time.GameTime + 1.0 + m_random.NextDouble() * 2.0;
-        m_nextIdleBleat = m_time.GameTime + 12.0 + m_random.NextDouble() * 18.0;
 
         // Damage sounds are event-driven: one bleat per actual hit, not a polling loop.
         m_creature.ComponentHealth.Attacked += OnAttacked;
@@ -122,9 +120,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             m_nextPathUpdate = 0;
             m_appliedMode = m_mode;
         }
-
-        if (m_mode == SheepMode.None && !m_isGrazing)
-            TryPlayIdleBleat();
 
         switch (m_mode)
         {
@@ -392,89 +387,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         return $"Audio/LivingTowns/{m_voiceSet}/{soundName}";
     }
 
-    // One naturally staggered ambient bleat per nearby flock, not one sound per sheep.
-    private void TryPlayIdleBleat()
-    {
-        double now = m_time.GameTime;
-        if (now < m_nextIdleBleat)
-            return;
-
-        ComponentLivingTownsSheepBehavior speaker = FindIdleBleatSpeaker();
-        if (speaker != this)
-        {
-            m_nextIdleBleat = now + 1.0;
-            return;
-        }
-
-        m_audio.PlayRandomSound(GetVoiceSoundPath("baa"), 0.38f, 0f,
-            m_creature.ComponentBody.Position, 13f, autoDelay: false);
-
-        double next = now + 28.0 + m_random.NextDouble() * 14.0;
-        SetHerdIdleBleatTime(next);
-    }
-
-    private ComponentLivingTownsSheepBehavior FindIdleBleatSpeaker()
-    {
-        ComponentLivingTownsSheepBehavior speaker = this;
-        Vector3 own = m_creature.ComponentBody.Position;
-        float bestKey = own.X * 73856093f + own.Z * 19349663f;
-
-        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
-        {
-            if (creature == m_creature || creature.ComponentHealth.Health <= 0f)
-                continue;
-
-            if (Vector3.DistanceSquared(creature.ComponentBody.Position, own) >
-                HerdScanRange * HerdScanRange)
-                continue;
-
-            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
-            if (herd == null || herd.HerdName != SheepHerdName)
-                continue;
-
-            ComponentLivingTownsSheepBehavior behavior =
-                creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
-            // Only consider sheep that are currently able to emit an idle bleat.
-            // A feeding/following/fleeing sheep must not block the whole flock's voice.
-            if (behavior == null || behavior.m_mode != SheepMode.None ||
-                behavior.m_isGrazing || behavior.m_nextIdleBleat > m_time.GameTime)
-                continue;
-
-            Vector3 p = creature.ComponentBody.Position;
-            float key = p.X * 73856093f + p.Z * 19349663f;
-            if (key < bestKey)
-            {
-                bestKey = key;
-                speaker = behavior;
-            }
-        }
-
-        return speaker;
-    }
-
-    private void SetHerdIdleBleatTime(double nextTime)
-    {
-        Vector3 own = m_creature.ComponentBody.Position;
-        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
-        {
-            if (creature.ComponentHealth.Health <= 0f)
-                continue;
-
-            if (Vector3.DistanceSquared(creature.ComponentBody.Position, own) >
-                HerdScanRange * HerdScanRange)
-                continue;
-
-            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
-            if (herd == null || herd.HerdName != SheepHerdName)
-                continue;
-
-            ComponentLivingTownsSheepBehavior behavior =
-                creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
-            if (behavior != null)
-                behavior.m_nextIdleBleat = nextTime;
-        }
-    }
-
     private void TryPlayFleeBleat()
     {
         double now = m_time.GameTime;
@@ -550,9 +462,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private void OnAttacked(ComponentCreature attacker)
     {
         Vector3 position = m_creature.ComponentBody.Position;
-        m_audio.PlayRandomSound(GetVoiceSoundPath("baa_hurt"), 0.62f, 0f,
-            position, 18f, autoDelay: false);
-
+        // PainSound is played by the native CreatureSounds component.
         if (attacker == null || attacker.ComponentBody == null)
             return;
 
