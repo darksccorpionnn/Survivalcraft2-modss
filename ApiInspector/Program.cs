@@ -15,7 +15,7 @@ var wanted = new[]
 {
     "ComponentMiner", "SubsystemSeasons", "WorldSettings", "SubsystemGameInfo",
     "ComponentCow", "Cow", "Cattle", "Milk", "Bucket", "Wheat", "WheatSeeds", "Seeds", "Grain", "Crop",
-    "SubsystemCreatureSpawn", "SubsystemBucketBlockBehavior", "BlocksManager", "Block",
+    "SubsystemCreatureSpawn", "SubsystemBucketBlockBehavior", "BlocksManager", "Block", "ComponentUdder", "BodyRaycastResult", "RyeBlock", "SubsystemTime", "ModLoader", "ValuesDictionary",
     "ComponentCreature", "ComponentPlayer", "Component", "Entity"
 };
 var types = new List<Type>();
@@ -36,7 +36,8 @@ foreach (Type type in types.OrderBy(t => t.FullName))
             type.Name.Contains("GameInfo") || type.Name.Contains("Cow") || type.Name.Contains("Cattle") ||
             type.Name.Contains("BucketBlock") || type.Name.Contains("BlocksManager") || type.Name == "Block" ||
             type.Name.Contains("Wheat") || type.Name.Contains("Seed") || type.Name.Contains("Grain") ||
-            type.Name.Contains("Crop") || type.Name.Contains("Spawn"))
+            type.Name.Contains("Crop") || type.Name.Contains("Spawn") || type.Name == "ComponentPlayer" ||
+            type.Name == "ModLoader" || type.Name.Contains("Udder") || type.Name == "SubsystemTime")
             output.AppendLine("PROP " + property.PropertyType.Name + " " + property.Name +
                 " get=" + (property.GetMethod != null) + " set=" + (property.SetMethod != null));
     }
@@ -72,7 +73,7 @@ foreach (Type type in loaded.SelectMany(a => { try { return a.GetTypes(); } catc
 
 var allTypes = loaded.SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null); } }).ToList();
 foreach (Type type in allTypes.Where(t =>
-    new[] { "IInventory", "Inventory", "RaycastMode", "RaycastResult", "ComponentBody", "Project", "SubsystemInput", "ComponentInput", "SubsystemBucketBlockBehavior", "EmptyBucketBlock", "MilkBucketBlock", "SeedsBlock", "WheatBlock" }
+    new[] { "IInventory", "Inventory", "RaycastMode", "RaycastResult", "BodyRaycastResult", "ComponentBody", "ComponentPlayer", "ComponentMiner", "ComponentCreature", "ComponentUdder", "RyeBlock", "SubsystemTime", "SubsystemSeasons", "ModLoader", "ValuesDictionary", "Project", "SubsystemInput", "ComponentInput", "SubsystemBucketBlockBehavior", "EmptyBucketBlock", "MilkBucketBlock", "SeedsBlock", "WheatBlock" }
     .Contains(t.Name)).OrderBy(t => t.FullName))
 {
     output.AppendLine();
@@ -140,6 +141,7 @@ void DumpIl(string typeName, string methodName)
     }
 }
 DumpIl("Game.SubsystemBucketBlockBehavior", "OnUse");
+DumpIl("Game.ComponentUdder", "Milk");
 DumpIl("Game.ComponentMiner", "Hit");
 DumpIl("Game.ComponentMiner", "Use");
 DumpIl("Game.ComponentMiner", "Raycast");
