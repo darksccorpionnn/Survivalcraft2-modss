@@ -15,7 +15,7 @@ var wanted = new[]
 {
     "ComponentMiner", "SubsystemSeasons", "WorldSettings", "SubsystemGameInfo",
     "ComponentCow", "Cow", "Cattle", "Milk", "Bucket", "Wheat", "WheatSeeds", "Seeds", "Grain", "Crop",
-    "SubsystemCreatureSpawn", "SubsystemBucketBlockBehavior", "BlocksManager", "Block", "ComponentUdder", "BodyRaycastResult", "RyeBlock", "SubsystemTime", "ModLoader", "ValuesDictionary",
+    "SubsystemCreatureSpawn", "CreatureType", "Attackment", "SubsystemBucketBlockBehavior", "BlocksManager", "Block", "ComponentUdder", "BodyRaycastResult", "RyeBlock", "SubsystemTime", "ModLoader", "ValuesDictionary",
     "ComponentCreature", "ComponentPlayer", "PlayerInput", "ViewWidget", "CameraWidget", "ComponentAimingSights", "Component", "Entity"
 };
 var types = new List<Type>();
@@ -148,10 +148,14 @@ DumpIl("Game.ComponentMiner", "Use");
 DumpIl("Game.ComponentMiner", "Raycast");
 DumpIl("Game.ComponentMiner", "DoMeleeHit");
 DumpIl("Game.ComponentMiner", "AttackBody");
+DumpIl("Game.Attackment", "ProcessAttackment");
+DumpIl("Game.ComponentHealth", "Injure");
 DumpIl("Game.ComponentHealth", "Injure");
 DumpIl("Game.ComponentHealth", "ApplyDamage");
 DumpIl("Game.SubsystemCreatureSpawn", "InitializeCreatureTypesFromDatabase");
 DumpIl("Game.SubsystemCreatureSpawn", "InitializeCreatureTypes");
+DumpIl("Game.SubsystemCreatureSpawn", ".cctor");
+DumpIl("Game.SubsystemCreatureSpawn+CreatureType", ".ctor");
 DumpIl("Game.SubsystemCreatureSpawn", "CalculateSpawnSuitability");
 DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreature");
 
