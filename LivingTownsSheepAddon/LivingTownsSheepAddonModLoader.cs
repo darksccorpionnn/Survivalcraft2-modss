@@ -454,6 +454,17 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         {
             attackment.AttackPower = 1f;
         }
+
+        // Enforce the minimum on the final health injury too. AttackResilience
+        // and factor division can otherwise reduce a nonzero attack to a value
+        // too small to affect health. The nullable override is consumed by the
+        // native ProcessAttackmentToCreature method, so there is no second hit.
+        float nativeInjury = attackment.CalculateInjuryAmount();
+        if (float.IsNaN(nativeInjury) || float.IsInfinity(nativeInjury) ||
+            nativeInjury < 1f)
+        {
+            attackment.m_injuryAmount = 1f;
+        }
     }
 
     public override void OnPlayerInputInteract(
