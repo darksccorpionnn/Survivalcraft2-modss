@@ -80,14 +80,15 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         creatureTypes.Add(flockType);
     }
 
-    public void OnPlayerInputHit(
+    public override void OnPlayerInputHit(
         ComponentPlayer componentPlayer,
         ref bool playerOperated,
         ref double timeIntervalHit,
         ref float meleeAttackRange,
         bool skippedByOtherMods,
-        ref bool skipVanilla)
+        out bool skipVanilla)
     {
+        skipVanilla = false;
         if (skippedByOtherMods || playerOperated ||
             componentPlayer == null || componentPlayer.ComponentMiner == null ||
             componentPlayer.ComponentInput == null)
