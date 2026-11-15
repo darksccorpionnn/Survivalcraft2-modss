@@ -25,6 +25,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             null,
             new[] { typeof(ComponentBody), typeof(Engine.Vector3).MakeByRefType() },
             null);
+    private static readonly MethodInfo s_chaseStopAttackMethod =
+        typeof(ComponentChaseBehavior).GetMethod(
+            "StopAttack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
     private static readonly FieldInfo s_chaseAutoChaseMaskField =
         typeof(ComponentChaseBehavior).GetField(
             "m_autoChaseMask", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -464,9 +467,14 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         // Keep player combat settings and villagers untouched.
         if (attacker.Entity.FindComponent<ComponentPlayer>() != null ||
-            creatureToBeTarget.Entity.FindComponent<ComponentPlayer>() != null ||
-            IsLivingTownsVillager(creatureToBeTarget.Entity))
+            creatureToBeTarget.Entity.FindComponent<ComponentPlayer>() != null)
             return;
+
+        if (IsLivingTownsVillager(creatureToBeTarget.Entity))
+        {
+            score = 0f;
+            return;
+        }
 
         // Only natural predators receive the broader animal-target selection.
         bool isPredator =
@@ -598,6 +606,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             s_chaseAttackMethod.Invoke(
                 chaseBehavior,
                 new object[] { nearestPrey, acquisitionRange, 8f, false });
+        }
+        else if (currentTarget != null &&
+                 IsLivingTownsVillager(currentTarget.Entity) &&
+                 s_chaseStopAttackMethod != null)
+        {
+            // Do not keep an older chase target when it is a protected villager.
+            s_chaseStopAttackMethod.Invoke(chaseBehavior, null);
         }
     }
 
