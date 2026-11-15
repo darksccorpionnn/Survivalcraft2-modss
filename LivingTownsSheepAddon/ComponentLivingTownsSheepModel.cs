@@ -5,8 +5,8 @@ using TemplatesDatabase;
 
 namespace Game;
 
-/// <summary>Four-legged glTF model with soft sheep footfalls instead of inherited hoof clops.</summary>
-public sealed class ComponentLivingTownsSheepModel : ComponentFourLeggedModel
+/// <summary>glTF sheep model with custom soft footfalls instead of the inherited clop sound.</summary>
+public sealed class ComponentLivingTownsSheepModel : ComponentCreatureModel
 {
     private SubsystemAudio m_audio;
 
@@ -14,6 +14,18 @@ public sealed class ComponentLivingTownsSheepModel : ComponentFourLeggedModel
     {
         base.Load(valuesDictionary, idToEntityMap);
         m_audio = Project.FindSubsystem<SubsystemAudio>(throwOnError: true);
+    }
+
+    // glTF clips drive this creature. No legacy procedural bone animation is used.
+    public override void AnimateCreature()
+    {
+    }
+
+    public override void SyncAnimationParameters()
+    {
+        // Required: the base class supplies IsFeeding, SpeedAbs, DeathPhase and other
+        // animation parameters consumed by the GLB animation controller.
+        base.SyncAnimationParameters();
     }
 
     public override void HandleAnimationEvent(AnimationEvent animationEvent)
@@ -25,9 +37,12 @@ public sealed class ComponentLivingTownsSheepModel : ComponentFourLeggedModel
                 m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/footstep", 0.22f, -0.05f,
                     m_componentCreature.ComponentBody.Position, 4.2f, autoDelay: false);
             }
-            // Skip the inherited handler for Footstep so its hoof/clop sound is not played.
+
+            // Do not call base for Footstep: it plays the default quadruped clop.
             return;
         }
+
+        // Preserve built-in handling for all other events (including attack/death events).
         base.HandleAnimationEvent(animationEvent);
     }
 }
