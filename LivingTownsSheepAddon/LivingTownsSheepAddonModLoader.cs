@@ -9,7 +9,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private BevelledButtonWidget m_villagerTradeButton;
     private ContainerWidget m_villagerTradeButtonParent;
-    private bool m_openingTradeFromButton;
+    private static bool m_openingTradeFromButton;
 
     public override void __ModInitialize()
     {
