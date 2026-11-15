@@ -1,0 +1,33 @@
+name: Inspect Survivalcraft API surface
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "ApiInspector/**"
+      - ".github/workflows/inspect-api.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore ApiInspector/ApiInspector.csproj --configfile nuget.config
+      - name: Build
+        run: dotnet build ApiInspector/ApiInspector.csproj -c Release --no-restore
+      - name: Inspect API
+        run: dotnet run --project ApiInspector/ApiInspector.csproj -c Release --no-build > ApiInspector/api-inspection.txt
+      - name: Upload API inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: Survivalcraft-API-Inspection
+          path: ApiInspector/bin/Release/net10.0/api-inspection.txt
+          if-no-files-found: error
+          retention-days: 7
