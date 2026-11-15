@@ -5,15 +5,17 @@ using TemplatesDatabase;
 
 namespace Game;
 
-/// <summary>Grazing, player response and sheep vocalizations.</summary>
+/// <summary>Grass grazing, loose flocking, coordinated fleeing and controlled bleats.</summary>
 public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpdateable
 {
-    private const float FollowRange = 16f;
-    private const float FollowStopDistance = 2.35f;
+    private const string SheepHerdName = "LivingTowns_Sheep";
+    private const float FollowRange = 24f;
+    private const float FollowStopDistance = 1.45f;
     private const float FleeRange = 5.5f;
+    private const float FleeSpeed = 1.12f;
     private const float FollowSpeed = 0.68f;
-    private const float FleeSpeed = 1.15f;
     private const float GrazeApproachSpeed = 0.42f;
+    private const float HerdScanRange = 32f;
 
     private enum SheepMode { None, Follow, Flee }
 
@@ -24,21 +26,27 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private SubsystemTime m_time;
     private SubsystemAudio m_audio;
     private SubsystemTerrain m_subsystemTerrain;
+    private SubsystemCreatureSpawn m_subsystemCreatureSpawn;
     private readonly System.Random m_random = new System.Random();
+
     private SheepMode m_appliedMode;
+    private SheepMode m_mode;
     private Vector3? m_lastOwnedDestination;
     private ComponentPlayer m_target;
-    private ComponentPlayer m_fleeTarget;
-    private SheepMode m_mode;
+    private ComponentBody m_fleeTarget;
+    private ComponentBody m_sharedFleeTarget;
+    private double m_sharedFleeUntil;
     private double m_nextPathUpdate;
     private double m_nextGrassSearch;
     private double m_grazeEnd;
+    private double m_nextFleeBleat;
     private Vector3 m_grassTarget;
+    private Vector3 m_followOffset;
+    private int m_grassCellX;
+    private int m_grassCellY;
+    private int m_grassCellZ;
+    private bool m_grassCellIsTallGrass;
     private bool m_isGrazing;
-    private bool m_fleeBleatPlayed;
-    private float m_lastHealth;
-    private double m_nextAmbientBleat;
-    private bool m_audioProbePlayed;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
@@ -50,7 +58,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return m_mode switch
             {
                 SheepMode.Follow => 65f,
-                SheepMode.Flee => 110f,
+                SheepMode.Flee => 420f,
                 _ => 45f
             };
         }
@@ -59,6 +67,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     public override void Load(ValuesDictionary valuesDictionary, IdToEntityMap idToEntityMap)
     {
         base.Load(valuesDictionary, idToEntityMap);
+
         m_creature = Entity.FindComponent<ComponentCreature>(throwOnError: true);
         m_pathfinding = Entity.FindComponent<ComponentPathfinding>(throwOnError: true);
         m_model = Entity.FindComponent<ComponentCreatureModel>(throwOnError: true);
@@ -66,10 +75,18 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_time = Project.FindSubsystem<SubsystemTime>(throwOnError: true);
         m_audio = Project.FindSubsystem<SubsystemAudio>(throwOnError: true);
         m_subsystemTerrain = Project.FindSubsystem<SubsystemTerrain>(throwOnError: true);
+        m_subsystemCreatureSpawn = Project.FindSubsystem<SubsystemCreatureSpawn>(throwOnError: true);
+
+        double angle = m_random.NextDouble() * Math.PI * 2.0;
+        float radius = 2.7f + (float)m_random.NextDouble() * 2.0f;
+        m_followOffset = new Vector3((float)Math.Cos(angle) * radius, 0f, (float)Math.Sin(angle) * radius);
+
         m_mode = SheepMode.None;
-        m_nextGrassSearch = m_time.GameTime + 1.0;
-        m_lastHealth = m_creature.ComponentHealth.Health;
-        m_nextAmbientBleat = m_time.GameTime + 7.0 + m_random.NextDouble() * 5.0;
+        m_appliedMode = SheepMode.None;
+        m_nextGrassSearch = m_time.GameTime + 1.0 + m_random.NextDouble() * 2.0;
+
+        // Damage sounds are event-driven: one bleat per actual hit, not a polling loop.
+        m_creature.ComponentHealth.Attacked += OnAttacked;
     }
 
     public void Update(float dt)
@@ -78,7 +95,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
 
         RefreshTargets();
-        UpdateSheepSounds();
 
         if (m_creature.ComponentHealth.Health <= 0f)
         {
@@ -86,9 +102,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             StopOwnedPath();
             return;
         }
-
-        if (m_mode != SheepMode.Flee)
-            m_fleeBleatPlayed = false;
 
         if (!IsActive)
         {
@@ -122,22 +135,34 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
     private void RefreshTargets()
     {
+        SheepMode previousMode = m_mode;
         m_target = null;
         m_fleeTarget = null;
         m_mode = SheepMode.None;
 
+        double now = m_time.GameTime;
+        if (m_sharedFleeTarget != null &&
+            m_sharedFleeUntil > now &&
+            m_sharedFleeTarget.Entity.IsAddedToProject)
+        {
+            m_fleeTarget = m_sharedFleeTarget;
+            m_mode = SheepMode.Flee;
+            return;
+        }
+
         Vector3 position = m_creature.ComponentBody.Position;
-        float nearestGrassDistance = FollowRange * FollowRange;
-        float nearestThreatDistance = FleeRange * FleeRange;
+        float nearestGrassPlayerDistance = FollowRange * FollowRange;
 
         foreach (ComponentPlayer player in m_players.ComponentPlayers)
         {
-            if (player == null || player.ComponentHealth == null || player.ComponentHealth.Health <= 0f || player.ComponentMiner == null)
+            if (player == null || player.ComponentHealth == null ||
+                player.ComponentHealth.Health <= 0f || player.ComponentMiner == null)
                 continue;
+
             float distanceSquared = Vector3.DistanceSquared(position, player.ComponentBody.Position);
-            if (distanceSquared <= nearestGrassDistance && IsHoldingGrass(player))
+            if (distanceSquared <= nearestGrassPlayerDistance && IsHoldingGrass(player))
             {
-                nearestGrassDistance = distanceSquared;
+                nearestGrassPlayerDistance = distanceSquared;
                 m_target = player;
             }
         }
@@ -148,28 +173,70 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
         }
 
+        float nearestThreatDistance = FleeRange * FleeRange;
         foreach (ComponentPlayer player in m_players.ComponentPlayers)
         {
-            if (player == null || player.ComponentHealth == null || player.ComponentHealth.Health <= 0f || player.ComponentMiner == null)
+            if (player == null || player.ComponentHealth == null ||
+                player.ComponentHealth.Health <= 0f || player.ComponentMiner == null)
                 continue;
             if (IsHoldingGrass(player))
                 continue;
+
             float distanceSquared = Vector3.DistanceSquared(position, player.ComponentBody.Position);
             if (distanceSquared <= nearestThreatDistance)
             {
                 nearestThreatDistance = distanceSquared;
-                m_fleeTarget = player;
+                m_fleeTarget = player.ComponentBody;
             }
         }
 
         if (m_fleeTarget != null)
+        {
             m_mode = SheepMode.Flee;
+            // One animal noticing danger tells the nearby flock; a shared timer prevents
+            // every sheep from independently restarting the panic or bleating together.
+            if (previousMode != SheepMode.Flee || m_sharedFleeUntil <= now + 0.5)
+                PropagateHerdFlee(m_fleeTarget);
+        }
+        else if (m_sharedFleeUntil <= now)
+        {
+            m_sharedFleeTarget = null;
+        }
     }
 
     private static bool IsHoldingGrass(ComponentPlayer player)
     {
         int contents = Terrain.ExtractContents(player.ComponentMiner.ActiveBlockValue);
         return contents == GrassBlock.Index || contents == TallGrassBlock.Index;
+    }
+
+    private void UpdateFollow()
+    {
+        if (m_target == null)
+            return;
+
+        Vector3 playerPosition = m_target.ComponentBody.Position;
+        Vector3 destination = playerPosition + m_followOffset;
+        destination.Y = playerPosition.Y;
+
+        float distanceSquared = Vector3.DistanceSquared(m_creature.ComponentBody.Position, destination);
+        m_model.LookAtOrder = playerPosition + new Vector3(0f, 0.8f, 0f);
+
+        if (distanceSquared <= FollowStopDistance * FollowStopDistance)
+        {
+            StopOwnedPath();
+            return;
+        }
+
+        if (m_time.GameTime >= m_nextPathUpdate ||
+            !m_pathfinding.Destination.HasValue || m_pathfinding.IsStuck)
+        {
+            m_nextPathUpdate = m_time.GameTime + 0.55;
+            m_pathfinding.SetDestination(destination, FollowSpeed, 1.2f, 200,
+                useRandomMovements: true, ignoreHeightDifference: false,
+                raycastDestination: true, doNotAvoidBody: m_target.ComponentBody);
+            m_lastOwnedDestination = destination;
+        }
     }
 
     private void UpdateGrazing()
@@ -183,29 +250,34 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
                 m_model.LookAtOrder = m_grassTarget + new Vector3(0f, 0.25f, 0f);
                 return;
             }
+
+            EatSelectedGrass();
             StopGrazing();
-            m_nextGrassSearch = now + 3.0 + m_random.NextDouble() * 4.0;
+            m_nextGrassSearch = now + 3.5 + m_random.NextDouble() * 4.5;
         }
 
         m_model.FeedOrder = false;
         if (now < m_nextGrassSearch)
             return;
-        m_nextGrassSearch = now + 1.0;
 
-        if (!TryFindGrass(out Vector3 target))
+        m_nextGrassSearch = now + 1.2;
+        if (!TryFindGrass(out Vector3 target, out int cellX, out int cellY, out int cellZ, out bool isTallGrass))
         {
             StopOwnedPath();
             return;
         }
 
-        Vector3 position = m_creature.ComponentBody.Position;
-        float distanceSquared = Vector3.DistanceSquared(position, target);
-        if (distanceSquared <= 2.1f * 2.1f)
+        float distanceSquared = Vector3.DistanceSquared(m_creature.ComponentBody.Position, target);
+        if (distanceSquared <= 2.0f * 2.0f)
         {
             StopOwnedPath();
             m_grassTarget = target;
+            m_grassCellX = cellX;
+            m_grassCellY = cellY;
+            m_grassCellZ = cellZ;
+            m_grassCellIsTallGrass = isTallGrass;
             m_isGrazing = true;
-            m_grazeEnd = now + 3.5 + m_random.NextDouble() * 3.5;
+            m_grazeEnd = now + 4.0 + m_random.NextDouble() * 3.0;
             m_model.FeedOrder = true;
             m_model.LookAtOrder = target + new Vector3(0f, 0.25f, 0f);
             return;
@@ -221,34 +293,76 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         }
     }
 
-    private bool TryFindGrass(out Vector3 target)
+    private bool TryFindGrass(out Vector3 target, out int cellX, out int cellY, out int cellZ, out bool isTallGrass)
     {
         target = Vector3.Zero;
+        cellX = cellY = cellZ = 0;
+        isTallGrass = false;
+
         Vector3 position = m_creature.ComponentBody.Position;
-        int cx = (int)Math.Floor(position.X);
-        int cy = (int)Math.Floor(position.Y);
-        int cz = (int)Math.Floor(position.Z);
-        float bestDistance = 7f * 7f;
+        int cx = Terrain.ToCell(position.X);
+        int cy = Terrain.ToCell(position.Y);
+        int cz = Terrain.ToCell(position.Z);
+        float bestScore = 10f * 10f;
         bool found = false;
 
-        for (int x = cx - 4; x <= cx + 4; x++)
-        for (int z = cz - 4; z <= cz + 4; z++)
+        for (int x = cx - 6; x <= cx + 6; x++)
+        for (int z = cz - 6; z <= cz + 6; z++)
         for (int y = Math.Max(1, cy - 2); y <= Math.Min(254, cy + 1); y++)
         {
             int value = m_subsystemTerrain.Terrain.GetCellValue(x, y, z);
             int contents = Terrain.ExtractContents(value);
-            if (contents != GrassBlock.Index && contents != TallGrassBlock.Index)
+            bool tall = contents == TallGrassBlock.Index;
+            bool turf = contents == GrassBlock.Index;
+            if (!tall && !turf)
                 continue;
-            Vector3 candidate = new Vector3(x + 0.5f, y + 1f, z + 0.5f);
-            float d = Vector3.DistanceSquared(position, candidate);
-            if (d < bestDistance)
+
+            Vector3 candidate;
+            if (tall)
             {
-                bestDistance = d;
+                int ground = Terrain.ExtractContents(m_subsystemTerrain.Terrain.GetCellValue(x, y - 1, z));
+                if (ground != GrassBlock.Index && ground != DirtBlock.Index)
+                    continue;
+                candidate = new Vector3(x + 0.5f, y, z + 0.5f);
+            }
+            else
+            {
+                candidate = new Vector3(x + 0.5f, y + 1f, z + 0.5f);
+            }
+
+            float distanceSquared = Vector3.DistanceSquared(position, candidate);
+            // Prefer grazing a tuft before stripping the ground cover itself.
+            float score = tall ? Math.Max(0f, distanceSquared - 1.25f) : distanceSquared;
+            if (score < bestScore)
+            {
+                bestScore = score;
                 target = candidate;
+                cellX = x;
+                cellY = y;
+                cellZ = z;
+                isTallGrass = tall;
                 found = true;
             }
         }
+
         return found;
+    }
+
+    private void EatSelectedGrass()
+    {
+        int value = m_subsystemTerrain.Terrain.GetCellValue(m_grassCellX, m_grassCellY, m_grassCellZ);
+        int contents = Terrain.ExtractContents(value);
+
+        if (m_grassCellIsTallGrass && contents == TallGrassBlock.Index)
+        {
+            m_subsystemTerrain.ChangeCell(m_grassCellX, m_grassCellY, m_grassCellZ, 0, true);
+        }
+        else if (!m_grassCellIsTallGrass && contents == GrassBlock.Index)
+        {
+            // Turn eaten turf into dirt; the normal grass spreading system can regrow it.
+            m_subsystemTerrain.ChangeCell(m_grassCellX, m_grassCellY, m_grassCellZ,
+                Terrain.MakeBlockValue(DirtBlock.Index), true);
+        }
     }
 
     private void StopGrazing()
@@ -261,98 +375,206 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         }
     }
 
-    private void UpdateSheepSounds()
+    private void UpdateFlee()
+    {
+        if (m_fleeTarget == null || !m_fleeTarget.Entity.IsAddedToProject)
+            return;
+
+        TryPlayFleeBleat();
+
+        Vector3 threatPosition = m_fleeTarget.Position;
+        Vector3 herdCenter = FindHerdCenter();
+        Vector3 away = new Vector3(herdCenter.X - threatPosition.X, 0f, herdCenter.Z - threatPosition.Z);
+        if (away.LengthSquared() < 0.001f)
+            away = m_creature.ComponentBody.Matrix.Forward;
+        away = Vector3.Normalize(new Vector3(away.X, 0f, away.Z));
+
+        Vector3 groupDestination = herdCenter + away * 10f;
+        // A small personal offset keeps sheep from stacking on the same destination.
+        Vector3 destination = groupDestination + m_followOffset * 0.65f;
+        m_model.LookAtOrder = destination + new Vector3(0f, 0.7f, 0f);
+
+        if (m_time.GameTime >= m_nextPathUpdate ||
+            !m_pathfinding.Destination.HasValue || m_pathfinding.IsStuck)
+        {
+            m_nextPathUpdate = m_time.GameTime + 0.55;
+            m_pathfinding.SetDestination(destination, FleeSpeed, 1.25f, 200,
+                useRandomMovements: false, ignoreHeightDifference: true,
+                raycastDestination: false, doNotAvoidBody: null);
+            m_lastOwnedDestination = destination;
+        }
+    }
+
+    private void TryPlayFleeBleat()
+    {
+        double now = m_time.GameTime;
+        if (now < m_nextFleeBleat)
+            return;
+
+        ComponentLivingTownsSheepBehavior speaker = FindFleeSpeaker();
+        if (speaker != this)
+            return;
+
+        m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa", 0.52f, 0f,
+            m_creature.ComponentBody.Position, 16f, autoDelay: false);
+
+        double next = now + 6.0 + m_random.NextDouble() * 2.0;
+        SetHerdBleatTime(next);
+    }
+
+    private ComponentLivingTownsSheepBehavior FindFleeSpeaker()
+    {
+        ComponentLivingTownsSheepBehavior speaker = this;
+        float bestDistance = m_fleeTarget != null
+            ? Vector3.DistanceSquared(m_creature.ComponentBody.Position, m_fleeTarget.Position)
+            : 0f;
+
+        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
+        {
+            if (creature == m_creature || creature.ComponentHealth.Health <= 0f)
+                continue;
+
+            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
+            if (herd == null || herd.HerdName != SheepHerdName)
+                continue;
+
+            ComponentLivingTownsSheepBehavior behavior =
+                creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
+            if (behavior == null || behavior.m_mode != SheepMode.Flee || behavior.m_fleeTarget == null)
+                continue;
+
+            float distance = Vector3.DistanceSquared(creature.ComponentBody.Position, m_fleeTarget.Position);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                speaker = behavior;
+            }
+        }
+
+        return speaker;
+    }
+
+    private void SetHerdBleatTime(double nextTime)
+    {
+        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
+        {
+            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
+            if (herd == null || herd.HerdName != SheepHerdName)
+                continue;
+
+            ComponentLivingTownsSheepBehavior behavior =
+                creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
+            if (behavior != null && behavior.m_mode == SheepMode.Flee)
+                behavior.m_nextFleeBleat = nextTime;
+        }
+    }
+
+    private void OnAttacked(ComponentCreature attacker)
     {
         Vector3 position = m_creature.ComponentBody.Position;
-        double now = m_time.GameTime;
+        m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_hurt", 0.62f, 0f,
+            position, 18f, autoDelay: false);
 
-        // Audible startup probe: play on the first component update.
-        if (!m_audioProbePlayed)
+        if (attacker == null || attacker.ComponentBody == null)
+            return;
+
+        ComponentPlayer player = attacker.Entity.FindComponent<ComponentPlayer>();
+        if (player != null)
+            PropagateHerdFlee(attacker.ComponentBody);
+
+        // Native runaway AI already knows how to choose a safe place relative to its herd.
+        // Wake the nearby flock when one sheep is actually attacked.
+        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
         {
-            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa", 1f, 0f,
-                position, 24f, autoDelay: false);
-            Log.Information("[LivingTowns Sheep] First bleat playback requested.");
-            m_audioProbePlayed = true;
-            m_nextAmbientBleat = now + 6.0;
+            if (creature == m_creature || creature.ComponentHealth.Health <= 0f)
+                continue;
+
+            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
+            if (herd == null || herd.HerdName != SheepHerdName)
+                continue;
+
+            if (Vector3.DistanceSquared(creature.ComponentBody.Position, position) > HerdScanRange * HerdScanRange)
+                continue;
+
+            ComponentRunAwayBehavior runaway = creature.Entity.FindComponent<ComponentRunAwayBehavior>();
+            if (runaway != null)
+                runaway.RunAwayFrom(attacker.ComponentBody);
+        }
+    }
+
+    private void PropagateHerdFlee(ComponentBody threat)
+    {
+        if (threat == null)
+            return;
+
+        double until = m_time.GameTime + 6.0;
+        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
+        {
+            if (creature.ComponentHealth.Health <= 0f)
+                continue;
+
+            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
+            if (herd == null || herd.HerdName != SheepHerdName)
+                continue;
+
+            if (Vector3.DistanceSquared(creature.ComponentBody.Position,
+                m_creature.ComponentBody.Position) > HerdScanRange * HerdScanRange)
+                continue;
+
+            ComponentLivingTownsSheepBehavior behavior =
+                creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
+            if (behavior != null)
+                behavior.SetSharedFleeTarget(threat, until);
+        }
+    }
+
+    private void SetSharedFleeTarget(ComponentBody threat, double until)
+    {
+        if (threat == null)
+            return;
+
+        m_sharedFleeTarget = threat;
+        m_sharedFleeUntil = Math.Max(m_sharedFleeUntil, until);
+        m_fleeTarget = threat;
+        m_mode = SheepMode.Flee;
+        m_nextFleeBleat = Math.Min(m_nextFleeBleat, m_time.GameTime);
+    }
+
+    private Vector3 FindHerdCenter()
+    {
+        Vector3 ownPosition = m_creature.ComponentBody.Position;
+        Vector3 sum = Vector3.Zero;
+        int count = 0;
+
+        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
+        {
+            if (creature.ComponentHealth.Health <= 0f)
+                continue;
+
+            ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
+            if (herd == null || herd.HerdName != SheepHerdName)
+                continue;
+
+            Vector3 position = creature.ComponentBody.Position;
+            if (Vector3.DistanceSquared(ownPosition, position) <= HerdScanRange * HerdScanRange)
+            {
+                sum += position;
+                count++;
+            }
         }
 
-        float health = m_creature.ComponentHealth.Health;
-        if (health < m_lastHealth - 0.0001f)
-        {
-            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_hurt", 1f, 0f,
-                position, 24f, autoDelay: false);
-        }
-        m_lastHealth = health;
-
-        // Repeat at a predictable interval while alive, even when walking.
-        if (health > 0f && now >= m_nextAmbientBleat)
-        {
-            string sound = m_random.NextDouble() < 0.25
-                ? "Audio/LivingTowns/Sheep/baa_rare"
-                : "Audio/LivingTowns/Sheep/baa";
-            m_audio.PlayRandomSound(sound, 1f, 0f,
-                position, 24f, autoDelay: false);
-            m_nextAmbientBleat = now + 7.0 + m_random.NextDouble() * 3.0;
-        }
+        return count > 0 ? sum / count : ownPosition;
     }
 
     private void StopOwnedPath()
     {
         if (!m_lastOwnedDestination.HasValue)
             return;
+
         if (m_pathfinding.Destination.HasValue &&
             Vector3.DistanceSquared(m_pathfinding.Destination.Value, m_lastOwnedDestination.Value) < 0.04f)
             m_pathfinding.Stop();
+
         m_lastOwnedDestination = null;
-    }
-
-    private void UpdateFollow()
-    {
-        if (m_target == null)
-            return;
-        Vector3 targetPosition = m_target.ComponentBody.Position;
-        float distanceSquared = Vector3.DistanceSquared(m_creature.ComponentBody.Position, targetPosition);
-        m_model.LookAtOrder = targetPosition + new Vector3(0f, 0.8f, 0f);
-        if (distanceSquared <= FollowStopDistance * FollowStopDistance)
-        {
-            StopOwnedPath();
-            return;
-        }
-        if (m_time.GameTime >= m_nextPathUpdate || !m_pathfinding.Destination.HasValue || m_pathfinding.IsStuck)
-        {
-            m_nextPathUpdate = m_time.GameTime + 0.45;
-            m_pathfinding.SetDestination(targetPosition, FollowSpeed, 1.2f, 200,
-                useRandomMovements: true, ignoreHeightDifference: false,
-                raycastDestination: true, doNotAvoidBody: m_target.ComponentBody);
-            m_lastOwnedDestination = targetPosition;
-        }
-    }
-
-    private void UpdateFlee()
-    {
-        if (m_fleeTarget == null)
-            return;
-        if (!m_fleeBleatPlayed)
-        {
-            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_alarm", 0.8f, 0f,
-                m_creature.ComponentBody.Position, 9f, autoDelay: false);
-            m_fleeBleatPlayed = true;
-        }
-        Vector3 sheepPosition = m_creature.ComponentBody.Position;
-        Vector3 threatPosition = m_fleeTarget.ComponentBody.Position;
-        Vector3 away = new Vector3(sheepPosition.X - threatPosition.X, 0f, sheepPosition.Z - threatPosition.Z);
-        if (away.LengthSquared() < 0.001f)
-            away = m_creature.ComponentBody.Matrix.Forward;
-        away = Vector3.Normalize(new Vector3(away.X, 0f, away.Z));
-        Vector3 destination = sheepPosition + away * 10f;
-        m_model.LookAtOrder = threatPosition + new Vector3(0f, 0.8f, 0f);
-        if (m_time.GameTime >= m_nextPathUpdate || !m_pathfinding.Destination.HasValue || m_pathfinding.IsStuck)
-        {
-            m_nextPathUpdate = m_time.GameTime + 0.55;
-            m_pathfinding.SetDestination(destination, FleeSpeed, 1.2f, 200,
-                useRandomMovements: false, ignoreHeightDifference: true,
-                raycastDestination: false, doNotAvoidBody: m_fleeTarget.ComponentBody);
-            m_lastOwnedDestination = destination;
-        }
     }
 }
