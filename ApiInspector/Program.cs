@@ -149,6 +149,8 @@ DumpIl("Game.ComponentMiner", "Raycast");
 DumpIl("Game.ComponentMiner", "DoMeleeHit");
 DumpIl("Game.ComponentMiner", "AttackBody");
 DumpIl("Game.Attackment", "ProcessAttackment");
+DumpIl("Game.Attackment", "ProcessAttackmentToCreature");
+DumpIl("Game.Attackment", "DisableFriendlyFire");
 DumpIl("Game.ComponentHealth", "Injure");
 DumpIl("Game.ComponentHealth", "Injure");
 DumpIl("Game.ComponentHealth", "ApplyDamage");
