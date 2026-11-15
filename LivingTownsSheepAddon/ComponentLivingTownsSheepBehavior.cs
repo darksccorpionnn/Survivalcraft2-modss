@@ -36,6 +36,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private Vector3 m_grassTarget;
     private bool m_isGrazing;
     private bool m_fleeBleatPlayed;
+    private float m_lastHealth;
+    private double m_nextAmbientBleat;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
@@ -65,6 +67,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_subsystemTerrain = Project.FindSubsystem<SubsystemTerrain>(throwOnError: true);
         m_mode = SheepMode.None;
         m_nextGrassSearch = m_time.GameTime + 1.0;
+        m_lastHealth = m_creature.ComponentHealth.Health;
+        m_nextAmbientBleat = m_time.GameTime + 7.0 + m_random.NextDouble() * 5.0;
     }
 
     public void Update(float dt)
@@ -73,6 +77,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
 
         RefreshTargets();
+        UpdateSheepSounds();
 
         if (m_creature.ComponentHealth.Health <= 0f)
         {
@@ -252,6 +257,32 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         {
             m_model.FeedOrder = false;
             m_model.LookAtOrder = null;
+        }
+    }
+
+    private void UpdateSheepSounds()
+    {
+        float health = m_creature.ComponentHealth.Health;
+        if (health < m_lastHealth - 0.0001f)
+        {
+            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_hurt", 0.95f, 0f,
+                m_creature.ComponentBody.Position, 12f, autoDelay: false);
+        }
+        m_lastHealth = health;
+
+        double now = m_time.GameTime;
+        if (health > 0f && now >= m_nextAmbientBleat && m_creature.ComponentBody.Velocity.LengthSquared() < 0.04f)
+        {
+            string sound = m_random.NextDouble() < 0.25
+                ? "Audio/LivingTowns/Sheep/baa_rare"
+                : "Audio/LivingTowns/Sheep/baa";
+            m_audio.PlayRandomSound(sound, 0.72f, 0f,
+                m_creature.ComponentBody.Position, 12f, autoDelay: false);
+            m_nextAmbientBleat = now + 12.0 + m_random.NextDouble() * 13.0;
+        }
+        else if (now >= m_nextAmbientBleat)
+        {
+            m_nextAmbientBleat = now + 2.5;
         }
     }
 
