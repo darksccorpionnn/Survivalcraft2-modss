@@ -101,7 +101,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         BodyRaycastResult? bodyHit = componentPlayer.ComponentMiner.Raycast<BodyRaycastResult>(
             hitRay.Value,
             RaycastMode.Interaction,
-            raycastTerrain: false,
+            raycastTerrain: true,
             raycastBodies: true,
             raycastMovingBlocks: false,
             reach: 3.25f);
