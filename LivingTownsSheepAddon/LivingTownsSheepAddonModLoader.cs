@@ -225,6 +225,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ref float creatureProbability,
         out bool hitted)
     {
+        // The API exposes this as an OUT hit decision. Returning false here
+        // cancels the creature hit even when playerProbability is raised to 1.
         hitted = false;
         // Do not alter AI-vs-creature attacks. Player melee should be dependable:
         // the vanilla bare-hand probability is only 0.66 while a target is moving.
@@ -238,6 +240,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         playerProbability = Math.Max(playerProbability, 1f);
         attackPower = Math.Max(attackPower, 1f);
+        hitted = true;
     }
 
     public override void OnMinerHit2(
