@@ -146,6 +146,13 @@ DumpIl("Game.ComponentUdder", "Load");
 DumpIl("Game.ComponentMiner", "Hit");
 DumpIl("Game.ComponentMiner", "Use");
 DumpIl("Game.ComponentMiner", "Raycast");
+DumpIl("Game.ComponentMiner", "DoMeleeHit");
+DumpIl("Game.ComponentMiner", "AttackBody");
+DumpIl("Game.ComponentHealth", "Injure");
+DumpIl("Game.ComponentHealth", "ApplyDamage");
+DumpIl("Game.SubsystemCreatureSpawn", "InitializeCreatureTypesFromDatabase");
+DumpIl("Game.SubsystemCreatureSpawn", "InitializeCreatureTypes");
+DumpIl("Game.SubsystemCreatureSpawn", "CalculateSpawnSuitability");
 DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreature");
 
 string result = output.ToString();
