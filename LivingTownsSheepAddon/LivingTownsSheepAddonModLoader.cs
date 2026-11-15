@@ -9,7 +9,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private BevelledButtonWidget m_villagerTradeButton;
     private ContainerWidget m_villagerTradeButtonParent;
-    private static bool m_openingTradeFromButton;
 
     public override void __ModInitialize()
     {
@@ -117,44 +116,22 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
     private static void OpenVillagerTrade(ComponentPlayer player, ComponentBody villagerBody)
     {
-        if (player == null || player.ComponentInput == null ||
-            player.ComponentCreatureModel == null || villagerBody == null)
+        if (player == null || player.ComponentCreatureModel == null ||
+            player.ComponentMiner == null || villagerBody == null)
             return;
 
-        PlayerInput input = player.ComponentInput.PlayerInput;
         Engine.Vector3 origin = player.ComponentCreatureModel.EyePosition;
         Engine.Vector3 direction = villagerBody.Position - origin;
-        Engine.Ray3 previousInteractRay = input.Interact.GetValueOrDefault();
-        bool hadPreviousInteractRay = input.Interact.HasValue;
-        input.Interact = new Engine.Ray3(origin, Engine.Vector3.Normalize(direction));
+        if (direction.LengthSquared() < 0.0001f)
+            return;
 
-        // Reuse the existing Living Towns trade/shop interaction hooks.
-        bool playerOperated = false;
-        double timeIntervalLastActionTime = 0.0;
-        int priorityUse = 0;
-        int priorityInteract = 0;
-        int priorityPlace = 0;
-
-        try
-        {
-            m_openingTradeFromButton = true;
-            ModsManager.HookAction("OnPlayerInputInteract", loader =>
-            {
-                loader.OnPlayerInputInteract(
-                    player,
-                    ref playerOperated,
-                    ref timeIntervalLastActionTime,
-                    ref priorityUse,
-                    ref priorityInteract,
-                    ref priorityPlace);
-                return false;
-            });
-        }
-        finally
-        {
-            m_openingTradeFromButton = false;
-            input.Interact = hadPreviousInteractRay ? previousInteractRay : null;
-        }
+        // Call the same native body-hit entry that the game's tap input uses.
+        // Living Towns' existing Harmony interaction patch intercepts this
+        // villager hit and opens the existing trade screen without damage.
+        player.ComponentMiner.Hit(
+            villagerBody,
+            villagerBody.Position,
+            Engine.Vector3.Normalize(direction));
     }
 
     public override void InitializeCreatureTypes(
@@ -428,30 +405,27 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         // A physical tap on a villager must not open the legacy trade inventory.
         // The only permitted route is the dedicated proximity button below.
-        if (!m_openingTradeFromButton)
+        var villagerInteractRay = componentPlayer.ComponentInput?.PlayerInput.Interact;
+        if (villagerInteractRay.HasValue)
         {
-            var villagerInteractRay = componentPlayer.ComponentInput?.PlayerInput.Interact;
-            if (villagerInteractRay.HasValue)
-            {
-                object villagerHit = miner.Raycast(
-                    villagerInteractRay.Value,
-                    RaycastMode.Interaction,
-                    false,
-                    true,
-                    false,
-                    5f);
+            object villagerHit = miner.Raycast(
+                villagerInteractRay.Value,
+                RaycastMode.Interaction,
+                false,
+                true,
+                false,
+                5f);
 
-                if (villagerHit is BodyRaycastResult villagerBodyHit &&
-                    villagerBodyHit.ComponentBody != null &&
-                    villagerBodyHit.ComponentBody.Entity != null &&
-                    IsLivingTownsVillager(villagerBodyHit.ComponentBody.Entity))
-                {
-                    playerOperated = true;
-                    priorityUse = Math.Max(priorityUse, 10000);
-                    priorityInteract = Math.Max(priorityInteract, 10000);
-                    priorityPlace = Math.Max(priorityPlace, 10000);
-                    return;
-                }
+            if (villagerHit is BodyRaycastResult villagerBodyHit &&
+                villagerBodyHit.ComponentBody != null &&
+                villagerBodyHit.ComponentBody.Entity != null &&
+                IsLivingTownsVillager(villagerBodyHit.ComponentBody.Entity))
+            {
+                playerOperated = true;
+                priorityUse = Math.Max(priorityUse, 10000);
+                priorityInteract = Math.Max(priorityInteract, 10000);
+                priorityPlace = Math.Max(priorityPlace, 10000);
+                return;
             }
         }
 
