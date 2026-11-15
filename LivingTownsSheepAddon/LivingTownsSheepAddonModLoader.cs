@@ -186,7 +186,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         attackment.EnableResilienceFactor = true;
         attackment.EnableHitValueParticleSystem = true;
 
-        miner.AttackBody(attackment);
+        ComponentMiner.AttackBody(attackment);
 
         if (targetHealth.Health < healthBefore)
         {
