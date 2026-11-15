@@ -27,6 +27,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private SubsystemAudio m_audio;
     private SubsystemTerrain m_subsystemTerrain;
     private SubsystemCreatureSpawn m_subsystemCreatureSpawn;
+    private SubsystemSeasons m_subsystemSeasons;
     private readonly System.Random m_random = new System.Random();
 
     private SheepMode m_appliedMode;
@@ -47,8 +48,23 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private int m_grassCellZ;
     private bool m_grassCellIsTallGrass;
     private bool m_isGrazing;
+    private bool m_isTamed;
+    private bool m_isPregnant;
+    private double m_nextReproductionCheck;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
+
+    public bool IsTamed => m_isTamed;
+
+    /// <summary>Marks adult sheep or rams as player-tamed. Lambs remain dependent young.</summary>
+    public bool TryTame()
+    {
+        if (m_isTamed || m_voiceSet == "Lamb")
+            return false;
+
+        m_isTamed = true;
+        return true;
+    }
 
     public override float ImportanceLevel
     {
@@ -82,6 +98,9 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_audio = Project.FindSubsystem<SubsystemAudio>(throwOnError: true);
         m_subsystemTerrain = Project.FindSubsystem<SubsystemTerrain>(throwOnError: true);
         m_subsystemCreatureSpawn = Project.FindSubsystem<SubsystemCreatureSpawn>(throwOnError: true);
+        m_subsystemSeasons = Project.FindSubsystem<SubsystemSeasons>(throwOnError: true);
+        m_isTamed = valuesDictionary.GetValue<bool>("IsTamed", false);
+        m_isPregnant = valuesDictionary.GetValue<bool>("IsPregnant", false);
 
         double angle = m_random.NextDouble() * Math.PI * 2.0;
         float radius = 2.7f + (float)m_random.NextDouble() * 2.0f;
@@ -93,6 +112,13 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
         // Damage sounds are event-driven: one bleat per actual hit, not a polling loop.
         m_creature.ComponentHealth.Attacked += OnAttacked;
+    }
+
+    public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
+    {
+        base.Save(valuesDictionary, entityToIdMap);
+        valuesDictionary.SetValue("IsTamed", m_isTamed);
+        valuesDictionary.SetValue("IsPregnant", m_isPregnant);
     }
 
     public void Update(float dt)
@@ -120,6 +146,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             m_nextPathUpdate = 0;
             m_appliedMode = m_mode;
         }
+
+        UpdateReproduction();
 
         switch (m_mode)
         {
@@ -162,7 +190,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
                 continue;
 
             float distanceSquared = Vector3.DistanceSquared(position, player.ComponentBody.Position);
-            if (distanceSquared <= nearestGrassPlayerDistance && IsHoldingGrass(player))
+            if (distanceSquared <= nearestGrassPlayerDistance &&
+                (IsHoldingGrass(player) || (m_isTamed && IsHoldingGrain(player))))
             {
                 nearestGrassPlayerDistance = distanceSquared;
                 m_target = player;
@@ -185,6 +214,53 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     {
         int contents = Terrain.ExtractContents(player.ComponentMiner.ActiveBlockValue);
         return contents == GrassBlock.Index || contents == TallGrassBlock.Index;
+    }
+
+    private static bool IsHoldingGrain(ComponentPlayer player)
+    {
+        // Survivalcraft 2.4.0.0 exposes RyeBlock as its native cereal crop block.
+        return Terrain.ExtractContents(player.ComponentMiner.ActiveBlockValue) == RyeBlock.Index;
+    }
+
+    private void UpdateReproduction()
+    {
+        // Adult female sheep can become pregnant only in autumn; birth is tied to
+        // the game's own season transition into winter. No parallel calendar is used.
+        if (m_voiceSet != "Sheep" || !m_isTamed || m_seasons == null)
+            return;
+
+        if (m_isPregnant)
+        {
+            if (m_seasons.Season == Season.Winter)
+            {
+                Vector3 birthPosition = m_creature.ComponentBody.Position + new Vector3(1.2f, 0f, 0f);
+                Entity lamb = m_subsystemCreatureSpawn.SpawnCreature("LivingTowns_Lamb", birthPosition, false);
+                if (lamb != null)
+                    m_isPregnant = false;
+            }
+            return;
+        }
+
+        if (m_seasons.Season != Season.Autumn || m_time.GameTime < m_nextReproductionCheck)
+            return;
+
+        m_nextReproductionCheck = m_time.GameTime + 8.0;
+        Vector3 position = m_creature.ComponentBody.Position;
+        foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
+        {
+            if (creature == null || creature.ComponentHealth == null ||
+                creature.ComponentHealth.Health <= 0f ||
+                Vector3.DistanceSquared(position, creature.ComponentBody.Position) > 6f * 6f)
+                continue;
+
+            ComponentLivingTownsSheepBehavior partner =
+                creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
+            if (partner != null && partner.m_voiceSet == "Ram" && partner.m_isTamed)
+            {
+                m_isPregnant = true;
+                return;
+            }
+        }
     }
 
     private void UpdateFollow()
