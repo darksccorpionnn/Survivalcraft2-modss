@@ -51,6 +51,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private bool m_isTamed;
     private bool m_isPregnant;
     private double m_nextReproductionCheck;
+    private double m_lastMilkingTime = -1200.0;
+    private const double MilkRegenerationTime = 1200.0;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
@@ -63,6 +65,20 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return false;
 
         m_isTamed = true;
+        return true;
+    }
+
+    /// <summary>Allows only the adult female sheep to be milked, with a saved cooldown.</summary>
+    public bool TryMilk()
+    {
+        if (m_voiceSet != "Sheep" || m_creature == null ||
+            m_creature.ComponentHealth == null || m_creature.ComponentHealth.Health <= 0f)
+            return false;
+
+        if (m_time.GameTime - m_lastMilkingTime < MilkRegenerationTime)
+            return false;
+
+        m_lastMilkingTime = m_time.GameTime;
         return true;
     }
 
@@ -101,6 +117,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_subsystemSeasons = Project.FindSubsystem<SubsystemSeasons>(throwOnError: true);
         m_isTamed = valuesDictionary.GetValue<bool>("IsTamed", false);
         m_isPregnant = valuesDictionary.GetValue<bool>("IsPregnant", false);
+        m_lastMilkingTime = valuesDictionary.GetValue<double>("LastMilkingTime", -MilkRegenerationTime);
 
         double angle = m_random.NextDouble() * Math.PI * 2.0;
         float radius = 2.7f + (float)m_random.NextDouble() * 2.0f;
@@ -119,6 +136,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         base.Save(valuesDictionary, entityToIdMap);
         valuesDictionary.SetValue("IsTamed", m_isTamed);
         valuesDictionary.SetValue("IsPregnant", m_isPregnant);
+        valuesDictionary.SetValue("LastMilkingTime", m_lastMilkingTime);
     }
 
     public void Update(float dt)
