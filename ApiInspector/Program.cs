@@ -164,7 +164,7 @@ DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreature");
 
 var inspectNames = new HashSet<string>(StringComparer.Ordinal)
 {
-    "Game.ComponentMiner", "Game.ComponentPlayer", "Game.PlayerInput", "Game.ComponentInput", "Game.Attackment",
+    "Game.ComponentMiner", "Game.ComponentPlayer", "Game.PlayerInput", "Game.ComponentInput", "Game.ModLoader", "Game.Attackment",
     "Game.SubsystemCreatureSpawn+CreatureType", "Game.SpawnLocationType",
     "Game.CreatureCategory", "Game.SubsystemBodies", "Game.ComponentBody"
 };
@@ -182,7 +182,7 @@ foreach (Type type in allTypes.Where(t => inspectNames.Contains(t.FullName)).Ord
     foreach (var m in type.GetMethods(deep).OrderBy(m => m.Name))
         output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
             string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) +
-            ") public=" + m.IsPublic);
+            ") public=" + m.IsPublic + " virtual=" + m.IsVirtual + " final=" + m.IsFinal);
 }
 DumpIl("Game.Attackment", "CalculateInjuryAmount");
 DumpIl("Game.Injury", "Process");
