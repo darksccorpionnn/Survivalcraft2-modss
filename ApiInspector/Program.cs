@@ -279,6 +279,22 @@ foreach (Type type in allTypes.Where(t => widgetTypeNames.Contains(t.Name)).Orde
         output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
 }
 
+
+DumpIl("Game.ComponentGui", "HandleInput");
+DumpIl("Game.ComponentGui", "Update");
+DumpIl("Game.ComponentInput", "Update");
+Type modsManagerType = allTypes.FirstOrDefault(t => t.Name == "ModsManager");
+if (modsManagerType != null)
+{
+    output.AppendLine("\\n===== MODS MANAGER METHODS " + modsManagerType.FullName + " =====");
+    const BindingFlags mmf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var method in modsManagerType.GetMethods(mmf).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + method.ReturnType.FullName + " " + method.Name + "(" + string.Join(", ", method.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + method.IsPublic + " static=" + method.IsStatic);
+    foreach (var field in modsManagerType.GetFields(mmf).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + field.FieldType.FullName + " " + field.Name + " public=" + field.IsPublic + " static=" + field.IsStatic);
+    DumpIl(modsManagerType.FullName, "HookAction");
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
