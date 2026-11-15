@@ -265,6 +265,8 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
     private void UpdateFollow()
     {
+        // Moving and fleeing must never retain the one-shot grazing pose.
+        StopGrazing();
         if (m_target == null)
             return;
 
@@ -430,8 +432,16 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
     private void UpdateFlee()
     {
+        // Clear the feeding flag every fleeing tick, not only on mode transitions.
+        // This prevents a stale IsFeeding animation parameter from masking run gait.
+        StopGrazing();
+        m_model.FeedOrder = false;
+
         if (m_fleeTarget == null || !m_fleeTarget.Entity.IsAddedToProject)
+        {
+            StopOwnedPath();
             return;
+        }
 
         TryPlayFleeBleat();
 
