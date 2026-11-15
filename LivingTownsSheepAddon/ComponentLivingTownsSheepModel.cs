@@ -6,10 +6,13 @@ using TemplatesDatabase;
 namespace Game;
 
 /// <summary>glTF sheep model using the game's native terrain/material footsteps.</summary>
-public sealed class ComponentLivingTownsSheepModel : ComponentCreatureModel
+public sealed class ComponentLivingTownsSheepModel : ComponentFourLeggedModel
 {
     public override void AnimateCreature()
     {
+        // If a glTF animation config is unavailable, retain a visible
+        // engine-native quadruped gait instead of leaving the animal rigid.
+        base.AnimateCreature();
     }
 
     public override void SyncAnimationParameters()
