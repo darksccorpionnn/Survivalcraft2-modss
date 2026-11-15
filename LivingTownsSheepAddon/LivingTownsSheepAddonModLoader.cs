@@ -7,10 +7,13 @@ namespace Game;
 public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
+    private BevelledButtonWidget m_villagerTradeButton;
+    private ContainerWidget m_villagerTradeButtonParent;
 
     public override void __ModInitialize()
     {
         ModsManager.RegisterHook("OnLoadingFinished", this);
+        ModsManager.RegisterHook("GuiUpdate", this);
         ModsManager.RegisterHook("OnPlayerInputInteract", this);
         ModsManager.RegisterHook("OnPlayerInputHit", this);
         ModsManager.RegisterHook("OnMinerHit", this);
@@ -18,6 +21,134 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
+
+    public override void GuiUpdate(ComponentGui componentGui)
+    {
+        if (componentGui == null)
+            return;
+
+        ComponentPlayer player = componentGui.m_componentPlayer;
+        if (player == null || player.ComponentInput == null ||
+            player.ComponentCreatureModel == null || player.ComponentMiner == null)
+        {
+            if (m_villagerTradeButton != null)
+                m_villagerTradeButton.IsVisible = false;
+            return;
+        }
+
+        if (m_villagerTradeButton == null)
+        {
+            m_villagerTradeButton = new BevelledButtonWidget
+            {
+                Text = "Ticaret",
+                DesiredSize = new Engine.Vector2(92f, 48f),
+                Margin = new Engine.Vector2(4f),
+                IsVisible = false
+            };
+        }
+
+        ContainerWidget buttonParent =
+            componentGui.m_rightControlsContainerWidget ??
+            componentGui.m_leftControlsContainerWidget ??
+            componentGui.ControlsContainerWidget;
+
+        if (buttonParent != null && m_villagerTradeButtonParent != buttonParent)
+        {
+            if (m_villagerTradeButtonParent != null)
+                m_villagerTradeButtonParent.RemoveChildren(m_villagerTradeButton);
+            buttonParent.AddChildren(m_villagerTradeButton);
+            m_villagerTradeButtonParent = buttonParent;
+        }
+
+        if (componentGui.ModalPanelWidget != null || componentGui.IsInventoryVisible())
+        {
+            m_villagerTradeButton.IsVisible = false;
+            return;
+        }
+
+        // Show the button while the player is within 3.75 blocks of any
+        // Living Towns villager; looking directly at the villager is not required.
+        SubsystemBodies bodies = player.Project.FindSubsystem<SubsystemBodies>(throwOnError: true);
+        Engine.Vector3 playerEye = player.ComponentCreatureModel.EyePosition;
+        ComponentBody nearestVillager = null;
+        float nearestDistance = 3.75f;
+
+        foreach (ComponentBody body in bodies.Bodies)
+        {
+            if (body == null || body.Entity == null || body.Entity == player.Entity ||
+                !IsLivingTownsVillager(body.Entity))
+                continue;
+
+            float distance = Engine.Vector3.Distance(playerEye, body.Position);
+            if (distance <= nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestVillager = body;
+            }
+        }
+
+        m_villagerTradeButton.IsVisible = nearestVillager != null;
+        m_villagerTradeButton.IsEnabled = nearestVillager != null;
+
+        // IsClicked is the button's one-frame touch/click event.
+        if (nearestVillager != null && m_villagerTradeButton.IsClicked)
+            OpenVillagerTrade(player, nearestVillager);
+    }
+
+    private static bool IsLivingTownsVillager(GameEntitySystem.Entity entity)
+    {
+        if (entity == null)
+            return false;
+
+        foreach (GameEntitySystem.Component component in entity.Components)
+        {
+            if (component != null &&
+                component.GetType().Name == "ComponentLivingTownsVillagerController")
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void OpenVillagerTrade(ComponentPlayer player, ComponentBody villagerBody)
+    {
+        if (player == null || player.ComponentInput == null ||
+            player.ComponentCreatureModel == null || villagerBody == null)
+            return;
+
+        PlayerInput input = player.ComponentInput.PlayerInput;
+        Engine.Vector3 origin = player.ComponentCreatureModel.EyePosition;
+        Engine.Vector3 direction = villagerBody.Position - origin;
+        Engine.Ray3 previousInteractRay = input.Interact.GetValueOrDefault();
+        bool hadPreviousInteractRay = input.Interact.HasValue;
+        input.Interact = new Engine.Ray3(origin, Engine.Vector3.Normalize(direction));
+
+        // Reuse the existing Living Towns trade/shop interaction hooks.
+        bool playerOperated = false;
+        double timeIntervalLastActionTime = 0.0;
+        int priorityUse = 0;
+        int priorityInteract = 0;
+        int priorityPlace = 0;
+
+        try
+        {
+            ModsManager.HookAction("OnPlayerInputInteract", loader =>
+            {
+                loader.OnPlayerInputInteract(
+                    player,
+                    ref playerOperated,
+                    ref timeIntervalLastActionTime,
+                    ref priorityUse,
+                    ref priorityInteract,
+                    ref priorityPlace);
+                return false;
+            });
+        }
+        finally
+        {
+            input.Interact = hadPreviousInteractRay ? previousInteractRay : null;
+        }
+    }
 
     public override void InitializeCreatureTypes(
         SubsystemCreatureSpawn spawn,
@@ -130,11 +261,23 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             targetBody.Entity == componentPlayer.Entity)
             return;
 
+        if (IsLivingTownsVillager(targetBody.Entity))
+        {
+            // Villagers are interacted with through the proximity trade button,
+            // never through the attack input.
+            playerOperated = true;
+            skipVanilla = true;
+            return;
+        }
+
+        ComponentLivingTownsSheepBehavior sheepBehavior =
+            targetBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
         ComponentCreature targetCreature =
             targetBody.Entity.FindComponent<ComponentCreature>();
         ComponentHealth targetHealth =
             targetBody.Entity.FindComponent<ComponentHealth>();
-        if (targetCreature == null || targetHealth == null || targetHealth.Health <= 0f)
+        if (sheepBehavior == null || targetCreature == null ||
+            targetHealth == null || targetHealth.Health <= 0f)
             return;
 
         // Match the game's own distance guard (from the player's eye to the
@@ -234,7 +377,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             componentBody == null || componentBody.Entity == null)
             return;
 
-        if (componentBody.Entity.FindComponent<ComponentCreature>() == null ||
+        if (componentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null ||
+            componentBody.Entity.FindComponent<ComponentCreature>() == null ||
             componentBody.Entity.FindComponent<ComponentHealth>() == null)
             return;
 
@@ -256,7 +400,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             componentBody == null || componentBody.Entity == null || attackment == null)
             return;
 
-        if (componentBody.Entity.FindComponent<ComponentCreature>() == null ||
+        if (componentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null ||
+            componentBody.Entity.FindComponent<ComponentCreature>() == null ||
             componentBody.Entity.FindComponent<ComponentHealth>() == null)
             return;
 
