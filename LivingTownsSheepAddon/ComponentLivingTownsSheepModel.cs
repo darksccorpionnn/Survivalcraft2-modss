@@ -30,7 +30,7 @@ public sealed class ComponentLivingTownsSheepModel : ComponentCreatureModel
 
     public override void HandleAnimationEvent(AnimationEvent animationEvent)
     {
-        if (animationEvent != null && animationEvent.Name == "Footstep")
+        if (animationEvent != null && (animationEvent.Name == "Footstep" || animationEvent.Name == "SheepFootstep"))
         {
             if (m_audio != null && m_componentCreature != null && m_componentCreature.ComponentBody != null)
             {
