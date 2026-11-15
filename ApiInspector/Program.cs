@@ -69,6 +69,82 @@ foreach (Type type in loaded.SelectMany(a => { try { return a.GetTypes(); } catc
     output.AppendLine("===== ENUM " + type.FullName + " =====");
     foreach (var name in Enum.GetNames(type)) output.AppendLine("VALUE " + name + " = " + Convert.ToInt32(Enum.Parse(type, name)));
 }
+
+var allTypes = loaded.SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null); } }).ToList();
+foreach (Type type in allTypes.Where(t =>
+    new[] { "IInventory", "Inventory", "RaycastMode", "RaycastResult", "ComponentBody", "Project", "SubsystemInput", "ComponentInput", "SubsystemBucketBlockBehavior", "EmptyBucketBlock", "MilkBucketBlock", "SeedsBlock", "WheatBlock" }
+    .Contains(t.Name)).OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== FOCUSED " + type.FullName + " =====");
+    const BindingFlags ff = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var p in type.GetProperties(ff).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod != null) + " set=" + (p.SetMethod != null));
+    foreach (var f in type.GetFields(ff).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name);
+    foreach (var m in type.GetMethods(ff).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+    if (type.IsEnum)
+        foreach (var name in Enum.GetNames(type)) output.AppendLine("VALUE " + name + "=" + Convert.ToInt32(Enum.Parse(type, name)));
+}
+
+var opcodeMap = new Dictionary<short, System.Reflection.Emit.OpCode>();
+foreach (var field in typeof(System.Reflection.Emit.OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
+{
+    if (field.GetValue(null) is System.Reflection.Emit.OpCode op) opcodeMap[op.Value] = op;
+}
+void DumpIl(string typeName, string methodName)
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) { output.AppendLine("IL MISSING TYPE " + typeName); return; }
+    foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly).Where(m => m.Name == methodName))
+    {
+        output.AppendLine();
+        output.AppendLine("===== IL " + typeName + "." + methodName + " =====");
+        var il = method.GetMethodBody()?.GetILAsByteArray();
+        if (il == null) { output.AppendLine("NO BODY"); continue; }
+        int pos = 0;
+        while (pos < il.Length)
+        {
+            int offset = pos;
+            short code = il[pos++];
+            if (code == 0xFE && pos < il.Length) code = (short)(0xFE00 | il[pos++]);
+            if (!opcodeMap.TryGetValue(code, out var op)) { output.AppendLine(offset.ToString("X4") + ": <unknown>"); break; }
+            string operand = "";
+            try
+            {
+                switch (op.OperandType)
+                {
+                    case System.Reflection.Emit.OperandType.InlineNone: break;
+                    case System.Reflection.Emit.OperandType.ShortInlineI: operand = ((sbyte)il[pos++]).ToString(); break;
+                    case System.Reflection.Emit.OperandType.InlineI: operand = BitConverter.ToInt32(il, pos).ToString(); pos += 4; break;
+                    case System.Reflection.Emit.OperandType.InlineI8: operand = BitConverter.ToInt64(il, pos).ToString(); pos += 8; break;
+                    case System.Reflection.Emit.OperandType.ShortInlineR: operand = BitConverter.ToSingle(il, pos).ToString(); pos += 4; break;
+                    case System.Reflection.Emit.OperandType.InlineR: operand = BitConverter.ToDouble(il, pos).ToString(); pos += 8; break;
+                    case System.Reflection.Emit.OperandType.ShortInlineVar: operand = il[pos++].ToString(); break;
+                    case System.Reflection.Emit.OperandType.InlineVar: operand = BitConverter.ToUInt16(il, pos).ToString(); pos += 2; break;
+                    case System.Reflection.Emit.OperandType.ShortInlineBrTarget: { sbyte d=(sbyte)il[pos++]; operand="IL_"+(pos+d).ToString("X4"); break; }
+                    case System.Reflection.Emit.OperandType.InlineBrTarget: { int d=BitConverter.ToInt32(il,pos); pos+=4; operand="IL_"+(pos+d).ToString("X4"); break; }
+                    case System.Reflection.Emit.OperandType.InlineSwitch: { int n=BitConverter.ToInt32(il,pos); pos+=4; var ds=new int[n]; for(int k=0;k<n;k++){ds[k]=BitConverter.ToInt32(il,pos);pos+=4;} operand="switch("+string.Join(",",ds.Select(d=>"IL_"+(pos+d).ToString("X4")))+")"; break; }
+                    case System.Reflection.Emit.OperandType.InlineString: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand="\\""+method.Module.ResolveString(tok)+"\\"";break; }
+                    case System.Reflection.Emit.OperandType.InlineMethod: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveMethod(tok)?.ToString() ?? tok.ToString("X8");break; }
+                    case System.Reflection.Emit.OperandType.InlineField: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveField(tok)?.ToString() ?? tok.ToString("X8");break; }
+                    case System.Reflection.Emit.OperandType.InlineType: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveType(tok)?.FullName ?? tok.ToString("X8");break; }
+                    case System.Reflection.Emit.OperandType.InlineTok: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveMember(tok)?.ToString() ?? tok.ToString("X8");break; }
+                    default: operand = "operandType="+op.OperandType; break;
+                }
+            }
+            catch (Exception ex) { operand += " [decode "+ex.GetType().Name+"]"; }
+            output.AppendLine(offset.ToString("X4") + ": " + op.Name + (operand.Length>0 ? " " + operand : ""));
+        }
+    }
+}
+DumpIl("Game.SubsystemBucketBlockBehavior", "OnUse");
+DumpIl("Game.ComponentMiner", "Hit");
+DumpIl("Game.ComponentMiner", "Use");
+DumpIl("Game.ComponentMiner", "Raycast");
+DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreature");
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
