@@ -438,6 +438,10 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             if (herd == null || herd.HerdName != SheepHerdName)
                 continue;
 
+            if (Vector3.DistanceSquared(creature.ComponentBody.Position,
+                m_creature.ComponentBody.Position) > HerdScanRange * HerdScanRange)
+                continue;
+
             ComponentLivingTownsSheepBehavior behavior =
                 creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
             if (behavior == null || behavior.m_mode != SheepMode.Flee || behavior.m_fleeTarget == null)
@@ -460,6 +464,10 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         {
             ComponentHerdBehavior herd = creature.Entity.FindComponent<ComponentHerdBehavior>();
             if (herd == null || herd.HerdName != SheepHerdName)
+                continue;
+
+            if (Vector3.DistanceSquared(creature.ComponentBody.Position,
+                m_creature.ComponentBody.Position) > HerdScanRange * HerdScanRange)
                 continue;
 
             ComponentLivingTownsSheepBehavior behavior =
