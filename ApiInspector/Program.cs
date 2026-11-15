@@ -126,7 +126,7 @@ void DumpIl(string typeName, string methodName)
                     case System.Reflection.Emit.OperandType.ShortInlineBrTarget: { sbyte d=(sbyte)il[pos++]; operand="IL_"+(pos+d).ToString("X4"); break; }
                     case System.Reflection.Emit.OperandType.InlineBrTarget: { int d=BitConverter.ToInt32(il,pos); pos+=4; operand="IL_"+(pos+d).ToString("X4"); break; }
                     case System.Reflection.Emit.OperandType.InlineSwitch: { int n=BitConverter.ToInt32(il,pos); pos+=4; var ds=new int[n]; for(int k=0;k<n;k++){ds[k]=BitConverter.ToInt32(il,pos);pos+=4;} operand="switch("+string.Join(",",ds.Select(d=>"IL_"+(pos+d).ToString("X4")))+")"; break; }
-                    case System.Reflection.Emit.OperandType.InlineString: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand="\\""+method.Module.ResolveString(tok)+"\\"";break; }
+                    case System.Reflection.Emit.OperandType.InlineString: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveString(tok);break; }
                     case System.Reflection.Emit.OperandType.InlineMethod: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveMethod(tok)?.ToString() ?? tok.ToString("X8");break; }
                     case System.Reflection.Emit.OperandType.InlineField: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveField(tok)?.ToString() ?? tok.ToString("X8");break; }
                     case System.Reflection.Emit.OperandType.InlineType: { int tok=BitConverter.ToInt32(il,pos);pos+=4;operand=method.Module.ResolveType(tok)?.FullName ?? tok.ToString("X8");break; }
