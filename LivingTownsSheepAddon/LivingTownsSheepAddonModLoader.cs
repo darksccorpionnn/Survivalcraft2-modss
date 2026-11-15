@@ -9,6 +9,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private BevelledButtonWidget m_villagerTradeButton;
     private ContainerWidget m_villagerTradeButtonParent;
+    private bool m_openingTradeFromButton;
 
     public override void __ModInitialize()
     {
@@ -40,8 +41,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         {
             m_villagerTradeButton = new BevelledButtonWidget
             {
-                Text = "Ticaret",
-                DesiredSize = new Engine.Vector2(92f, 48f),
+                Text = "≡",
+                DesiredSize = new Engine.Vector2(60f, 60f),
                 Margin = new Engine.Vector2(4f),
                 IsVisible = false
             };
@@ -102,9 +103,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         foreach (GameEntitySystem.Component component in entity.Components)
         {
-            if (component != null &&
-                component.GetType().Name == "ComponentLivingTownsVillagerController")
-                return true;
+            if (component != null)
+            {
+                string componentName = component.GetType().Name;
+                if (componentName == "ComponentLivingTownsVillager" ||
+                    componentName == "ComponentLivingTownsVillagerController")
+                    return true;
+            }
         }
 
         return false;
@@ -132,6 +137,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         try
         {
+            m_openingTradeFromButton = true;
             ModsManager.HookAction("OnPlayerInputInteract", loader =>
             {
                 loader.OnPlayerInputInteract(
@@ -146,6 +152,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         }
         finally
         {
+            m_openingTradeFromButton = false;
             input.Interact = hadPreviousInteractRay ? previousInteractRay : null;
         }
     }
@@ -270,14 +277,14 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
         }
 
-        ComponentLivingTownsSheepBehavior sheepBehavior =
-            targetBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
+        // Route every living creature through the same native Attackment path.
+        // This prevents the sheep-specific fix from leaving ordinary animals
+        // dependent on the vanilla moving-target hit-probability roll.
         ComponentCreature targetCreature =
             targetBody.Entity.FindComponent<ComponentCreature>();
         ComponentHealth targetHealth =
             targetBody.Entity.FindComponent<ComponentHealth>();
-        if (sheepBehavior == null || targetCreature == null ||
-            targetHealth == null || targetHealth.Health <= 0f)
+        if (targetCreature == null || targetHealth == null || targetHealth.Health <= 0f)
             return;
 
         // Match the game's own distance guard (from the player's eye to the
@@ -352,10 +359,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
         }
 
-        // Fallback to the native hit method if the direct Attackment did not
-        // lower health (for example, a target-specific native rule intercepted it).
-        // ComponentPlayer.Update will also attempt its regular hit after this hook.
-        miner.Hit(targetBody, hitPoint, hitRay.Value.Direction);
+        // Do not consume the input if the direct Attackment did not lower health.
+        // ComponentPlayer.Update will then perform exactly one normal vanilla hit.
     }
 
     public override void OnMinerHit(
@@ -416,10 +421,43 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ref int priorityInteract,
         ref int priorityPlace)
     {
-        if (playerOperated || componentPlayer == null || componentPlayer.ComponentMiner == null)
+        if (componentPlayer == null || componentPlayer.ComponentMiner == null)
             return;
 
         ComponentMiner miner = componentPlayer.ComponentMiner;
+
+        // A physical tap on a villager must not open the legacy trade inventory.
+        // The only permitted route is the dedicated proximity button below.
+        if (!m_openingTradeFromButton)
+        {
+            var villagerInteractRay = componentPlayer.ComponentInput?.PlayerInput.Interact;
+            if (villagerInteractRay.HasValue)
+            {
+                object villagerHit = miner.Raycast(
+                    villagerInteractRay.Value,
+                    RaycastMode.Interaction,
+                    false,
+                    true,
+                    false,
+                    5f);
+
+                if (villagerHit is BodyRaycastResult villagerBodyHit &&
+                    villagerBodyHit.ComponentBody != null &&
+                    villagerBodyHit.ComponentBody.Entity != null &&
+                    IsLivingTownsVillager(villagerBodyHit.ComponentBody.Entity))
+                {
+                    playerOperated = true;
+                    priorityUse = Math.Max(priorityUse, 10000);
+                    priorityInteract = Math.Max(priorityInteract, 10000);
+                    priorityPlace = Math.Max(priorityPlace, 10000);
+                    return;
+                }
+            }
+        }
+
+        if (playerOperated)
+            return;
+
         int heldContents = Terrain.ExtractContents(miner.ActiveBlockValue);
         bool holdingGrain = heldContents == RyeBlock.Index;
         bool holdingEmptyBucket = heldContents == EmptyBucketBlock.Index;
