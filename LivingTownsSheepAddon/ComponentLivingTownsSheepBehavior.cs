@@ -397,7 +397,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         if (speaker != this)
             return;
 
-        m_audio.PlayRandomSound(GetVoiceSoundPath("baa"), 0.52f, 0f,
+        m_audio.PlayRandomSound(GetVoiceSoundPath("baa_alarm"), 0.52f, 0f,
             m_creature.ComponentBody.Position, 16f, autoDelay: false);
 
         double next = now + 6.0 + m_random.NextDouble() * 2.0;
@@ -494,7 +494,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         if (threat == null)
             return;
 
-        double until = m_time.GameTime + 6.0;
+        double until = m_time.GameTime + 10.0;
         foreach (ComponentCreature creature in m_subsystemCreatureSpawn.Creatures)
         {
             if (creature.ComponentHealth.Health <= 0f)
