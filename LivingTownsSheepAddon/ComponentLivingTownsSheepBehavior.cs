@@ -280,6 +280,11 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         double now = m_time.GameTime;
         if (now < m_nextAmbientBleat || m_creature.ComponentHealth.Health <= 0f)
             return;
+        if (m_creature.ComponentBody.Velocity.LengthSquared() > 0.04f)
+        {
+            m_nextAmbientBleat = now + 3.0;
+            return;
+        }
         string sound = m_random.NextDouble() < 0.22
             ? "Audio/LivingTowns/Sheep/baa_rare"
             : "Audio/LivingTowns/Sheep/baa";
