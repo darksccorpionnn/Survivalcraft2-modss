@@ -148,8 +148,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ref float attackPower,
         ref float playerProbability,
         ref float creatureProbability,
-        ref bool hitted)
+        out bool hitted)
     {
+        hitted = false;
         // Do not alter AI-vs-creature attacks. Player melee should be dependable:
         // the vanilla bare-hand probability is only 0.66 while a target is moving.
         if (miner == null || miner.ComponentPlayer == null ||
