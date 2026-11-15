@@ -295,6 +295,34 @@ if (modsManagerType != null)
     DumpIl(modsManagerType.FullName, "HookAction");
 }
 
+
+var aiTypesToInspect = new HashSet<string>(StringComparer.Ordinal)
+{
+    "Game.ComponentChaseBehavior", "Game.ComponentCreature",
+    "Game.ComponentHerdBehavior", "Game.ComponentFlyAwayBehavior",
+    "Game.ComponentFindPlayerBehavior", "Game.ComponentBehaviorSelector",
+    "Game.ComponentCreatureSounds", "Game.ComponentMiner"
+};
+foreach (Type type in allTypes.Where(t => aiTypesToInspect.Contains(t.FullName)).OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== AI DEEP INSPECTION " + type.FullName + " =====");
+    const BindingFlags af = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(af))
+        output.AppendLine("CTOR " + ctor);
+    foreach (var p in type.GetProperties(af).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name);
+    foreach (var f in type.GetFields(af).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name);
+    foreach (var m in type.GetMethods(af).OrderBy(m => m.Name))
+    {
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
+            string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+        if (m.GetMethodBody() != null)
+            DumpIl(type.FullName, m.Name);
+    }
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
