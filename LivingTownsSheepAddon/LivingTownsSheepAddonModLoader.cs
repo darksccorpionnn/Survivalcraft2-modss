@@ -19,6 +19,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("OnPlayerInputHit", this);
         ModsManager.RegisterHook("OnMinerHit", this);
         ModsManager.RegisterHook("OnMinerHit2", this);
+        ModsManager.RegisterHook("ProcessAttackment", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -410,6 +411,49 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         attackment.AttackPower = Math.Max(attackment.AttackPower, 1f);
+    }
+
+    /// <summary>
+    /// Makes creature-vs-creature melee attacks use a non-zero native attack power.
+    /// This hook is intentionally separate from player melee: AI attacks go through
+    /// Attackment.ProcessAttackment and do not pass through OnPlayerInputHit.
+    /// </summary>
+    public override void ProcessAttackment(Attackment attackment)
+    {
+        if (attackment == null || attackment.Attacker == null ||
+            attackment.Target == null || attackment.Attacker == attackment.Target)
+            return;
+
+        // Do not change player attacks or damage to Living Towns villagers.
+        if (attackment.Attacker.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(attackment.Attacker) ||
+            IsLivingTownsVillager(attackment.Target))
+            return;
+
+        ComponentCreature attackerCreature =
+            attackment.Attacker.FindComponent<ComponentCreature>();
+        ComponentCreature targetCreature =
+            attackment.Target.FindComponent<ComponentCreature>();
+        ComponentHealth targetHealth =
+            attackment.Target.FindComponent<ComponentHealth>();
+
+        if (attackerCreature == null || targetCreature == null ||
+            targetHealth == null || targetHealth.Health <= 0f ||
+            targetHealth.IsInvulnerable)
+            return;
+
+        // Native AI melee already created this Attackment after a successful hit
+        // roll. Some creature templates expose a zero/near-zero melee power, so
+        // the native injury calculation becomes zero and no health is removed.
+        // Keep stronger attacks unchanged and give weak creature attacks a
+        // modest 1-point baseline; armor/resilience and normal injury/death
+        // processing are still handled by the game's Attackment pipeline.
+        if (float.IsNaN(attackment.AttackPower) ||
+            float.IsInfinity(attackment.AttackPower) ||
+            attackment.AttackPower < 1f)
+        {
+            attackment.AttackPower = 1f;
+        }
     }
 
     public override void OnPlayerInputInteract(
