@@ -25,8 +25,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         ComponentMiner miner = componentPlayer.ComponentMiner;
-        // Native Survivalcraft 2.4.0.0 has RyeBlock as its cereal crop.
-        if (Terrain.ExtractContents(miner.ActiveBlockValue) != RyeBlock.Index)
+        int heldContents = Terrain.ExtractContents(miner.ActiveBlockValue);
+        bool holdingGrain = heldContents == RyeBlock.Index;
+        bool holdingEmptyBucket = heldContents == EmptyBucketBlock.Index;
+        if (!holdingGrain && !holdingEmptyBucket)
             return;
 
         var interactionRay = componentPlayer.ComponentInput.PlayerInput.Interact;
@@ -46,15 +48,53 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         ComponentLivingTownsSheepBehavior sheep =
             bodyHit.ComponentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
-        if (sheep == null || !sheep.TryTame())
+        if (sheep == null)
             return;
 
-        // Consume exactly one grain only after a successful first-time taming.
         IInventory inventory = miner.Inventory;
-        int slot = inventory.ActiveSlotIndex;
-        if (inventory.GetSlotCount(slot) > 0)
-            inventory.RemoveSlotItems(slot, 1);
+        int activeSlot = inventory.ActiveSlotIndex;
+        int activeCount = inventory.GetSlotCount(activeSlot);
+        if (activeCount <= 0)
+            return;
 
+        if (holdingEmptyBucket)
+        {
+            // The vanilla Udder component cannot be attached safely to this custom
+            // creature template; handle the bucket conversion here so the ewe egg
+            // remains spawnable. Keep one empty bucket if no milk-bucket slot exists.
+            int milkBucketValue = MilkBucketBlock.Index;
+            int destinationSlot = activeSlot;
+
+            if (activeCount > 1)
+            {
+                destinationSlot = -1;
+                for (int i = 0; i < inventory.SlotsCount; i++)
+                {
+                    if (i != activeSlot && inventory.GetSlotCapacity(i, milkBucketValue) > 0)
+                    {
+                        destinationSlot = i;
+                        break;
+                    }
+                }
+                if (destinationSlot < 0)
+                    return;
+            }
+
+            if (!sheep.TryMilk())
+                return;
+
+            inventory.RemoveSlotItems(activeSlot, 1);
+            inventory.AddSlotItems(destinationSlot, milkBucketValue, 1);
+            playerOperated = true;
+            priorityInteract = Math.Max(priorityInteract, 100);
+            return;
+        }
+
+        if (!sheep.TryTame())
+            return;
+
+        // Consume exactly one native cereal item only after first-time taming.
+        inventory.RemoveSlotItems(activeSlot, 1);
         playerOperated = true;
         priorityInteract = Math.Max(priorityInteract, 100);
     }
