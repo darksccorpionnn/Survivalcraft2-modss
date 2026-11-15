@@ -58,6 +58,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             {
                 SheepMode.Follow => 65f,
                 SheepMode.Flee => 420f,
+                _ when m_isGrazing => 90f,
                 _ => 45f
             };
         }
@@ -102,13 +103,9 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
         }
 
-        if (!IsActive)
-        {
-            StopGrazing();
-            StopOwnedPath();
-            m_appliedMode = SheepMode.None;
-            return;
-        }
+        // Keep feeding state owned by this component. The behavior scheduler may
+        // temporarily select another AI behavior; clearing FeedOrder here caused
+        // the grazing animation to restart and the sheep to bob its head.
 
         if (m_mode != m_appliedMode)
         {
