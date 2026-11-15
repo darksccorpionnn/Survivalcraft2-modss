@@ -142,6 +142,7 @@ void DumpIl(string typeName, string methodName)
 }
 DumpIl("Game.SubsystemBucketBlockBehavior", "OnUse");
 DumpIl("Game.ComponentUdder", "Milk");
+DumpIl("Game.ComponentUdder", "Load");
 DumpIl("Game.ComponentMiner", "Hit");
 DumpIl("Game.ComponentMiner", "Use");
 DumpIl("Game.ComponentMiner", "Raycast");
