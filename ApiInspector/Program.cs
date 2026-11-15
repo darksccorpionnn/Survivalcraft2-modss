@@ -164,7 +164,7 @@ DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreature");
 
 var inspectNames = new HashSet<string>(StringComparer.Ordinal)
 {
-    "Game.ComponentMiner", "Game.ComponentPlayer", "Game.Attackment",
+    "Game.ComponentMiner", "Game.ComponentPlayer", "Game.PlayerInput", "Game.ComponentInput", "Game.Attackment",
     "Game.SubsystemCreatureSpawn+CreatureType", "Game.SpawnLocationType",
     "Game.CreatureCategory", "Game.SubsystemBodies", "Game.ComponentBody"
 };
@@ -174,7 +174,7 @@ foreach (Type type in allTypes.Where(t => inspectNames.Contains(t.FullName)).Ord
     output.AppendLine("===== DEEP TYPE " + type.FullName + " =====");
     const BindingFlags deep = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
     foreach (var ctor in type.GetConstructors(deep))
-        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+        output.AppendLine("CTOR " + ctor + " params=" + string.Join(", ", ctor.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + " public=" + ctor.IsPublic);
     foreach (var p in type.GetProperties(deep).OrderBy(p => p.Name))
         output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
     foreach (var f in type.GetFields(deep).OrderBy(f => f.Name))
@@ -189,6 +189,11 @@ DumpIl("Game.Injury", "Process");
 DumpIl("Game.SubsystemCreatureSpawn", "SpawnRandomCreature");
 DumpIl("Game.SubsystemCreatureSpawn", "TestSpawnPoint");
 DumpIl("Game.SubsystemCreatureSpawn", "SpawnCreatures");
+DumpIl("Game.ComponentMiner", "GetTargetingRay");
+DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_9");
+DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_10");
+DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_11");
+DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_12");
 
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
