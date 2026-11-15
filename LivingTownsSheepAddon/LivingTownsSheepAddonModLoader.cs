@@ -34,6 +34,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         {
             if (m_villagerTradeButton != null)
                 m_villagerTradeButton.IsVisible = false;
+            if (m_villagerTradeCanvas != null)
+                m_villagerTradeCanvas.IsVisible = false;
             return;
         }
 
@@ -50,33 +52,37 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             };
         }
 
-        // ControlsContainerWidget is a full-screen layout surface. Adding a
-        // button directly stretches it over the HUD. Use a transparent Canvas
-        // and position the 60x60 button explicitly at the right-middle edge.
+        // Keep this overlay button-sized. A full-screen transparent canvas
+        // still sits above the mobile HUD and intercepts all touch controls.
+        // This 68x68 canvas occupies only the trade icon's hit-test area.
         ContainerWidget buttonParent = componentGui.ControlsContainerWidget;
         if (buttonParent != null && m_villagerTradeButtonParent != buttonParent)
         {
             if (m_villagerTradeCanvas != null && m_villagerTradeButtonParent != null)
                 m_villagerTradeButtonParent.RemoveChildren(m_villagerTradeCanvas);
 
-            m_villagerTradeCanvas = new CanvasWidget();
-            m_villagerTradeCanvas.Size = buttonParent.ActualSize;
+            m_villagerTradeCanvas = new CanvasWidget
+            {
+                Size = new Engine.Vector2(68f, 68f),
+                DesiredSize = new Engine.Vector2(68f, 68f),
+                HorizontalAlignment = WidgetAlignment.Far,
+                VerticalAlignment = WidgetAlignment.Center,
+                Margin = new Engine.Vector2(8f, 0f),
+                IsVisible = false
+            };
             m_villagerTradeCanvas.AddChildren(m_villagerTradeButton);
             buttonParent.AddChildren(m_villagerTradeCanvas);
             m_villagerTradeButtonParent = buttonParent;
         }
 
         if (m_villagerTradeCanvas != null)
-        {
-            m_villagerTradeCanvas.Size = buttonParent.ActualSize;
-            float x = Math.Max(8f, buttonParent.ActualSize.X - 76f);
-            float y = Math.Max(8f, buttonParent.ActualSize.Y * 0.5f - 30f);
-            CanvasWidget.SetPosition(m_villagerTradeButton, new Engine.Vector2(x, y));
-        }
+            CanvasWidget.SetPosition(m_villagerTradeButton, new Engine.Vector2(4f, 4f));
 
         if (componentGui.ModalPanelWidget != null || componentGui.IsInventoryVisible())
         {
             m_villagerTradeButton.IsVisible = false;
+            if (m_villagerTradeCanvas != null)
+                m_villagerTradeCanvas.IsVisible = false;
             return;
         }
 
@@ -103,6 +109,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         m_villagerTradeButton.IsVisible = nearestVillager != null;
         m_villagerTradeButton.IsEnabled = nearestVillager != null;
+        if (m_villagerTradeCanvas != null)
+            m_villagerTradeCanvas.IsVisible = nearestVillager != null;
 
         // IsClicked is the button's one-frame touch/click event.
         if (nearestVillager != null && m_villagerTradeButton.IsClicked)
