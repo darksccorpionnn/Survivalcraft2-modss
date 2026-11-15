@@ -34,8 +34,8 @@ public sealed class ComponentLivingTownsSheepModel : ComponentCreatureModel
         {
             if (m_audio != null && m_componentCreature != null && m_componentCreature.ComponentBody != null)
             {
-                m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/footstep", 0.22f, -0.05f,
-                    m_componentCreature.ComponentBody.Position, 4.2f, autoDelay: false);
+                m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/footstep", 0.65f, -0.05f,
+                    m_componentCreature.ComponentBody.Position, 16f, autoDelay: false);
             }
 
             // Do not call base for Footstep: it plays the default quadruped clop.
