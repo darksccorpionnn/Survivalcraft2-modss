@@ -680,14 +680,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // cooldown gate or on a model animation hit-moment callback.
         ComponentMiner.AttackBody(attackment);
 
-        // Only use a direct native Injury as a fallback when the Attackment
-        // path did not lower health. This still invokes the target's Injured
-        // event, including its normal retaliation and hit-reaction behaviors.
-        if (targetHealth.Health >= healthBefore &&
-            !targetHealth.IsInvulnerable)
-        {
-            targetHealth.Injure(new Injury(1f, attacker, false, "Melee"));
-        }
+        // Attackment.ProcessAttackment already applies the Injury synchronously.
+        // Do not apply a second fallback Injury here: doing so can double-hit
+        // targets whose health update is delayed by another mod's hook.
 
         m_nextPredatorMeleeTime[chaseBehavior] = now + 1.2;
     }
@@ -764,9 +759,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // Native AI melee already created this Attackment after a successful hit
         // roll. Some creature templates expose a zero/near-zero melee power, so
         // the native injury calculation becomes zero and no health is removed.
-        // Keep stronger attacks unchanged and give weak creature attacks a
-        // modest 1-point baseline; armor/resilience and normal injury/death
-        // processing are still handled by the game's Attackment pipeline.
+        // Keep a reliable minimum for weak creature attacks.
         if (float.IsNaN(attackment.AttackPower) ||
             float.IsInfinity(attackment.AttackPower) ||
             attackment.AttackPower < 1f)
@@ -774,14 +767,35 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             attackment.AttackPower = 1f;
         }
 
-        // Enforce the minimum on the final health injury too. AttackResilience
-        // and factor division can otherwise reduce a nonzero attack to a value
-        // too small to affect health. The nullable override is consumed by the
-        // native ProcessAttackmentToCreature method, so there is no second hit.
+        // Predator damage was previously allowed to divide by a small target
+        // AttackResilience, which could turn one hit into a lethal injury.
+        // Cap only natural predator -> non-predator animal hits. A healthy prey
+        // loses at most 25% of its current health and never more than 3 HP per
+        // strike. When it is already at 1 HP or less, the normal final killing
+        // blow is allowed. This preserves armor/resilience and native death
+        // processing while making full-health prey require multiple hits.
         float nativeInjury = attackment.CalculateInjuryAmount();
-        if (float.IsNaN(nativeInjury) || float.IsInfinity(nativeInjury) ||
-            nativeInjury < 1f)
+        if (IsNaturalPredator(attackerCreature) && !IsNaturalPredator(targetCreature))
         {
+            if (float.IsNaN(nativeInjury) || float.IsInfinity(nativeInjury) ||
+                nativeInjury < 0f)
+                nativeInjury = 0f;
+
+            if (targetHealth.Health > 1f)
+            {
+                float damageCap = Math.Min(3f, targetHealth.Health * 0.25f);
+                attackment.m_injuryAmount = Math.Min(nativeInjury, damageCap);
+            }
+            else
+            {
+                attackment.m_injuryAmount = Math.Min(nativeInjury, targetHealth.Health);
+            }
+        }
+        else if (float.IsNaN(nativeInjury) || float.IsInfinity(nativeInjury) ||
+                 nativeInjury < 1f)
+        {
+            // Preserve the existing minimum for other creature-vs-creature
+            // hits without changing player damage or villager interactions.
             attackment.m_injuryAmount = 1f;
         }
     }
