@@ -769,11 +769,11 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         // Predator damage was previously allowed to divide by a small target
         // AttackResilience, which could turn one hit into a lethal injury.
-        // Cap only natural predator -> non-predator animal hits. A healthy prey
-        // loses at most 25% of its current health and never more than 3 HP per
-        // strike. When it is already at 1 HP or less, the normal final killing
-        // blow is allowed. This preserves armor/resilience and native death
-        // processing while making full-health prey require multiple hits.
+        // Cap only natural predator -> non-predator animal hits. While prey has
+        // more than 3 HP, one strike removes at most 3 HP. From 1-3 HP, strikes
+        // remove at most half of the remaining health; at 1 HP or less the
+        // normal final killing blow is allowed. This gives healthy prey several
+        // meaningful hits without making low-health targets effectively immortal.
         float nativeInjury = attackment.CalculateInjuryAmount();
         if (IsNaturalPredator(attackerCreature) && !IsNaturalPredator(targetCreature))
         {
@@ -781,10 +781,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
                 nativeInjury < 0f)
                 nativeInjury = 0f;
 
-            if (targetHealth.Health > 1f)
+            if (targetHealth.Health > 3f)
             {
-                float damageCap = Math.Min(3f, targetHealth.Health * 0.25f);
-                attackment.m_injuryAmount = Math.Min(nativeInjury, damageCap);
+                attackment.m_injuryAmount = Math.Min(nativeInjury, 3f);
+            }
+            else if (targetHealth.Health > 1f)
+            {
+                attackment.m_injuryAmount = Math.Min(nativeInjury, targetHealth.Health * 0.5f);
             }
             else
             {
