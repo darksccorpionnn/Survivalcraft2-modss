@@ -26,7 +26,7 @@ public sealed class ComponentLivingTownsSheepModel : ComponentCreatureModel
         // The FourLegged template exposes Gait and Activity as enum state tracks.
         // Drive them explicitly from the live creature and its behavior orders.
         float speed = m_componentCreature.ComponentBody.Velocity.Length();
-        string gait = speed > 0.85f ? "Run" :
+        string gait = speed > 0.85f ? "Canter" :
                       speed > 0.08f ? "Walk" : "Idle";
         string activity = FeedOrder ? "Feed" :
                           AttackOrder ? "Attack" : "None";
