@@ -29,13 +29,17 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (Terrain.ExtractContents(miner.ActiveBlockValue) != RyeBlock.Index)
             return;
 
+        var interactionRay = componentPlayer.ComponentInput.PlayerInput.Interact;
+        if (!interactionRay.HasValue)
+            return;
+
         object hit = miner.Raycast(
-            miner.GetTargetingRay(),
+            interactionRay.Value,
             RaycastMode.Interaction,
-            raycastTerrain: false,
-            raycastBodies: true,
-            raycastMovingBlocks: false,
-            reach: 5f);
+            false,
+            true,
+            false,
+            5f);
 
         if (hit is not BodyRaycastResult bodyHit || bodyHit.ComponentBody == null)
             return;
