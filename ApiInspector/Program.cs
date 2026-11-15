@@ -222,6 +222,18 @@ if (modLoaderType != null)
 DumpIl("Game.ModsManager", "RegisterHook");
 DumpIl("Game.ModsManager", "HookAction");
 
+
+foreach (string hookName in new[] { "OnMinerHit", "OnMinerHit2", "OnPlayerInputHit" })
+{
+    MethodInfo hook = modLoaderType?.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+        .FirstOrDefault(m => m.Name == hookName);
+    if (hook == null) continue;
+    output.AppendLine();
+    output.AppendLine("===== PARAMETER METADATA " + hookName + " =====");
+    foreach (ParameterInfo p in hook.GetParameters())
+        output.AppendLine($"PARAM {p.Position} {p.Name} type={p.ParameterType.FullName} in={p.IsIn} out={p.IsOut} required={string.Join(",", p.GetRequiredCustomModifiers().Select(t => t.FullName))} optional={string.Join(",", p.GetOptionalCustomModifiers().Select(t => t.FullName))}");
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
