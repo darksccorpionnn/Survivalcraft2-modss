@@ -20,9 +20,24 @@ jobs:
           dotnet-version: 10.0.x
       - name: Restore
         run: dotnet restore ApiInspector/ApiInspector.csproj --configfile nuget.config
-      - name: Build
-        run: dotnet build ApiInspector/ApiInspector.csproj -c Release --no-restore
-      - name: Inspect API
+      - name: Build and capture diagnostics
+        run: |
+          set +e
+          dotnet build ApiInspector/ApiInspector.csproj -c Release --no-restore > api-build.log 2>&1
+          status=$?
+          cat api-build.log
+          echo $status > api-build-status.txt
+          exit 0
+      - name: Upload build diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: API-Inspector-Build-Diagnostics
+          path: |
+            api-build.log
+            api-build-status.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Run inspector
         run: dotnet run --project ApiInspector/ApiInspector.csproj -c Release --no-build > ApiInspector/api-inspection.txt
       - name: Upload API inspection
         uses: actions/upload-artifact@v4
