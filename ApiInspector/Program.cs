@@ -234,6 +234,26 @@ foreach (string hookName in new[] { "OnMinerHit", "OnMinerHit2", "OnPlayerInputH
         output.AppendLine($"PARAM {p.Position} {p.Name} type={p.ParameterType.FullName} in={p.IsIn} out={p.IsOut} required={string.Join(",", p.GetRequiredCustomModifiers().Select(t => t.FullName))} optional={string.Join(",", p.GetOptionalCustomModifiers().Select(t => t.FullName))}");
 }
 
+
+foreach (Type parent in allTypes.Where(t => t.FullName == "Game.ComponentMiner" || t.FullName == "Game.ComponentPlayer"))
+{
+    output.AppendLine();
+    output.AppendLine("===== NESTED TYPES " + parent.FullName + " =====");
+    foreach (Type nested in parent.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+    {
+        output.AppendLine("NESTED " + nested.FullName);
+        const BindingFlags nf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        foreach (MethodInfo method in nested.GetMethods(nf).OrderBy(m => m.Name))
+        {
+            output.AppendLine("NESTED_METHOD " + method.ReturnType.FullName + " " + method.Name + "(" +
+                string.Join(", ", method.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+            if (method.Name.Contains("DoMeleeHit", StringComparison.Ordinal) ||
+                method.Name.Contains("Update>b__8", StringComparison.Ordinal))
+                DumpIl(nested.FullName, method.Name);
+        }
+    }
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
