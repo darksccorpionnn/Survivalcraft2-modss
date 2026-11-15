@@ -51,6 +51,10 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private bool m_isTamed;
     private bool m_isPregnant;
     private double m_nextReproductionCheck;
+    private bool m_isWandering;
+    private Vector3 m_wanderTarget;
+    private double m_wanderUntil;
+    private double m_nextWanderTime;
     private double m_lastMilkingTime = -1200.0;
     private const double MilkRegenerationTime = 1200.0;
 
@@ -126,6 +130,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_mode = SheepMode.None;
         m_appliedMode = SheepMode.None;
         m_nextGrassSearch = m_time.GameTime + 1.0 + m_random.NextDouble() * 2.0;
+        m_nextWanderTime = m_time.GameTime + 1.5 + m_random.NextDouble() * 2.0;
 
         // Damage sounds are event-driven: one bleat per actual hit, not a polling loop.
         m_creature.ComponentHealth.Attacked += OnAttacked;
@@ -159,6 +164,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
         if (m_mode != m_appliedMode)
         {
+            StopWandering();
             StopOwnedPath();
             StopGrazing();
             m_nextPathUpdate = 0;
@@ -244,7 +250,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     {
         // Adult female sheep can become pregnant only in autumn; birth is tied to
         // the game's own season transition into winter. No parallel calendar is used.
-        if (m_voiceSet != "Sheep" || !m_isTamed || m_subsystemSeasons == null)
+        if (m_voiceSet != "Sheep" || m_subsystemSeasons == null)
             return;
 
         if (m_isPregnant)
@@ -273,7 +279,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
             ComponentLivingTownsSheepBehavior partner =
                 creature.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
-            if (partner != null && partner.m_voiceSet == "Ram" && partner.m_isTamed)
+            if (partner != null && partner.m_voiceSet == "Ram")
             {
                 m_isPregnant = true;
                 return;
@@ -285,6 +291,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     {
         // Moving and fleeing must never retain the one-shot grazing pose.
         StopGrazing();
+        StopWandering();
         if (m_target == null)
             return;
 
@@ -331,18 +338,22 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
         m_model.FeedOrder = false;
         if (now < m_nextGrassSearch)
+        {
+            UpdateWander();
             return;
+        }
 
         m_nextGrassSearch = now + 1.2;
         if (!TryFindGrass(out Vector3 target, out int cellX, out int cellY, out int cellZ, out bool isTallGrass))
         {
-            StopOwnedPath();
+            UpdateWander();
             return;
         }
 
         float distanceSquared = Vector3.DistanceSquared(m_creature.ComponentBody.Position, target);
         if (distanceSquared <= 2.0f * 2.0f)
         {
+            StopWandering();
             StopOwnedPath();
             m_grassTarget = target;
             m_grassCellX = cellX;
@@ -356,6 +367,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
         }
 
+        StopWandering();
         if (now >= m_nextPathUpdate || !m_pathfinding.Destination.HasValue || m_pathfinding.IsStuck)
         {
             m_nextPathUpdate = now + 1.4;
@@ -364,6 +376,96 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
                 raycastDestination: true, doNotAvoidBody: null);
             m_lastOwnedDestination = target;
         }
+    }
+
+    private void UpdateWander()
+    {
+        double now = m_time.GameTime;
+        Vector3 position = m_creature.ComponentBody.Position;
+
+        if (m_isWandering)
+        {
+            float distanceSquared = Vector3.DistanceSquared(position, m_wanderTarget);
+            if (now >= m_wanderUntil || distanceSquared <= 1.35f * 1.35f || m_pathfinding.IsStuck)
+            {
+                StopWandering();
+                m_nextWanderTime = now + 2.0 + m_random.NextDouble() * 3.0;
+                return;
+            }
+
+            if (now >= m_nextPathUpdate || !m_pathfinding.Destination.HasValue)
+            {
+                m_nextPathUpdate = now + 1.25;
+                m_pathfinding.SetDestination(m_wanderTarget, 0.55f, 0.85f, 100,
+                    useRandomMovements: true, ignoreHeightDifference: false,
+                    raycastDestination: true, doNotAvoidBody: null);
+                m_lastOwnedDestination = m_wanderTarget;
+            }
+            return;
+        }
+
+        if (now < m_nextWanderTime)
+            return;
+
+        m_nextWanderTime = now + 3.0 + m_random.NextDouble() * 4.0;
+        if (!TryFindWanderTarget(out Vector3 target))
+            return;
+
+        m_isWandering = true;
+        m_wanderTarget = target;
+        m_wanderUntil = now + 5.0 + m_random.NextDouble() * 4.0;
+        m_nextPathUpdate = 0;
+    }
+
+    private bool TryFindWanderTarget(out Vector3 target)
+    {
+        target = Vector3.Zero;
+        Vector3 position = m_creature.ComponentBody.Position;
+        int cx = Terrain.ToCell(position.X);
+        int cy = Terrain.ToCell(position.Y);
+        int cz = Terrain.ToCell(position.Z);
+
+        for (int attempt = 0; attempt < 14; attempt++)
+        {
+            int x = cx + m_random.Next(-7, 8);
+            int z = cz + m_random.Next(-7, 8);
+            if (x == cx && z == cz)
+                continue;
+
+            for (int y = Math.Min(254, cy + 2); y >= Math.Max(2, cy - 4); y--)
+            {
+                int ground = Terrain.ExtractContents(m_subsystemTerrain.Terrain.GetCellValue(x, y - 1, z));
+                if (ground != GrassBlock.Index && ground != DirtBlock.Index)
+                    continue;
+
+                int feet = Terrain.ExtractContents(m_subsystemTerrain.Terrain.GetCellValue(x, y, z));
+                int head = Terrain.ExtractContents(m_subsystemTerrain.Terrain.GetCellValue(x, y + 1, z));
+                if (feet != 0 || head != 0)
+                    continue;
+
+                Vector3 candidate = new Vector3(x + 0.5f, y, z + 0.5f);
+                float distanceSquared = Vector3.DistanceSquared(position, candidate);
+                if (distanceSquared < 3.0f * 3.0f || distanceSquared > 9.0f * 9.0f)
+                    continue;
+
+                target = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void StopWandering()
+    {
+        if (!m_isWandering)
+            return;
+
+        if (m_lastOwnedDestination.HasValue &&
+            Vector3.DistanceSquared(m_lastOwnedDestination.Value, m_wanderTarget) < 0.04f)
+            StopOwnedPath();
+
+        m_isWandering = false;
     }
 
     private bool TryFindGrass(out Vector3 target, out int cellX, out int cellY, out int cellZ, out bool isTallGrass)
@@ -453,6 +555,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         // Clear the feeding flag every fleeing tick, not only on mode transitions.
         // This prevents a stale IsFeeding animation parameter from masking run gait.
         StopGrazing();
+        StopWandering();
         m_model.FeedOrder = false;
 
         if (m_fleeTarget == null || !m_fleeTarget.Entity.IsAddedToProject)
