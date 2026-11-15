@@ -226,12 +226,12 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     {
         // Adult female sheep can become pregnant only in autumn; birth is tied to
         // the game's own season transition into winter. No parallel calendar is used.
-        if (m_voiceSet != "Sheep" || !m_isTamed || m_seasons == null)
+        if (m_voiceSet != "Sheep" || !m_isTamed || m_subsystemSeasons == null)
             return;
 
         if (m_isPregnant)
         {
-            if (m_seasons.Season == Season.Winter)
+            if (m_subsystemSeasons.Season == Season.Winter)
             {
                 Vector3 birthPosition = m_creature.ComponentBody.Position + new Vector3(1.2f, 0f, 0f);
                 Entity lamb = m_subsystemCreatureSpawn.SpawnCreature("LivingTowns_Lamb", birthPosition, false);
@@ -241,7 +241,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
         }
 
-        if (m_seasons.Season != Season.Autumn || m_time.GameTime < m_nextReproductionCheck)
+        if (m_subsystemSeasons.Season != Season.Autumn || m_time.GameTime < m_nextReproductionCheck)
             return;
 
         m_nextReproductionCheck = m_time.GameTime + 8.0;
