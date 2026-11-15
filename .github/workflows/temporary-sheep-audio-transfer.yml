@@ -1,0 +1,20 @@
+name: Temporary sheep audio transfer
+on:
+  push:
+    paths:
+      - 'tmp-transfer/sheep-cc0-base64.txt'
+      - '.github/workflows/temporary-sheep-audio-transfer.yml'
+permissions:
+  contents: read
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode sheep audio
+        run: base64 --decode tmp-transfer/sheep-cc0-base64.txt > sheep-cc0.ogg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sheep-cc0-audio
+          path: sheep-cc0.ogg
+          retention-days: 1
