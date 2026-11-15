@@ -5,19 +5,18 @@ using TemplatesDatabase;
 
 namespace Game;
 
-/// <summary>glTF sheep model using the game's native terrain/material footsteps.</summary>
-public sealed class ComponentLivingTownsSheepModel : ComponentFourLeggedModel
+/// <summary>Legacy-compatible creature model wrapper. GLB sheep variants use the engine FourLeggedModel template.</summary>
+public sealed class ComponentLivingTownsSheepModel : ComponentCreatureModel
 {
     public override void AnimateCreature()
     {
-        // If a glTF animation config is unavailable, retain a visible
-        // engine-native quadruped gait instead of leaving the animal rigid.
-        base.AnimateCreature();
+        // GLB animation clips are driven by AnimationConfigPath / AnimationController.
+        // This remains empty for legacy compatibility; do not apply legacy procedural
+        // four-legged rotations to the Meshy GLB skeleton.
     }
 
     public override void SyncAnimationParameters()
     {
-        // The base class supplies IsFeeding, SpeedAbs, DeathPhase and animation parameters.
         base.SyncAnimationParameters();
     }
 
@@ -26,9 +25,8 @@ public sealed class ComponentLivingTownsSheepModel : ComponentFourLeggedModel
         if (animationEvent != null &&
             (animationEvent.Name == "Footstep" || animationEvent.Name == "SheepFootstep"))
         {
-            // Use the same surface/material footstep system used by native livestock.
-            // This gives dirt, grass, stone and other terrain their correct sounds.
-            if (m_componentCreature != null && m_componentCreature.ComponentCreatureSounds != null)
+            if (m_componentCreature != null &&
+                m_componentCreature.ComponentCreatureSounds != null)
                 m_componentCreature.ComponentCreatureSounds.PlayFootstepSound(0.85f);
             return;
         }
