@@ -16,7 +16,7 @@ var wanted = new[]
     "ComponentMiner", "SubsystemSeasons", "WorldSettings", "SubsystemGameInfo",
     "ComponentCow", "Cow", "Cattle", "Milk", "Bucket", "Wheat", "WheatSeeds", "Seeds", "Grain", "Crop",
     "SubsystemCreatureSpawn", "SubsystemBucketBlockBehavior", "BlocksManager", "Block", "ComponentUdder", "BodyRaycastResult", "RyeBlock", "SubsystemTime", "ModLoader", "ValuesDictionary",
-    "ComponentCreature", "ComponentPlayer", "Component", "Entity"
+    "ComponentCreature", "ComponentPlayer", "PlayerInput", "ViewWidget", "CameraWidget", "ComponentAimingSights", "Component", "Entity"
 };
 var types = new List<Type>();
 foreach (Assembly assembly in loaded)
@@ -73,7 +73,7 @@ foreach (Type type in loaded.SelectMany(a => { try { return a.GetTypes(); } catc
 
 var allTypes = loaded.SelectMany(a => { try { return a.GetTypes(); } catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null); } }).ToList();
 foreach (Type type in allTypes.Where(t =>
-    new[] { "IInventory", "Inventory", "RaycastMode", "RaycastResult", "BodyRaycastResult", "ComponentBody", "ComponentPlayer", "ComponentMiner", "ComponentCreature", "ComponentUdder", "RyeBlock", "SubsystemTime", "SubsystemSeasons", "ModLoader", "ValuesDictionary", "Project", "SubsystemInput", "ComponentInput", "SubsystemBucketBlockBehavior", "EmptyBucketBlock", "MilkBucketBlock", "SeedsBlock", "WheatBlock" }
+    new[] { "IInventory", "Inventory", "RaycastMode", "RaycastResult", "BodyRaycastResult", "ComponentBody", "ComponentPlayer", "ComponentMiner", "ComponentCreature", "ComponentUdder", "RyeBlock", "SubsystemTime", "SubsystemSeasons", "ModLoader", "ValuesDictionary", "Project", "SubsystemInput", "ComponentInput", "PlayerInput", "ViewWidget", "CameraWidget", "ComponentAimingSights", "SubsystemBucketBlockBehavior", "EmptyBucketBlock", "MilkBucketBlock", "SeedsBlock", "WheatBlock" }
     .Contains(t.Name)).OrderBy(t => t.FullName))
 {
     output.AppendLine();
