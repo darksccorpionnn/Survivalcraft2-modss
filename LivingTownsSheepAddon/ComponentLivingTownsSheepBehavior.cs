@@ -11,7 +11,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private const string SheepHerdName = "LivingTowns_Sheep";
     private const float FollowRange = 24f;
     private const float FollowStopDistance = 1.45f;
-    private const float FleeRange = 5.5f;
     private const float FleeSpeed = 1.12f;
     private const float FollowSpeed = 0.68f;
     private const float GrazeApproachSpeed = 0.42f;
@@ -173,35 +172,10 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
         }
 
-        float nearestThreatDistance = FleeRange * FleeRange;
-        foreach (ComponentPlayer player in m_players.ComponentPlayers)
-        {
-            if (player == null || player.ComponentHealth == null ||
-                player.ComponentHealth.Health <= 0f || player.ComponentMiner == null)
-                continue;
-            if (IsHoldingGrass(player))
-                continue;
-
-            float distanceSquared = Vector3.DistanceSquared(position, player.ComponentBody.Position);
-            if (distanceSquared <= nearestThreatDistance)
-            {
-                nearestThreatDistance = distanceSquared;
-                m_fleeTarget = player.ComponentBody;
-            }
-        }
-
-        if (m_fleeTarget != null)
-        {
-            m_mode = SheepMode.Flee;
-            // One animal noticing danger tells the nearby flock; a shared timer prevents
-            // every sheep from independently restarting the panic or bleating together.
-            if (previousMode != SheepMode.Flee || m_sharedFleeUntil <= now + 0.5)
-                PropagateHerdFlee(m_fleeTarget);
-        }
-        else if (m_sharedFleeUntil <= now)
-        {
+        // Sheep do not flee merely because a player approaches.
+        // Fleeing is triggered only by an actual attack (OnAttacked).
+        if (m_sharedFleeUntil <= now)
             m_sharedFleeTarget = null;
-        }
     }
 
     private static bool IsHoldingGrass(ComponentPlayer player)
@@ -277,7 +251,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             m_grassCellZ = cellZ;
             m_grassCellIsTallGrass = isTallGrass;
             m_isGrazing = true;
-            m_grazeEnd = now + 4.0 + m_random.NextDouble() * 3.0;
+            m_grazeEnd = now + 10.0 + m_random.NextDouble() * 5.0;
             m_model.FeedOrder = true;
             m_model.LookAtOrder = target + new Vector3(0f, 0.25f, 0f);
             return;
