@@ -88,31 +88,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         bool skippedByOtherMods,
         out bool skipVanilla)
     {
+        // Preserve the native attack path. The vanilla 2-block melee range was
+        // too short for the large custom creature bodies; extend only the
+        // creature-hit ray. Terrain/tool hit handling remains in vanilla.
         skipVanilla = false;
-        if (skippedByOtherMods || playerOperated ||
-            componentPlayer == null || componentPlayer.ComponentMiner == null ||
-            componentPlayer.ComponentInput == null)
+        if (skippedByOtherMods || playerOperated || componentPlayer == null)
             return;
 
-        var hitRay = componentPlayer.ComponentInput.PlayerInput.Hit;
-        if (!hitRay.HasValue)
-            return;
-
-        BodyRaycastResult? bodyHit = componentPlayer.ComponentMiner.Raycast<BodyRaycastResult>(
-            hitRay.Value,
-            RaycastMode.Interaction,
-            raycastTerrain: true,
-            raycastBodies: true,
-            raycastMovingBlocks: false,
-            reach: 3.25f);
-
-        if (!bodyHit.HasValue || bodyHit.Value.ComponentBody == null)
-            return;
-
-        if (bodyHit.Value.ComponentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null)
-            return;
-
-        // Only extend reach when the crosshair is actually on this mod's flock.
         meleeAttackRange = Math.Max(meleeAttackRange, 3.25f);
     }
 
