@@ -33,12 +33,9 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private double m_nextPathUpdate;
     private double m_nextGrassSearch;
     private double m_grazeEnd;
-    private double m_nextAmbientBleat;
     private Vector3 m_grassTarget;
     private bool m_isGrazing;
     private bool m_fleeBleatPlayed;
-    private bool m_healthInitialized;
-    private float m_lastHealth;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
@@ -49,9 +46,9 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             RefreshTargets();
             return m_mode switch
             {
-                SheepMode.Follow => 35f,
-                SheepMode.Flee => 90f,
-                _ => 12f
+                SheepMode.Follow => 65f,
+                SheepMode.Flee => 110f,
+                _ => 45f
             };
         }
     }
@@ -67,10 +64,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_audio = Project.FindSubsystem<SubsystemAudio>(throwOnError: true);
         m_subsystemTerrain = Project.FindSubsystem<SubsystemTerrain>(throwOnError: true);
         m_mode = SheepMode.None;
-        m_lastHealth = m_creature.ComponentHealth.Health;
-        m_healthInitialized = true;
         m_nextGrassSearch = m_time.GameTime + 1.0;
-        m_nextAmbientBleat = m_time.GameTime + 12.0 + (m_random.NextDouble() * 8.0);
     }
 
     public void Update(float dt)
@@ -79,8 +73,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             return;
 
         RefreshTargets();
-        UpdateDamageVocalization();
-        UpdateAmbientVocalization();
 
         if (m_creature.ComponentHealth.Health <= 0f)
         {
@@ -261,36 +253,6 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
             m_model.FeedOrder = false;
             m_model.LookAtOrder = null;
         }
-    }
-
-    private void UpdateDamageVocalization()
-    {
-        float health = m_creature.ComponentHealth.Health;
-        if (m_healthInitialized && health < m_lastHealth - 0.0001f)
-        {
-            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_alarm", 0.78f, 0f,
-                m_creature.ComponentBody.Position, 10f, autoDelay: false);
-        }
-        m_lastHealth = health;
-        m_healthInitialized = true;
-    }
-
-    private void UpdateAmbientVocalization()
-    {
-        double now = m_time.GameTime;
-        if (now < m_nextAmbientBleat || m_creature.ComponentHealth.Health <= 0f)
-            return;
-        if (m_creature.ComponentBody.Velocity.LengthSquared() > 0.04f)
-        {
-            m_nextAmbientBleat = now + 3.0;
-            return;
-        }
-        string sound = m_random.NextDouble() < 0.22
-            ? "Audio/LivingTowns/Sheep/baa_rare"
-            : "Audio/LivingTowns/Sheep/baa";
-        m_audio.PlayRandomSound(sound, 0.38f, 0f,
-            m_creature.ComponentBody.Position, 9f, autoDelay: false);
-        m_nextAmbientBleat = now + 16.0 + m_random.NextDouble() * 20.0;
     }
 
     private void StopOwnedPath()
