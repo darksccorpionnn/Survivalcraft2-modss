@@ -38,6 +38,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private bool m_fleeBleatPlayed;
     private float m_lastHealth;
     private double m_nextAmbientBleat;
+    private bool m_audioProbePlayed;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
@@ -262,27 +263,36 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
 
     private void UpdateSheepSounds()
     {
+        Vector3 position = m_creature.ComponentBody.Position;
+        double now = m_time.GameTime;
+
+        // Audible startup probe: play on the first component update.
+        if (!m_audioProbePlayed)
+        {
+            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa", 1f, 0f,
+                position, 24f, autoDelay: false);
+            Log.Information("[LivingTowns Sheep] First bleat playback requested.");
+            m_audioProbePlayed = true;
+            m_nextAmbientBleat = now + 6.0;
+        }
+
         float health = m_creature.ComponentHealth.Health;
         if (health < m_lastHealth - 0.0001f)
         {
-            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_hurt", 0.95f, 0f,
-                m_creature.ComponentBody.Position, 12f, autoDelay: false);
+            m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_hurt", 1f, 0f,
+                position, 24f, autoDelay: false);
         }
         m_lastHealth = health;
 
-        double now = m_time.GameTime;
-        if (health > 0f && now >= m_nextAmbientBleat && m_creature.ComponentBody.Velocity.LengthSquared() < 0.04f)
+        // Repeat at a predictable interval while alive, even when walking.
+        if (health > 0f && now >= m_nextAmbientBleat)
         {
             string sound = m_random.NextDouble() < 0.25
                 ? "Audio/LivingTowns/Sheep/baa_rare"
                 : "Audio/LivingTowns/Sheep/baa";
-            m_audio.PlayRandomSound(sound, 0.72f, 0f,
-                m_creature.ComponentBody.Position, 12f, autoDelay: false);
-            m_nextAmbientBleat = now + 12.0 + m_random.NextDouble() * 13.0;
-        }
-        else if (now >= m_nextAmbientBleat)
-        {
-            m_nextAmbientBleat = now + 2.5;
+            m_audio.PlayRandomSound(sound, 1f, 0f,
+                position, 24f, autoDelay: false);
+            m_nextAmbientBleat = now + 7.0 + m_random.NextDouble() * 3.0;
         }
     }
 
