@@ -15,6 +15,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private const float FollowSpeed = 0.68f;
     private const float GrazeApproachSpeed = 0.42f;
     private const float HerdScanRange = 32f;
+    private string m_voiceSet = "Sheep";
 
     private enum SheepMode { None, Follow, Flee }
 
@@ -67,6 +68,9 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     public override void Load(ValuesDictionary valuesDictionary, IdToEntityMap idToEntityMap)
     {
         base.Load(valuesDictionary, idToEntityMap);
+
+        string voiceSet = valuesDictionary.GetValue<string>("VoiceSet");
+        m_voiceSet = voiceSet == "Ram" || voiceSet == "Lamb" ? voiceSet : "Sheep";
 
         m_creature = Entity.FindComponent<ComponentCreature>(throwOnError: true);
         m_pathfinding = Entity.FindComponent<ComponentPathfinding>(throwOnError: true);
@@ -376,6 +380,11 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         }
     }
 
+    private string GetVoiceSoundPath(string soundName)
+    {
+        return $"Audio/LivingTowns/{m_voiceSet}/{soundName}";
+    }
+
     private void TryPlayFleeBleat()
     {
         double now = m_time.GameTime;
@@ -386,7 +395,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         if (speaker != this)
             return;
 
-        m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa", 0.52f, 0f,
+        m_audio.PlayRandomSound(GetVoiceSoundPath("baa"), 0.52f, 0f,
             m_creature.ComponentBody.Position, 16f, autoDelay: false);
 
         double next = now + 6.0 + m_random.NextDouble() * 2.0;
@@ -451,7 +460,7 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
     private void OnAttacked(ComponentCreature attacker)
     {
         Vector3 position = m_creature.ComponentBody.Position;
-        m_audio.PlayRandomSound("Audio/LivingTowns/Sheep/baa_hurt", 0.62f, 0f,
+        m_audio.PlayRandomSound(GetVoiceSoundPath("baa_hurt"), 0.62f, 0f,
             position, 18f, autoDelay: false);
 
         if (attacker == null || attacker.ComponentBody == null)
