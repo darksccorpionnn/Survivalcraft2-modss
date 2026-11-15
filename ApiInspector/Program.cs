@@ -195,6 +195,23 @@ DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_10");
 DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_11");
 DumpIl("Game.SubsystemCreatureSpawn", "<InitializeCreatureTypes>b__33_12");
 
+
+Type modLoaderType = allTypes.FirstOrDefault(t => t.FullName == "Game.ModLoader");
+if (modLoaderType != null)
+{
+    var method = modLoaderType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+        .FirstOrDefault(m => m.Name == "OnPlayerInputHit");
+    if (method != null)
+    {
+        output.AppendLine();
+        output.AppendLine("===== ON PLAYER INPUT HIT PARAMETER METADATA =====");
+        foreach (var p in method.GetParameters())
+            output.AppendLine($"PARAM {p.Position} {p.Name} type={p.ParameterType.FullName} in={p.IsIn} out={p.IsOut} required={string.Join(",", p.GetRequiredCustomModifiers().Select(t=>t.FullName))} optional={string.Join(",", p.GetOptionalCustomModifiers().Select(t=>t.FullName))}");
+    }
+}
+DumpIl("Game.ModsManager", "RegisterHook");
+DumpIl("Game.ModsManager", "HookAction");
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
