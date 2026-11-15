@@ -651,7 +651,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         float healthBefore = targetHealth.Health;
-        float power = Math.Max(attacker.AttackPower, 1f);
+        ComponentMiner attackerMiner = attacker.Entity.FindComponent<ComponentMiner>();
+        float power = attackerMiner != null ? Math.Max(attackerMiner.AttackPower, 1f) : 1f;
         var attackment = new Attackment(hitBody, attacker.Entity, hitPoint, direction, power)
         {
             EnableArmorProtection = true,
@@ -670,7 +671,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (targetHealth.Health >= healthBefore &&
             !targetHealth.IsInvulnerable)
         {
-            targetHealth.Injure(new Injury(1f, attackment));
+            targetHealth.Injure(new Injury(1f, attacker, false, "Melee"));
         }
 
         m_nextPredatorMeleeTime[chaseBehavior] = now + 1.2;
