@@ -111,6 +111,10 @@ public sealed class ComponentLivingTownsSheepBehavior : ComponentBehavior, IUpda
         m_voiceSet = voiceSet == "Ram" || voiceSet == "Lamb" ? voiceSet : "Sheep";
 
         m_creature = Entity.FindComponent<ComponentCreature>(throwOnError: true);
+        // Rebase already-saved sheep, rams and lambs onto the new 30 HP baseline.
+        // This runs once during entity load, not during every update or after damage.
+        if (m_creature.ComponentHealth != null)
+            m_creature.ComponentHealth.Health = 30f;
         m_pathfinding = Entity.FindComponent<ComponentPathfinding>(throwOnError: true);
         m_model = Entity.FindComponent<ComponentCreatureModel>(throwOnError: true);
         m_players = Project.FindSubsystem<SubsystemPlayers>(throwOnError: true);
