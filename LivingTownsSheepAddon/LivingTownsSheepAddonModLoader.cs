@@ -9,6 +9,50 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     public override void __ModInitialize()
     {
         ModsManager.RegisterHook("OnLoadingFinished", this);
+        ModsManager.RegisterHook("OnPlayerInputInteract", this);
+    }
+
+
+    public override void OnPlayerInputInteract(
+        ComponentPlayer componentPlayer,
+        ref bool playerOperated,
+        ref double timeIntervalLastActionTime,
+        ref int priorityUse,
+        ref int priorityInteract,
+        ref int priorityPlace)
+    {
+        if (playerOperated || componentPlayer == null || componentPlayer.ComponentMiner == null)
+            return;
+
+        ComponentMiner miner = componentPlayer.ComponentMiner;
+        // Native Survivalcraft 2.4.0.0 has RyeBlock as its cereal crop.
+        if (Terrain.ExtractContents(miner.ActiveBlockValue) != RyeBlock.Index)
+            return;
+
+        object hit = miner.Raycast(
+            miner.GetTargetingRay(),
+            RaycastMode.Interaction,
+            raycastTerrain: false,
+            raycastBodies: true,
+            raycastMovingBlocks: false,
+            reach: 5f);
+
+        if (hit is not BodyRaycastResult bodyHit || bodyHit.ComponentBody == null)
+            return;
+
+        ComponentLivingTownsSheepBehavior sheep =
+            bodyHit.ComponentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>();
+        if (sheep == null || !sheep.TryTame())
+            return;
+
+        // Consume exactly one grain only after a successful first-time taming.
+        IInventory inventory = miner.Inventory;
+        int slot = inventory.ActiveSlotIndex;
+        if (inventory.GetSlotCount(slot) > 0)
+            inventory.RemoveSlotItems(slot, 1);
+
+        playerOperated = true;
+        priorityInteract = Math.Max(priorityInteract, 100);
     }
 
     public override void OnLoadingFinished(List<Action> actions)
