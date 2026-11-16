@@ -7,7 +7,6 @@ namespace Game;
 public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
-    private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
     private BevelledButtonWidget m_villagerTradeButton;
     private CanvasWidget m_villagerTradeCanvas;
     private ContainerWidget m_villagerTradeButtonParent;
@@ -20,7 +19,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("OnPlayerInputHit", this);
         ModsManager.RegisterHook("OnMinerHit", this);
         ModsManager.RegisterHook("OnMinerHit2", this);
-        ModsManager.RegisterHook("ProcessAttackment", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -412,82 +410,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         attackment.AttackPower = Math.Max(attackment.AttackPower, 1f);
-    }
-
-    /// <summary>
-    /// Uses only the game's own creature attack system. When a natural predator
-    /// lands a melee hit, the victim may briefly turn and retaliate through its
-    /// existing native ChaseBehavior and ComponentMiner. No damage is applied here.
-    /// </summary>
-    public override void ProcessAttackment(Attackment attackment)
-    {
-        if (attackment is not MeleeAttackment ||
-            attackment.Attacker == null || attackment.Target == null ||
-            attackment.Attacker == attackment.Target)
-            return;
-
-        // Player combat and Living Towns villagers are deliberately untouched.
-        if (attackment.Attacker.FindComponent<ComponentPlayer>() != null ||
-            IsLivingTownsVillager(attackment.Attacker) ||
-            IsLivingTownsVillager(attackment.Target))
-            return;
-
-        ComponentCreature predator =
-            attackment.Attacker.FindComponent<ComponentCreature>();
-        ComponentCreature prey =
-            attackment.Target.FindComponent<ComponentCreature>();
-
-        if (predator == null || prey == null ||
-            !IsNaturalPredator(predator) || IsNaturalPredator(prey))
-            return;
-
-        ComponentHealth preyHealth = prey.ComponentHealth;
-        if (preyHealth == null || preyHealth.Health <= 0f ||
-            preyHealth.IsInvulnerable)
-            return;
-
-        TryStartNativePreyRetaliation(prey, predator);
-    }
-
-    private static bool IsNaturalPredator(ComponentCreature creature)
-    {
-        const CreatureCategory predatorMask =
-            CreatureCategory.LandPredator | CreatureCategory.WaterPredator;
-        return creature != null && (creature.Category & predatorMask) != 0;
-    }
-
-    private void TryStartNativePreyRetaliation(
-        ComponentCreature prey,
-        ComponentCreature predator)
-    {
-        if (prey == null || predator == null ||
-            prey.Entity == null || predator.Entity == null ||
-            !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject ||
-            prey.Entity == predator.Entity)
-            return;
-
-        // Many vanilla herbivores already inherit ChaseBehavior, but keep their
-        // native AutoChaseMask untouched. They only receive a short target after
-        // a predator has actually landed a melee hit.
-        ComponentChaseBehavior chaseBehavior =
-            prey.Entity.FindComponent<ComponentChaseBehavior>();
-        if (chaseBehavior == null || chaseBehavior.Suppressed)
-            return;
-
-        // Do not interrupt another active chase (for example, a second hostile).
-        if (chaseBehavior.Target != null && chaseBehavior.Target != predator)
-            return;
-
-        double now = prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        if (m_nextPreyRetaliationTime.TryGetValue(prey, out double nextRetaliation) &&
-            now < nextRetaliation)
-            return;
-
-        // Short, non-persistent response with a small pursuit radius. The
-        // animal's own animation, Miner.AttackPower and target AttackResilience
-        // decide whether/how much damage its native strike causes.
-        m_nextPreyRetaliationTime[prey] = now + 3.0;
-        chaseBehavior.Attack(predator, 3.5f, 2.25f, false);
     }
 
     public override void OnPlayerInputInteract(
