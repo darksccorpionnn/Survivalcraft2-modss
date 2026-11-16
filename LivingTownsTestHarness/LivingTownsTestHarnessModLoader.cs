@@ -18,6 +18,7 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
     private const float HealthEpsilon = 0.0001f;
     private const double AttackConfirmationTimeout = 0.9;
     private const double RetaliationObservationWindow = 0.75;
+    private const double NativeStrikeCorrelationWindow = 0.9;
     private const double RetaliationCooldown = 2.5;
 
     private BevelledButtonWidget m_testButton;
@@ -26,6 +27,7 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
     private bool m_combatWatch;
 
     private readonly List<PendingWolfBullHit> m_pendingWolfBullHits = new();
+    private readonly List<PendingBullWolfStrike> m_pendingBullWolfStrikes = new();
     private readonly HashSet<Attackment> m_seenAttackments = new();
     private readonly Dictionary<ComponentCreature, double> m_lastRetaliationTime = new();
 
@@ -34,6 +36,10 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
     private int m_unconfirmedWolfHits;
     private int m_confirmedBullRetaliations;
     private int m_missingBullRetaliations;
+    private int m_nativeBullStrikeAttempts;
+    private int m_nativeBullStrikeDamageConfirmed;
+    private int m_nativeBullStrikeNoDamage;
+    private int m_unverifiedBullHealthLoss;
     private int m_capFailures;
     private int m_lethalHits;
     private int m_cooldownPasses;
@@ -52,6 +58,15 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         public double ObserveUntil;
         public bool CooldownProbe;
         public bool CooldownProbeWindowValid;
+    }
+
+    private sealed class PendingBullWolfStrike
+    {
+        public ComponentCreature Bull;
+        public ComponentCreature Wolf;
+        public double AttackTime;
+        public float WolfHealthBefore;
+        public bool LinkedToWolfHit;
     }
 
     public override void __ModInitialize()
@@ -146,6 +161,7 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             return;
 
         m_pendingWolfBullHits.Clear();
+        m_pendingBullWolfStrikes.Clear();
         m_seenAttackments.Clear();
         m_lastRetaliationTime.Clear();
 
@@ -154,6 +170,10 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         m_unconfirmedWolfHits = 0;
         m_confirmedBullRetaliations = 0;
         m_missingBullRetaliations = 0;
+        m_nativeBullStrikeAttempts = 0;
+        m_nativeBullStrikeDamageConfirmed = 0;
+        m_nativeBullStrikeNoDamage = 0;
+        m_unverifiedBullHealthLoss = 0;
         m_capFailures = 0;
         m_lethalHits = 0;
         m_cooldownPasses = 0;
@@ -171,13 +191,17 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             return;
 
         m_combatWatch = false;
-        int unresolved = m_pendingWolfBullHits.Count;
+        int unresolved = m_pendingWolfBullHits.Count + m_pendingBullWolfStrikes.Count;
         Log.Information("[LivingTownsCombatTest] WATCH STOPPED: " + reason);
         Log.Information("[LivingTownsCombatTest] SUMMARY attempts=" + m_wolfBullAttempts +
             " wolfHitsConfirmed=" + m_confirmedWolfHits +
             " wolfHitsNoHealthLoss=" + m_unconfirmedWolfHits +
             " bullRetaliationsConfirmed=" + m_confirmedBullRetaliations +
             " missingRetaliations=" + m_missingBullRetaliations +
+            " bullNativeMeleeAttempts=" + m_nativeBullStrikeAttempts +
+            " bullNativeMeleeDamageConfirmed=" + m_nativeBullStrikeDamageConfirmed +
+            " bullNativeMeleeNoDamage=" + m_nativeBullStrikeNoDamage +
+            " unverifiedBullHealthLoss=" + m_unverifiedBullHealthLoss +
             " damageCapFailures=" + m_capFailures +
             " oneHitKills=" + m_lethalHits +
             " cooldownPass=" + m_cooldownPasses +
@@ -186,6 +210,7 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             " unresolved=" + unresolved);
         Log.Information("[LivingTownsCombatTest] A zero retaliation count is not a pass; it means the fight did not produce a confirmed counter-hit during this watch.");
         m_pendingWolfBullHits.Clear();
+        m_pendingBullWolfStrikes.Clear();
         m_seenAttackments.Clear();
     }
 
@@ -203,32 +228,75 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
 
         ComponentCreature attacker = attackment.Attacker.FindComponent<ComponentCreature>();
         ComponentCreature target = attackment.Target.FindComponent<ComponentCreature>();
-        if (attacker == null || target == null ||
-            !IsWolf(attacker) || !IsBull(target) ||
-            !m_seenAttackments.Add(attackment))
+        if (attacker == null || target == null)
             return;
 
-        ComponentHealth wolfHealth = attacker.ComponentHealth;
-        ComponentHealth bullHealth = target.ComponentHealth;
-        if (wolfHealth == null || bullHealth == null ||
-            wolfHealth.Health <= 0f || bullHealth.Health <= 0f)
+        bool wolfAttacksBull = IsWolf(attacker) && IsBull(target);
+        bool bullAttacksWolf = IsBull(attacker) && IsWolf(target);
+        if ((!wolfAttacksBull && !bullAttacksWolf) || !m_seenAttackments.Add(attackment))
+            return;
+
+        ComponentHealth attackerHealth = attacker.ComponentHealth;
+        ComponentHealth targetHealth = target.ComponentHealth;
+        if (attackerHealth == null || targetHealth == null ||
+            attackerHealth.Health <= 0f || targetHealth.Health <= 0f)
             return;
 
         double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        m_pendingWolfBullHits.Add(new PendingWolfBullHit
-        {
-            Wolf = attacker,
-            Bull = target,
-            AttackTime = now,
-            WolfHealthBefore = wolfHealth.Health,
-            BullHealthBefore = bullHealth.Health
-        });
-        m_wolfBullAttempts++;
 
-        Log.Information("[LivingTownsCombatTest] WOLF_MELEE_ATTEMPT #" + m_wolfBullAttempts +
-            " gameTime=" + now.ToString("F3") +
-            " wolfHP=" + wolfHealth.Health.ToString("F3") +
-            " bullHP=" + bullHealth.Health.ToString("F3"));
+        if (wolfAttacksBull)
+        {
+            m_pendingWolfBullHits.Add(new PendingWolfBullHit
+            {
+                Wolf = attacker,
+                Bull = target,
+                AttackTime = now,
+                WolfHealthBefore = attackerHealth.Health,
+                BullHealthBefore = targetHealth.Health
+            });
+            m_wolfBullAttempts++;
+
+            Log.Information("[LivingTownsCombatTest] WOLF_MELEE_ATTEMPT #" + m_wolfBullAttempts +
+                " gameTime=" + now.ToString("F3") +
+                " wolfHP=" + attackerHealth.Health.ToString("F3") +
+                " bullHP=" + targetHealth.Health.ToString("F3"));
+            return;
+        }
+
+        // This hook is the engine's native melee attackment at the strike/hit
+        // frame. It is not inferred from a later health decrease.
+        m_nativeBullStrikeAttempts++;
+        m_pendingBullWolfStrikes.Add(new PendingBullWolfStrike
+        {
+            Bull = attacker,
+            Wolf = target,
+            AttackTime = now,
+            WolfHealthBefore = targetHealth.Health
+        });
+
+        Log.Information("[LivingTownsCombatTest] BULL_NATIVE_MELEE_ATTEMPT #" +
+            m_nativeBullStrikeAttempts + " gameTime=" + now.ToString("F3") +
+            " bullHP=" + attackerHealth.Health.ToString("F3") +
+            " wolfHP=" + targetHealth.Health.ToString("F3"));
+
+        if (m_lastRetaliationTime.TryGetValue(attacker, out double lastStrikeTime))
+        {
+            double elapsed = now - lastStrikeTime;
+            if (elapsed + 0.001 < RetaliationCooldown)
+            {
+                m_cooldownFailures++;
+                Log.Information("[LivingTownsCombatTest] FAIL bull native melee cooldown: interval=" +
+                    elapsed.ToString("F3") + " seconds; expected at least " +
+                    RetaliationCooldown.ToString("F1") + ".");
+            }
+            else
+            {
+                m_cooldownPasses++;
+                Log.Information("[LivingTownsCombatTest] PASS bull native melee cooldown: interval=" +
+                    elapsed.ToString("F3") + " seconds.");
+            }
+        }
+        m_lastRetaliationTime[attacker] = now;
     }
 
     private void ProcessPendingWolfBullHits(ComponentPlayer player)
@@ -246,6 +314,8 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             Log.Information("[LivingTownsCombatTest] BLOCKED: Could not read game time: " + ex.GetType().Name);
             return;
         }
+
+        ProcessPendingBullWolfStrikes(player, now);
 
         for (int i = m_pendingWolfBullHits.Count - 1; i >= 0; i--)
         {
@@ -343,54 +413,42 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             if (wolfHealth.Health < hit.WolfHealthBefore - HealthEpsilon)
             {
                 float retaliationDamage = hit.WolfHealthBefore - wolfHealth.Health;
-                if (hit.CooldownProbe)
+                if (!TryFindNativeBullStrike(hit.Bull, hit.Wolf, hit.ConfirmedAt, now,
+                    out PendingBullWolfStrike nativeStrike))
                 {
-                    m_cooldownFailures++;
-                    Log.Information("[LivingTownsCombatTest] FAIL cooldown: bull reduced wolf health again before 2.5 game seconds had elapsed. Damage=" +
-                        retaliationDamage.ToString("F4"));
+                    m_unverifiedBullHealthLoss++;
+                    m_missingBullRetaliations++;
+                    Log.Information("[LivingTownsCombatTest] FAIL HEALTH_LOSS_WITHOUT_NATIVE_BULL_MELEE: " +
+                        "wolfHP " + hit.WolfHealthBefore.ToString("F3") + " -> " +
+                        wolfHealth.Health.ToString("F3") +
+                        "; no matching bull->wolf native MeleeAttackment was observed.");
                 }
                 else
                 {
                     m_confirmedBullRetaliations++;
-                    float retaliationCap = GetTwelvePercentCap(hit.WolfHealthBefore);
-                    bool capPassed = retaliationDamage <= retaliationCap + 0.001f;
+                    bool capPassed = retaliationDamage <= GetTwelvePercentCap(hit.WolfHealthBefore) + 0.001f;
                     if (!capPassed)
                     {
                         m_capFailures++;
-                        Log.Information("[LivingTownsCombatTest] FAIL bull retaliation cap: actual=" +
-                            retaliationDamage.ToString("F4") + " allowed=" + retaliationCap.ToString("F4"));
+                        Log.Information("[LivingTownsCombatTest] FAIL bull native melee damage cap: actual=" +
+                            retaliationDamage.ToString("F4") + " allowed=" +
+                            GetTwelvePercentCap(hit.WolfHealthBefore).ToString("F4"));
                     }
                     else
                     {
-                        Log.Information("[LivingTownsCombatTest] PASS bull retaliation cap: actual=" +
-                            retaliationDamage.ToString("F4") + " allowed=" + retaliationCap.ToString("F4"));
+                        Log.Information("[LivingTownsCombatTest] PASS bull native melee damage cap: actual=" +
+                            retaliationDamage.ToString("F4") + " allowed=" +
+                            GetTwelvePercentCap(hit.WolfHealthBefore).ToString("F4"));
                     }
 
                     if (hit.WolfHealthBefore > 0.05f && wolfHealth.Health <= HealthEpsilon)
                     {
                         m_lethalHits++;
-                        Log.Information("[LivingTownsCombatTest] FAIL: one bull retaliation killed a wolf that had more than 0.05 health.");
+                        Log.Information("[LivingTownsCombatTest] FAIL: one bull native melee strike killed a wolf that had more than 0.05 health.");
                     }
 
-                    if (m_lastRetaliationTime.TryGetValue(hit.Bull, out double lastTime))
-                    {
-                        double elapsed = now - lastTime;
-                        if (elapsed + 0.001 < RetaliationCooldown)
-                        {
-                            m_cooldownFailures++;
-                            Log.Information("[LivingTownsCombatTest] FAIL retaliation interval: " + elapsed.ToString("F3") +
-                                " seconds; expected at least 2.5.");
-                        }
-                        else
-                        {
-                            m_cooldownPasses++;
-                            Log.Information("[LivingTownsCombatTest] PASS retaliation interval: " +
-                                elapsed.ToString("F3") + " seconds (minimum 2.5).");
-                        }
-                    }
-
-                    m_lastRetaliationTime[hit.Bull] = now;
-                    Log.Information("[LivingTownsCombatTest] BULL_RETALIATION_CONFIRMED: wolfHP " +
+                    Log.Information("[LivingTownsCombatTest] BULL_NATIVE_RETALIATION_CONFIRMED: bull melee event at " +
+                        nativeStrike.AttackTime.ToString("F3") + "; wolfHP " +
                         hit.WolfHealthBefore.ToString("F3") + " -> " + wolfHealth.Health.ToString("F3"));
                 }
 
@@ -421,6 +479,72 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
 
         if (m_pendingWolfBullHits.Count > 64)
             m_pendingWolfBullHits.RemoveRange(0, m_pendingWolfBullHits.Count - 64);
+        if (m_pendingBullWolfStrikes.Count > 64)
+            m_pendingBullWolfStrikes.RemoveRange(0, m_pendingBullWolfStrikes.Count - 64);
+    }
+
+    private void ProcessPendingBullWolfStrikes(ComponentPlayer player, double now)
+    {
+        for (int i = m_pendingBullWolfStrikes.Count - 1; i >= 0; i--)
+        {
+            PendingBullWolfStrike strike = m_pendingBullWolfStrikes[i];
+            if (strike.Bull == null || strike.Wolf == null ||
+                strike.Bull.Entity == null || strike.Wolf.Entity == null ||
+                !strike.Bull.Entity.IsAddedToProject || !strike.Wolf.Entity.IsAddedToProject)
+            {
+                m_pendingBullWolfStrikes.RemoveAt(i);
+                continue;
+            }
+
+            ComponentHealth wolfHealth = strike.Wolf.ComponentHealth;
+            if (wolfHealth == null)
+            {
+                m_pendingBullWolfStrikes.RemoveAt(i);
+                continue;
+            }
+
+            if (wolfHealth.Health < strike.WolfHealthBefore - HealthEpsilon)
+            {
+                m_nativeBullStrikeDamageConfirmed++;
+                Log.Information("[LivingTownsCombatTest] BULL_NATIVE_MELEE_DAMAGE_CONFIRMED: wolfHP " +
+                    strike.WolfHealthBefore.ToString("F3") + " -> " + wolfHealth.Health.ToString("F3") +
+                    "; gameTime=" + now.ToString("F3"));
+                m_pendingBullWolfStrikes.RemoveAt(i);
+            }
+            else if (now - strike.AttackTime >= NativeStrikeCorrelationWindow)
+            {
+                m_nativeBullStrikeNoDamage++;
+                Log.Information("[LivingTownsCombatTest] BULL_NATIVE_MELEE_NO_HEALTH_LOSS: a native bull melee event was observed, but the target wolf's health did not fall within " +
+                    NativeStrikeCorrelationWindow.ToString("F2") + " game seconds.");
+                m_pendingBullWolfStrikes.RemoveAt(i);
+            }
+        }
+    }
+
+    private bool TryFindNativeBullStrike(
+        ComponentCreature bull,
+        ComponentCreature wolf,
+        double wolfHitConfirmedAt,
+        double now,
+        out PendingBullWolfStrike matchingStrike)
+    {
+        for (int i = m_pendingBullWolfStrikes.Count - 1; i >= 0; i--)
+        {
+            PendingBullWolfStrike strike = m_pendingBullWolfStrikes[i];
+            if (strike.Bull == bull && strike.Wolf == wolf &&
+                !strike.LinkedToWolfHit &&
+                strike.AttackTime >= wolfHitConfirmedAt - 0.15 &&
+                strike.AttackTime <= now &&
+                now - strike.AttackTime <= NativeStrikeCorrelationWindow)
+            {
+                strike.LinkedToWolfHit = true;
+                matchingStrike = strike;
+                return true;
+            }
+        }
+
+        matchingStrike = null;
+        return false;
     }
 
     private static float GetTwelvePercentCap(float health)
