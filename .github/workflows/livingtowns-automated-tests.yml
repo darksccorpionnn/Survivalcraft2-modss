@@ -61,8 +61,8 @@ jobs:
       - name: Publish installable test harness package
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: livingtowns-test-harness-v0.2.0
-          name: Living Towns Test Harness 0.2.0
+          tag_name: livingtowns-test-harness-v0.2.1
+          name: Living Towns Test Harness 0.2.1
           prerelease: true
           body: |
             Read-only Android in-game observer for real wolf-versus-bull combat.
