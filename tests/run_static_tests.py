@@ -41,7 +41,7 @@ else:
 
 if sheep_behavior.is_file():
     source = sheep_behavior.read_text(encoding="utf-8")
-    for token in ("public void Save(", "public override void Load(",
+    for token in ("public override void Save(", "public override void Load(",
                   "TryTame()", "TryMilk()", "UpdateReproduction()"):
         check("sheep_behavior_" + token.replace(" ", "_").replace("(", ""),
               token in source, "Expected sheep behavior/persistence feature appears in source.")
