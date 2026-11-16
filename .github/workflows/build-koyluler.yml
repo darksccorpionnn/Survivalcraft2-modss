@@ -68,7 +68,10 @@ jobs:
           if sorted(egg_indices) != list(range(700,709)):
               raise SystemExit(f'Unexpected egg indices: {egg_indices}')
           for lang in ('tr-TR','en-US'):
-              json.loads((p / f'Assets/Lang/{lang}.json').read_text(encoding='utf-8'))
+              data = json.loads((p / f'Assets/Lang/{lang}.json').read_text(encoding='utf-8'))
+              for name in names:
+                  if f'DisplayName:KoylulerModu_{name}Egg' not in data:
+                      raise SystemExit(f'Missing localized egg name for {name} in {lang}')
           loader = (p / 'KoylulerModuModLoader.cs').read_text(encoding='utf-8')
           if 'InitializeCreatureTypes' in loader or 'SpawnLocationType.Surface' in loader:
               raise SystemExit('Random surface spawning remains enabled')

@@ -16,5 +16,14 @@
   "DisplayName:KoylulerModu_Hunter": "Hunter",
   "Description:KoylulerModu_Hunter": "Hunter character. Hunting behavior will be added later.",
   "DisplayName:KoylulerModu_Shepherd": "Shepherd",
-  "Description:KoylulerModu_Shepherd": "Shepherd character. Animal care behavior will be added later."
+  "Description:KoylulerModu_Shepherd": "Shepherd character. Animal care behavior will be added later.",
+  "DisplayName:KoylulerModu_MaleVillagerEgg": "Male Villager Spawn Egg",
+  "DisplayName:KoylulerModu_FemaleVillagerEgg": "Female Villager Spawn Egg",
+  "DisplayName:KoylulerModu_FarmerEgg": "Farmer Spawn Egg",
+  "DisplayName:KoylulerModu_BlacksmithEgg": "Blacksmith Spawn Egg",
+  "DisplayName:KoylulerModu_MerchantEgg": "Merchant Spawn Egg",
+  "DisplayName:KoylulerModu_HealerEgg": "Healer Spawn Egg",
+  "DisplayName:KoylulerModu_GuardEgg": "Guard Spawn Egg",
+  "DisplayName:KoylulerModu_HunterEgg": "Hunter Spawn Egg",
+  "DisplayName:KoylulerModu_ShepherdEgg": "Shepherd Spawn Egg"
 }

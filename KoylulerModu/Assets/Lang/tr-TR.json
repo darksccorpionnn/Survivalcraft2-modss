@@ -16,5 +16,14 @@
   "DisplayName:KoylulerModu_Hunter": "Avcı",
   "Description:KoylulerModu_Hunter": "Avcı karakteri. Avlanma davranışları daha sonra eklenecek.",
   "DisplayName:KoylulerModu_Shepherd": "Çoban",
-  "Description:KoylulerModu_Shepherd": "Çoban karakteri. Hayvanlarla ilgilenme davranışları daha sonra eklenecek."
+  "Description:KoylulerModu_Shepherd": "Çoban karakteri. Hayvanlarla ilgilenme davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_MaleVillagerEgg": "Erkek Köylü Yumurtası",
+  "DisplayName:KoylulerModu_FemaleVillagerEgg": "Kadın Köylü Yumurtası",
+  "DisplayName:KoylulerModu_FarmerEgg": "Çiftçi Yumurtası",
+  "DisplayName:KoylulerModu_BlacksmithEgg": "Demirci Yumurtası",
+  "DisplayName:KoylulerModu_MerchantEgg": "Tüccar Yumurtası",
+  "DisplayName:KoylulerModu_HealerEgg": "Şifacı Yumurtası",
+  "DisplayName:KoylulerModu_GuardEgg": "Muhafız Yumurtası",
+  "DisplayName:KoylulerModu_HunterEgg": "Avcı Yumurtası",
+  "DisplayName:KoylulerModu_ShepherdEgg": "Çoban Yumurtası"
 }

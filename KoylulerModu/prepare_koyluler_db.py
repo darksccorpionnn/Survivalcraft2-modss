@@ -55,6 +55,43 @@ for name in NAMES:
             "Name": "KoylulerIdentity", "Guid": guid(entity_name + "/Identity"),
             "InheritanceParent": identity.attrib["Guid"]})
 
+
+# Add the nine distinct creature eggs (indices 700-708) to the player-facing templates.
+egg_data = {
+    "MaleVillager": (163, "184,126,82", 700, "Erkek Köylü Yumurtası"),
+    "FemaleVillager": (164, "205,155,130", 701, "Kadın Köylü Yumurtası"),
+    "Farmer": (165, "166,119,74", 702, "Çiftçi Yumurtası"),
+    "Blacksmith": (163, "72,72,78", 703, "Demirci Yumurtası"),
+    "Merchant": (163, "52,94,160", 704, "Tüccar Yumurtası"),
+    "Healer": (163, "110,160,120", 705, "Şifacı Yumurtası"),
+    "Guard": (163, "100,108,120", 706, "Muhafız Yumurtası"),
+    "Hunter": (163, "116,126,145", 707, "Avcı Yumurtası"),
+    "Shepherd": (165, "170,145,112", 708, "Çoban Yumurtası"),
+}
+for short_name, (texture_slot, color, egg_index, _label) in egg_data.items():
+    entity = primary["KoylulerModu_" + short_name]
+    egg = next((x for x in entity.findall("ParameterSet")
+                if x.attrib.get("Name") == "CreatureEggData"), None)
+    if egg is None:
+        egg = ET.SubElement(entity, "ParameterSet", {
+            "Name": "CreatureEggData", "Guid": guid("Entity/KoylulerModu_" + short_name + "/CreatureEggData")})
+    parameters = {p.attrib.get("Name"): p for p in egg.findall("Parameter")}
+    values = {
+        "TextureSlot": str(texture_slot),
+        "Color": color,
+        "EggTypeIndex": str(egg_index),
+        "DisplayName": "[DisplayName:KoylulerModu_" + short_name + "Egg]",
+        "ShowEgg": "True",
+        "SwapUV": "True",
+    }
+    for key, value in values.items():
+        if key in parameters:
+            parameters[key].attrib["Value"] = value
+        else:
+            ET.SubElement(egg, "Parameter", {
+                "Name": key, "Guid": guid("Entity/KoylulerModu_" + short_name + "/CreatureEggData/" + key),
+                "Value": value, "Type": "string" if key in ("Color", "DisplayName") else "int" if key in ("TextureSlot", "EggTypeIndex") else "bool"})
+
 # The door spawner in LivingTowns.dll requests these historical template names.
 # Aliases use the new models and controller, and intentionally do not duplicate eggs.
 for name in NAMES:
