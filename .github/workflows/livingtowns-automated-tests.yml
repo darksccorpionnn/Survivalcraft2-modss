@@ -5,6 +5,7 @@ on:
     branches: [ main ]
     paths:
       - "LivingTownsSheepAddon/**"
+      - "LivingTownsTestHarness/**"
       - "TownBootstrap/**"
       - "tests/**"
       - ".github/workflows/livingtowns-automated-tests.yml"
