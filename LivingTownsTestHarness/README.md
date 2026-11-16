@@ -1,29 +1,34 @@
-# Living Towns Test Harness 0.1.0
+# Living Towns Test Harness 0.2.0
 
 Compatibility:
 - Survivalcraft 2.4.0.0
 - Survivalcraft API 1.9.5.1
+- Living Towns 0.4.144
 
-## Behavior
+## Wolf versus bull combat observer
 
-This is a separate read-only diagnostics mod. It performs one scan automatically when the player HUD becomes available. The TEST button can repeat the scan later.
+This is an observational test. It does not spawn creatures, injure entities, change health, move animals, or edit terrain.
 
-The scan:
-- inspects loaded world bodies;
-- detects Living Towns villagers and sheep-family entities by their runtime components;
-- checks health components, duplicate villager controllers, core/add-on assemblies, and selected runtime types;
-- writes PASS, FAIL, and BLOCKED lines to the Survivalcraft log.
+1. Install Living Towns 0.4.144 and this harness as separate mods.
+2. Open a disposable test world.
+3. Make sure a wolf and a bull are loaded and close enough for their normal AI to interact.
+4. Tap **WATCH** before the fight starts.
+5. Let the animals fight naturally. The button changes to **STOP** while observation is active.
+6. Tap **STOP** and share log lines prefixed with `[LivingTownsCombatTest]`.
 
-It does not spawn, injure, move, edit, or delete entities or terrain.
+The observer records actual melee-hook events, then checks later health values. It reports:
+- whether wolf attacks caused real bull health loss;
+- whether the bull caused a real wolf health loss after being hit;
+- whether each observed hit stayed at or below 12% of the target's remaining health;
+- one-hit deaths above the critical-health exception;
+- whether retaliation happened again inside the 2.5-second cooldown.
+
+Species labels are read from runtime metadata. The harness does not guess species when it cannot identify a wolf or bull.
+
+## Existing diagnostic scan
+
+The same WATCH button first scans loaded bodies, Living Towns villagers, sheep-family components, health integrity and duplicate villager controllers. Results use PASS, FAIL and BLOCKED.
 
 ## Limits
 
-A PASS only means the specific inspection succeeded. It does not certify jobs, sleep, home/door routing, trade transactions, animal AI/combat, or save/load behavior. Those scenarios are reported as BLOCKED until their dedicated controlled tests are implemented.
-
-## Install
-
-1. Keep Living Towns 0.4.144 installed.
-2. Install LivingTownsTestHarness.scmod as a separate mod; do not merge it into the main package.
-3. Start a disposable test world and load it.
-4. The initial scan runs automatically; use TEST in the HUD for another scan.
-5. Share log lines prefixed with [LivingTownsTest].
+This test does not control AI or guarantee that the animals will choose to fight. A missing attack is not evidence that damage handling passed. The in-game fight itself must occur in Survivalcraft; static CI cannot launch the Android game.
