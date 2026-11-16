@@ -995,19 +995,43 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (amount > maximumInjury)
             injury.Amount = maximumInjury;
 
-        // Every valid prey creature receives a bounded counter-hit after an
-        // actual predator melee injury. A ChaseBehavior probability alone does
-        // not prove the prey can select/strike a predator: the native target
-        // score path is not enabled for non-predators in this mod. Therefore do
-        // not suppress the fallback based on HasNativeRetaliation().
+        // Apply the herbivore's counter-damage from the confirmed predator
+        // injury itself. Do not depend on a later GUI update or on Attackment
+        // subtype metadata: some native creature attacks reach Injury.Process
+        // with no MeleeAttackment reference even though the health loss is real.
+        // This callback runs only after a positive injury has been calculated.
         if (attackerIsPredator && !targetIsPredator &&
             injury.Amount > 0f &&
-            injury.Attackment is MeleeAttackment &&
             IsValidAnimalPrey(attacker, target))
         {
-            double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-            m_pendingPreyRetaliationPredators[target] = attacker;
-            m_pendingPreyRetaliationTimes[target] = now + 0.35;
+            ComponentHealth predatorHealth = attacker.ComponentHealth;
+            if (predatorHealth != null &&
+                predatorHealth.Health > 0f &&
+                !predatorHealth.IsInvulnerable)
+            {
+                double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+                if (!m_nextPreyRetaliationTime.TryGetValue(target, out double nextRetaliation) ||
+                    now >= nextRetaliation)
+                {
+                    m_nextPreyRetaliationTime[target] = now + 2.5;
+                    float counterDamage = GetPreyStrikeDamageCap(predatorHealth.Health);
+                    if (counterDamage > 0f &&
+                        !float.IsNaN(counterDamage) &&
+                        !float.IsInfinity(counterDamage))
+                    {
+                        float healthBefore = predatorHealth.Health;
+                        // Use the engine injury route first so normal hit effects,
+                        // death handling and injury listeners remain available.
+                        predatorHealth.Injure(counterDamage, target, false, "Melee");
+
+                        // Deterministic fallback: if another hook cancels the
+                        // Injury route, still subtract the bounded amount from
+                        // the predator's actual health value.
+                        if (predatorHealth.Health >= healthBefore)
+                            predatorHealth.Health = Math.Max(0f, healthBefore - counterDamage);
+                    }
+                }
+            }
         }
     }
 
