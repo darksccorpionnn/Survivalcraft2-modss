@@ -9,6 +9,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
+    private readonly Dictionary<ComponentCreature, ComponentCreature> m_pendingPreyRetaliationPredators = new();
+    private readonly Dictionary<ComponentCreature, double> m_pendingPreyRetaliationTimes = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorStrikeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
@@ -55,6 +57,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         ComponentPlayer player = componentGui.m_componentPlayer;
+        if (player != null)
+            ProcessPendingPreyRetaliations(player);
+
         if (player == null || player.ComponentInput == null ||
             player.ComponentCreatureModel == null || player.ComponentMiner == null)
         {
@@ -141,6 +146,45 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // IsClicked is the button's one-frame touch/click event.
         if (nearestVillager != null && m_villagerTradeButton.IsClicked)
             OpenVillagerTrade(player, nearestVillager);
+    }
+
+    /// <summary>
+    /// Runs herbivore retaliation on a later GUI/game update, never from inside
+    /// the predator's own Attackment processing. A retaliation is queued only
+    /// after CalculateCreatureInjuryAmount confirms a real predator injury.
+    /// </summary>
+    private void ProcessPendingPreyRetaliations(ComponentPlayer player)
+    {
+        if (player == null)
+            return;
+
+        double now = player.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        var pendingPrey = new List<ComponentCreature>(m_pendingPreyRetaliationPredators.Keys);
+        foreach (ComponentCreature prey in pendingPrey)
+        {
+            if (prey == null ||
+                !m_pendingPreyRetaliationPredators.TryGetValue(prey, out ComponentCreature predator) ||
+                predator == null ||
+                prey.Project != player.Project ||
+                predator.Project != player.Project ||
+                prey.Entity == null || predator.Entity == null ||
+                !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject)
+            {
+                m_pendingPreyRetaliationPredators.Remove(prey);
+                m_pendingPreyRetaliationTimes.Remove(prey);
+                continue;
+            }
+
+            if (!m_pendingPreyRetaliationTimes.TryGetValue(prey, out double dueTime) ||
+                now < dueTime)
+                continue;
+
+            // Remove before attacking: the counter-hit itself must not be able
+            // to re-enter or duplicate this pending retaliation.
+            m_pendingPreyRetaliationPredators.Remove(prey);
+            m_pendingPreyRetaliationTimes.Remove(prey);
+            TryApplyPreyRetaliation(prey, predator);
+        }
     }
 
     private static bool IsLivingTownsVillager(GameEntitySystem.Entity entity)
@@ -778,13 +822,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         bool attackerIsPredator = IsNaturalPredator(attackerCreature);
         bool targetIsPredator = IsNaturalPredator(targetCreature);
 
-        // A prey animal retaliates once after a real predator melee strike.
-        // It does not rely on its own model having an attack-hit animation.
-        if (attackerIsPredator && !targetIsPredator &&
-            attackment is MeleeAttackment)
-        {
-            TryApplyPreyRetaliation(targetCreature, attackerCreature);
-        }
+        // Prey retaliation is deliberately not started here. ProcessAttackment
+        // runs inside the incoming hit pipeline, before the target's health is
+        // reduced. A confirmed injury is queued later by
+        // CalculateCreatureInjuryAmount and handled on the next GUI/game update.
 
         if (float.IsNaN(attackment.AttackPower) ||
             float.IsInfinity(attackment.AttackPower) ||
@@ -896,6 +937,16 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             float maximumInjury = GetPredatorStrikeDamageCap(health);
             if (amount > maximumInjury)
                 injury.Amount = maximumInjury;
+
+            // Queue a counter only for a confirmed, positive predator injury.
+            // The separate update prevents the prey from damaging the predator
+            // as part of the same incoming Attackment.
+            if (injury.Amount > 0f && IsValidAnimalPrey(attacker, target))
+            {
+                double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+                m_pendingPreyRetaliationPredators[target] = attacker;
+                m_pendingPreyRetaliationTimes[target] = now + 0.35;
+            }
             return;
         }
 
