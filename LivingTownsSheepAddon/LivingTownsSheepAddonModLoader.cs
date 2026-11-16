@@ -987,18 +987,19 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (amount > maximumInjury)
             injury.Amount = maximumInjury;
 
-        // Living Towns sheep/rams have no native ChaseBehavior/Miner component,
-        // so they need one bounded manual counter. Creatures with a native chase
-        // retaliation keep the game's own Injured-event -> attack-animation path.
+        // Every valid prey creature receives a bounded counter-hit after an
+        // actual predator melee injury. A ChaseBehavior probability alone does
+        // not prove the prey can select/strike a predator: the native target
+        // score path is not enabled for non-predators in this mod. Therefore do
+        // not suppress the fallback based on HasNativeRetaliation().
         if (attackerIsPredator && !targetIsPredator &&
             injury.Amount > 0f &&
             injury.Attackment is MeleeAttackment &&
-            IsValidAnimalPrey(attacker, target) &&
-            !HasNativeRetaliation(target))
+            IsValidAnimalPrey(attacker, target))
         {
             double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
             m_pendingPreyRetaliationPredators[target] = attacker;
-            m_pendingPreyRetaliationTimes[target] = now + 0.85;
+            m_pendingPreyRetaliationTimes[target] = now + 0.35;
         }
     }
 
