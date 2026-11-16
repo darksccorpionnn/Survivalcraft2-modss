@@ -17,8 +17,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("GuiUpdate", this);
         ModsManager.RegisterHook("OnPlayerInputInteract", this);
         ModsManager.RegisterHook("OnPlayerInputHit", this);
-        ModsManager.RegisterHook("OnMinerHit", this);
-        ModsManager.RegisterHook("OnMinerHit2", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -360,56 +358,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         // Do not consume the input if the direct Attackment did not lower health.
         // ComponentPlayer.Update will then perform exactly one normal vanilla hit.
-    }
-
-    public override void OnMinerHit(
-        ComponentMiner miner,
-        ComponentBody componentBody,
-        Engine.Vector3 hitPoint,
-        Engine.Vector3 hitDirection,
-        ref float attackPower,
-        ref float playerProbability,
-        ref float creatureProbability,
-        out bool hitted)
-    {
-        // The API exposes this as an OUT hit decision. Returning false here
-        // cancels the creature hit even when playerProbability is raised to 1.
-        hitted = false;
-        // Do not alter AI-vs-creature attacks. Player melee should be dependable:
-        // the vanilla bare-hand probability is only 0.66 while a target is moving.
-        if (miner == null || miner.ComponentPlayer == null ||
-            componentBody == null || componentBody.Entity == null)
-            return;
-
-        if (componentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null ||
-            componentBody.Entity.FindComponent<ComponentCreature>() == null ||
-            componentBody.Entity.FindComponent<ComponentHealth>() == null)
-            return;
-
-        playerProbability = Math.Max(playerProbability, 1f);
-        attackPower = Math.Max(attackPower, 1f);
-        hitted = true;
-    }
-
-    public override void OnMinerHit2(
-        ComponentMiner componentMiner,
-        ComponentBody componentBody,
-        Engine.Vector3 hitPoint,
-        Engine.Vector3 hitDirection,
-        ref int durabilityReduction,
-        ref Attackment attackment)
-    {
-        // Final safety check before the native Attackment is processed.
-        if (componentMiner == null || componentMiner.ComponentPlayer == null ||
-            componentBody == null || componentBody.Entity == null || attackment == null)
-            return;
-
-        if (componentBody.Entity.FindComponent<ComponentLivingTownsSheepBehavior>() == null ||
-            componentBody.Entity.FindComponent<ComponentCreature>() == null ||
-            componentBody.Entity.FindComponent<ComponentHealth>() == null)
-            return;
-
-        attackment.AttackPower = Math.Max(attackment.AttackPower, 1f);
     }
 
     public override void OnPlayerInputInteract(
