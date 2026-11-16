@@ -8,7 +8,7 @@ namespace Game;
 public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
-    private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorMeleeTime = new();
+    private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
         "Attack",
@@ -19,13 +19,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private static readonly FieldInfo s_chaseMaxAttackRangeField =
         typeof(ComponentChaseBehavior).GetField(
             "MaxAttackRange", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-    private static readonly MethodInfo s_chaseGetHitBodyMethod =
-        typeof(ComponentChaseBehavior).GetMethod(
-            "GetHitBody",
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            null,
-            new[] { typeof(ComponentBody), typeof(Engine.Vector3).MakeByRefType() },
-            null);
     private static readonly MethodInfo s_chaseStopAttackMethod =
         typeof(ComponentChaseBehavior).GetMethod(
             "StopAttack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -51,8 +44,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("CalculateCreatureInjuryAmount", this);
         ModsManager.RegisterHook("ChaseBehaviorScoreTarget", this);
         ModsManager.RegisterHook("UpdateChaseBehaviorLookingForTarget", this);
-        ModsManager.RegisterHook("UpdateChaseBehaviorChasing", this);
-        ModsManager.RegisterHook("OnChaseBehaviorAttacked", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -518,9 +509,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
     private static bool IsNaturalPredator(ComponentCreature creature)
     {
-        return creature != null &&
-            (creature.Category == CreatureCategory.LandPredator ||
-             creature.Category == CreatureCategory.WaterPredator);
+        const CreatureCategory predatorMask =
+            CreatureCategory.LandPredator | CreatureCategory.WaterPredator;
+        return creature != null && (creature.Category & predatorMask) != 0;
     }
 
     private static bool IsValidAnimalPrey(
@@ -629,102 +620,70 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
-    /// Some creature models do not expose a reliable IsAttackHitMoment to the
-    /// native chase behavior. When a predator is already chasing prey and the
-    /// bodies are in melee range, route one native miner hit at a bounded rate.
-    /// A body-only raycast prevents hits through walls or through other animals.
+    /// Gives prey a real counter-hit when a natural predator lands a native melee
+    /// hit. The counter uses the prey's own melee power and the game's native
+    /// Attackment -> Injury -> ComponentHealth pipeline, with a short per-prey
+    /// cooldown and a strict one-HP / half-remaining-health ceiling.
     /// </summary>
-    public override void UpdateChaseBehaviorChasing(
-        ComponentChaseBehavior chaseBehavior)
+    private void TryApplyPreyRetaliation(
+        ComponentCreature prey,
+        ComponentCreature predator)
     {
-        if (chaseBehavior == null || s_chaseGetHitBodyMethod == null)
+        if (prey == null || predator == null ||
+            prey.Entity == null || predator.Entity == null ||
+            !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject)
             return;
 
-        ComponentCreature attacker =
-            chaseBehavior.Entity.FindComponent<ComponentCreature>();
-        ComponentCreature target = chaseBehavior.Target;
-        if (!IsValidAnimalPrey(attacker, target))
+        ComponentHealth predatorHealth = predator.ComponentHealth;
+        ComponentBody predatorBody = predator.ComponentBody;
+        ComponentBody preyBody = prey.ComponentBody;
+        if (predatorHealth == null || predatorHealth.Health <= 0.1f ||
+            predatorHealth.IsInvulnerable ||
+            predatorBody == null || preyBody == null)
             return;
 
-        ComponentBody attackerBody = attacker.ComponentBody;
-        ComponentBody targetBody = target.ComponentBody;
-        if (attackerBody == null || targetBody == null)
+        double now = prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextPreyRetaliationTime.TryGetValue(prey, out double nextRetaliation) &&
+            now < nextRetaliation)
             return;
 
-        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        if (m_nextPredatorMeleeTime.TryGetValue(chaseBehavior, out double nextHit) &&
-            now < nextHit)
-            return;
+        // Set the cooldown before invoking AttackBody; it synchronously re-enters
+        // ProcessAttackment for the prey-to-predator counter-hit.
+        m_nextPreyRetaliationTime[prey] = now + 1.25;
 
-        // Use the engine's exact private hit-body resolver. It performs the
-        // same body-only raycast, attack-range check and child-body validation
-        // as the native animation hit path.
-        object[] hitArgs = { targetBody, Engine.Vector3.Zero };
-        ComponentBody hitBody =
-            s_chaseGetHitBodyMethod.Invoke(chaseBehavior, hitArgs) as ComponentBody;
-        if (hitBody == null)
-            return;
+        ComponentMiner preyMiner = prey.Entity.FindComponent<ComponentMiner>();
+        float power = preyMiner != null ? Math.Max(preyMiner.AttackPower, 1f) : 1f;
 
-        Engine.Vector3 hitPoint = (Engine.Vector3)hitArgs[1];
-        Engine.Vector3 direction = targetBody.BoundingBox.Center() -
-            attackerBody.BoundingBox.Center();
+        Engine.Vector3 direction = predatorBody.BoundingBox.Center() -
+            preyBody.BoundingBox.Center();
         if (direction.LengthSquared() < 0.0001f)
-            return;
-        direction = Engine.Vector3.Normalize(direction);
+            direction = preyBody.Matrix.Forward;
+        else
+            direction = Engine.Vector3.Normalize(direction);
 
-        ComponentHealth targetHealth = target.ComponentHealth;
-        if (targetHealth == null || targetHealth.Health <= 0f ||
-            targetHealth.IsInvulnerable)
+        float hitCeiling = Math.Min(1f, predatorHealth.Health * 0.5f);
+        if (hitCeiling <= 0f)
             return;
 
-        float healthBefore = targetHealth.Health;
-        ComponentMiner attackerMiner = attacker.Entity.FindComponent<ComponentMiner>();
-        float power = attackerMiner != null ? Math.Max(attackerMiner.AttackPower, 1f) : 1f;
-        var attackment = new Attackment(hitBody, attacker.Entity, hitPoint, direction, power)
+        var counterHit = new Attackment(
+            predatorBody,
+            prey.Entity,
+            predatorBody.BoundingBox.Center(),
+            direction,
+            power)
         {
             EnableArmorProtection = true,
             EnableResilienceFactor = true,
             EnableHitValueParticleSystem = true
         };
 
-        // Apply through the native Attackment -> Injury -> ComponentHealth
-        // pipeline without depending on ComponentMiner.Hit's player/tool
-        // cooldown gate or on a model animation hit-moment callback.
-        ComponentMiner.AttackBody(attackment);
-
-        // Attackment.ProcessAttackment already applies the Injury synchronously.
-        // Do not apply a second fallback Injury here: doing so can double-hit
-        // targets whose health update is delayed by another mod's hook.
-
-        m_nextPredatorMeleeTime[chaseBehavior] = now + 2.5;
-    }
-
-    /// <summary>
-    /// Prevent the model's animation-driven hit from duplicating a hit already
-    /// delivered by the bounded native fallback during the same attack window.
-    /// </summary>
-    public override void OnChaseBehaviorAttacked(
-        ComponentChaseBehavior chaseBehavior,
-        float chaseTimeBefore,
-        ref float chaseTime,
-        ref bool hitBody,
-        ref bool playAttackSound)
-    {
-        if (chaseBehavior == null ||
-            !m_nextPredatorMeleeTime.TryGetValue(chaseBehavior, out double nextHit))
-            return;
-
-        ComponentCreature attacker =
-            chaseBehavior.Entity.FindComponent<ComponentCreature>();
-        if (!IsNaturalPredator(attacker))
-            return;
-
-        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        if (now < nextHit)
-        {
-            hitBody = false;
-            playAttackSound = false;
-        }
+        // ProcessAttackment below caps the actual injury; this initial value is
+        // also clamped so other mods see a bounded counter-hit from its outset.
+        float calculated = counterHit.CalculateInjuryAmount();
+        if (float.IsNaN(calculated) || float.IsInfinity(calculated) || calculated < 0f)
+            calculated = 0f;
+        counterHit.m_injuryAmount = Math.Min(Math.Max(calculated, 1f), hitCeiling);
+        ComponentMiner.AttackBody(counterHit);
     }
 
     /// <summary>
@@ -756,32 +715,16 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             targetHealth.IsInvulnerable)
             return;
 
-        // When a prey animal is attacked, ask its native chase behavior to face
-        // the predator. Damage is dealt only through the normal Attackment path
-        // below, where prey retaliation is explicitly capped.
+        // Retaliation is applied only after the predator's native melee attack
+        // has passed ComponentMiner's range, animation-hit-moment and hit-interval
+        // checks and entered the real Attackment pipeline. Many prey models have
+        // no melee hit-moment animation of their own, so merely assigning a chase
+        // target makes them turn/follow but never actually hurt the predator.
         if (IsNaturalPredator(attackerCreature) &&
-            !IsNaturalPredator(targetCreature))
+            !IsNaturalPredator(targetCreature) &&
+            attackment is MeleeAttackment)
         {
-            ComponentChaseBehavior defenderChase =
-                targetCreature.Entity.FindComponent<ComponentChaseBehavior>();
-            if (defenderChase != null && s_chaseAttackMethod != null)
-            {
-                s_chaseAttackMethod.Invoke(
-                    defenderChase,
-                    new object[] { attackerCreature, 5f, 3f, false });
-            }
-        }
-
-        // Record animation-driven native hits as well, so the bounded fallback
-        // cannot create a second strike in the same attack window.
-        ComponentChaseBehavior chaseBehavior =
-            attackment.Attacker.FindComponent<ComponentChaseBehavior>();
-        if (chaseBehavior != null && IsNaturalPredator(attackerCreature) &&
-            !IsNaturalPredator(targetCreature))
-        {
-            double now = attackment.Attacker.Project
-                .FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-            m_nextPredatorMeleeTime[chaseBehavior] = now + 2.5;
+            TryApplyPreyRetaliation(targetCreature, attackerCreature);
         }
 
         // Herbivore/prey retaliation must never one-shot a natural predator.
