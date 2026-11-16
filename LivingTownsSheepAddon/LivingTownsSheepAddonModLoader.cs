@@ -9,6 +9,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
+    private readonly HashSet<Attackment> m_preyRetaliationAttackments = new();
     private readonly Dictionary<ComponentCreature, ComponentCreature> m_pendingPreyRetaliationPredators = new();
     private readonly Dictionary<ComponentCreature, double> m_pendingPreyRetaliationTimes = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorStrikeTime = new();
@@ -850,7 +851,19 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // Give the counter a meaningful but bounded amount. A predator can never
         // lose more than 12% of its remaining health to one herbivore counter-hit.
         counterAttackment.m_injuryAmount = counterDamage;
-        ComponentMiner.AttackBody(counterAttackment);
+        // Mark this specific Attackment while AttackBody runs. ProcessAttackment
+        // normally recalculates injury from AttackPower, which can erase the
+        // explicit bounded counter damage (especially for herbivore templates).
+        // The marker is removed even if the engine throws during hit processing.
+        m_preyRetaliationAttackments.Add(counterAttackment);
+        try
+        {
+            ComponentMiner.AttackBody(counterAttackment);
+        }
+        finally
+        {
+            m_preyRetaliationAttackments.Remove(counterAttackment);
+        }
     }
 
     /// <summary>
@@ -863,6 +876,33 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (attackment == null || attackment.Attacker == null ||
             attackment.Target == null || attackment.Attacker == attackment.Target)
             return;
+
+        // Our herbivore counter-hit already carries a deliberately selected
+        // injury amount. Preserve it instead of replacing it with
+        // CalculateInjuryAmount(), which may be zero for creature templates
+        // without a configured native attack power.
+        if (m_preyRetaliationAttackments.Contains(attackment))
+        {
+            ComponentHealth retaliationTargetHealth =
+                attackment.Target.FindComponent<ComponentHealth>();
+            float assignedDamage = attackment.m_injuryAmount;
+            if (retaliationTargetHealth == null ||
+                retaliationTargetHealth.Health <= 0f ||
+                retaliationTargetHealth.IsInvulnerable ||
+                float.IsNaN(assignedDamage) ||
+                float.IsInfinity(assignedDamage) ||
+                assignedDamage <= 0f)
+            {
+                attackment.m_injuryAmount = 0f;
+            }
+            else
+            {
+                attackment.m_injuryAmount = Math.Min(
+                    assignedDamage,
+                    GetPreyStrikeDamageCap(retaliationTargetHealth.Health));
+            }
+            return;
+        }
 
         // Player combat and Living Towns villagers are deliberately untouched.
         if (attackment.Attacker.FindComponent<ComponentPlayer>() != null ||
