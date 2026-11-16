@@ -323,6 +323,36 @@ foreach (Type type in allTypes.Where(t => aiTypesToInspect.Contains(t.FullName))
     }
 }
 
+
+foreach (Type type in allTypes.Where(t =>
+    t.FullName == "Game.Injury" ||
+    t.FullName == "Game.ComponentHealth" ||
+    t.FullName == "Game.ComponentCreature" ||
+    t.FullName == "Game.MeleeAttackment" ||
+    t.FullName == "Game.Attackment").OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== INJURY PIPELINE DETAIL " + type.FullName + " =====");
+    const BindingFlags ix = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(ix))
+        output.AppendLine("CTOR " + ctor + " | " + string.Join(", ", ctor.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)));
+    foreach (var p in type.GetProperties(ix).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var field in type.GetFields(ix).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + field.FieldType.FullName + " " + field.Name + " public=" + field.IsPublic);
+    foreach (var method in type.GetMethods(ix).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + method.ReturnType.FullName + " " + method.Name + "(" +
+            string.Join(", ", method.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+}
+DumpIl("Game.ComponentHealth", "Update");
+DumpIl("Game.ComponentHealth", "Injure");
+DumpIl("Game.ComponentHealth", "ApplyDamage");
+DumpIl("Game.Injury", ".ctor");
+DumpIl("Game.Injury", "Process");
+DumpIl("Game.MeleeAttackment", "ProcessAttackment");
+DumpIl("Game.Attackment", "ProcessAttackment");
+DumpIl("Game.Attackment", "ProcessAttackmentToCreature");
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
