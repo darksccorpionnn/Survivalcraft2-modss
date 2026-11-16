@@ -66,6 +66,7 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         public ComponentCreature Wolf;
         public double AttackTime;
         public float WolfHealthBefore;
+        public bool DamageConfirmed;
         public bool LinkedToWolfHit;
     }
 
@@ -505,11 +506,17 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
 
             if (wolfHealth.Health < strike.WolfHealthBefore - HealthEpsilon)
             {
-                m_nativeBullStrikeDamageConfirmed++;
-                Log.Information("[LivingTownsCombatTest] BULL_NATIVE_MELEE_DAMAGE_CONFIRMED: wolfHP " +
-                    strike.WolfHealthBefore.ToString("F3") + " -> " + wolfHealth.Health.ToString("F3") +
-                    "; gameTime=" + now.ToString("F3"));
-                m_pendingBullWolfStrikes.RemoveAt(i);
+                if (!strike.DamageConfirmed)
+                {
+                    strike.DamageConfirmed = true;
+                    m_nativeBullStrikeDamageConfirmed++;
+                    Log.Information("[LivingTownsCombatTest] BULL_NATIVE_MELEE_DAMAGE_CONFIRMED: wolfHP " +
+                        strike.WolfHealthBefore.ToString("F3") + " -> " + wolfHealth.Health.ToString("F3") +
+                        "; gameTime=" + now.ToString("F3"));
+                }
+
+                if (strike.LinkedToWolfHit || now - strike.AttackTime > NativeStrikeCorrelationWindow)
+                    m_pendingBullWolfStrikes.RemoveAt(i);
             }
             else if (now - strike.AttackTime >= NativeStrikeCorrelationWindow)
             {
