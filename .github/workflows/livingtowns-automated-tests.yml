@@ -1,0 +1,52 @@
+name: Living Towns Automated Checks
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "LivingTownsSheepAddon/**"
+      - "TownBootstrap/**"
+      - "tests/**"
+      - ".github/workflows/livingtowns-automated-tests.yml"
+      - "nuget.config"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore and build sheep addon
+        run: |
+          dotnet restore LivingTownsSheepAddon/LivingTownsSheepAddon.csproj --configfile nuget.config
+          dotnet build LivingTownsSheepAddon/LivingTownsSheepAddon.csproj --configuration Release --no-restore
+
+      - name: Restore and build TownBootstrap package
+        run: |
+          dotnet restore TownBootstrap/TownBootstrap.csproj --configfile nuget.config
+          dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release --no-restore
+
+      - name: Run static test suite
+        run: python3 tests/run_static_tests.py
+
+      - name: Upload test report and build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: LivingTowns-Automated-Test-Report
+          path: |
+            test-results/LivingTowns-TestReport.txt
+            test-results/LivingTowns-TestReport.json
+            LivingTownsSheepAddon/bin/Release/net10.0/LivingTownsSheepAddon.dll
+            TownBootstrap/bin/Release/TownBootstrap.scmod
+          if-no-files-found: error
+          retention-days: 30
