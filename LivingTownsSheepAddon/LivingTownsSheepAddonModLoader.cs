@@ -885,7 +885,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         {
             ComponentHealth retaliationTargetHealth =
                 attackment.Target.FindComponent<ComponentHealth>();
-            float assignedDamage = attackment.m_injuryAmount;
+            float assignedDamage = attackment.m_injuryAmount ?? 0f;
             if (retaliationTargetHealth == null ||
                 retaliationTargetHealth.Health <= 0f ||
                 retaliationTargetHealth.IsInvulnerable ||
