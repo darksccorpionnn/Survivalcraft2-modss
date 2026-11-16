@@ -1,0 +1,20 @@
+{
+  "DisplayName:KoylulerModu_MaleVillager": "Erkek Köylü",
+  "Description:KoylulerModu_MaleVillager": "Kasabada yaşayacak erkek köylü.",
+  "DisplayName:KoylulerModu_FemaleVillager": "Kadın Köylü",
+  "Description:KoylulerModu_FemaleVillager": "Kasabada yaşayacak kadın köylü.",
+  "DisplayName:KoylulerModu_Farmer": "Çiftçi",
+  "Description:KoylulerModu_Farmer": "Çiftçi karakteri. Meslek davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_Blacksmith": "Demirci",
+  "Description:KoylulerModu_Blacksmith": "Demirci karakteri. Meslek davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_Merchant": "Tüccar",
+  "Description:KoylulerModu_Merchant": "Tüccar karakteri. Ticaret davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_Healer": "Şifacı",
+  "Description:KoylulerModu_Healer": "Şifacı karakteri. Meslek davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_Guard": "Muhafız",
+  "Description:KoylulerModu_Guard": "Muhafız karakteri. Koruma davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_Hunter": "Avcı",
+  "Description:KoylulerModu_Hunter": "Avcı karakteri. Avlanma davranışları daha sonra eklenecek.",
+  "DisplayName:KoylulerModu_Shepherd": "Çoban",
+  "Description:KoylulerModu_Shepherd": "Çoban karakteri. Hayvanlarla ilgilenme davranışları daha sonra eklenecek."
+}
