@@ -755,17 +755,28 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             targetHealth.IsInvulnerable)
             return;
 
-        // If a natural predator hits an ordinary animal, make that animal
-        // fight back using its own native chase/attack behavior. This is a
-        // defensive response, not permanent prey aggression: it only starts
-        // after the animal has actually been hit.
+        // Prey retaliation is applied as a real native Injury to the predator.
+        // Merely assigning the prey's ChaseBehavior target is not sufficient:
+        // many herbivore templates have no active melee attack state, so they
+        // turn toward the predator but never produce an Attackment of their own.
+        // Apply a small counter-hit only after a predator has actually damaged
+        // the prey. The predator's own health component receives the injury.
         if (IsNaturalPredator(attackerCreature) &&
-            !IsNaturalPredator(targetCreature) &&
-            s_chaseAttackMethod != null)
+            !IsNaturalPredator(targetCreature))
         {
+            ComponentHealth predatorHealth = attackerCreature.ComponentHealth;
+            if (predatorHealth != null && predatorHealth.Health > 0f &&
+                !predatorHealth.IsInvulnerable)
+            {
+                predatorHealth.Injure(
+                    new Injury(1f, attackment.Target, false, "Melee"));
+            }
+
+            // Also ask the native chase behavior to face/chase the attacker,
+            // but do not depend on it for applying retaliation damage.
             ComponentChaseBehavior defenderChase =
                 targetCreature.Entity.FindComponent<ComponentChaseBehavior>();
-            if (defenderChase != null)
+            if (defenderChase != null && s_chaseAttackMethod != null)
             {
                 s_chaseAttackMethod.Invoke(
                     defenderChase,
