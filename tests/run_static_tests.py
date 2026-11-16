@@ -39,7 +39,7 @@ check("in_game_harness_loader_present", harness_loader.is_file(),
 if harness_info.is_file():
     info = json.loads(harness_info.read_text(encoding="utf-8"))
     check("harness_metadata_compatibility",
-          info.get("ApiVersion") == "1.9.5.1" and info.get("ScVersion") == "2.4.0.0",
+          info.get("ApiVersion") == "1.9.5.1" and info.get("ScVersion") == "2.4.0.0" and info.get("Version") == "0.2.1",
           "Harness metadata targets Survivalcraft 2.4.0.0 / API 1.9.5.1.")
 else:
     check("harness_metadata_compatibility", False, "Harness modinfo.json is missing.")
@@ -50,7 +50,7 @@ if harness_loader.is_file():
                   "RunReadOnlyScan", "ProcessPendingWolfBullHits",
                   "SubsystemBodies", "ComponentLivingTownsVillager",
                   "ComponentLivingTownsSheepBehavior", "IsWolf(", "IsBull(",
-                  "GetTwelvePercentCap", "RetaliationCooldown", "READ ONLY"):
+                  "GetTwelvePercentCap", "RetaliationCooldown", "now + remainingCooldown + 0.05", "READ ONLY"):
         check("harness_" + token.replace(" ", "_").replace("\"", "").replace("(", ""),
               token in source, "Expected read-only combat observer token is present.")
     check("harness_no_world_mutation_calls",
