@@ -12,7 +12,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private readonly HashSet<ComponentCreature> m_pendingPreyRetaliations = new();
     private readonly Dictionary<ComponentChaseBehavior, ComponentCreature> m_defensiveTargets = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_defensiveTargetUntil = new();
-    private readonly Dictionary<ComponentChaseBehavior, double> m_nextDefensiveStrikeTime = new();
+    // Shared across every chase component and addon-loader instance: one animal can land only one defensive hit per cooldown.
+    private static readonly Dictionary<ComponentCreature, double> s_nextDefensiveStrikeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorStrikeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
@@ -824,11 +825,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return false;
 
         double now = defender.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        if (m_nextDefensiveStrikeTime.TryGetValue(chaseBehavior, out double nextHit) &&
+        // Key by the defending creature, not its chase component. Some creature
+        // templates can expose multiple chase callbacks; all must share one lock.
+        if (s_nextDefensiveStrikeTime.TryGetValue(defender, out double nextHit) &&
             now < nextHit)
             return false;
 
-        m_nextDefensiveStrikeTime[chaseBehavior] = now + 2.5;
+        s_nextDefensiveStrikeTime[defender] = now + 2.5;
 
         Engine.Vector3 hitPoint = predatorBody.BoundingBox.Center();
         Engine.Vector3 hitDirection = hitPoint - defenderBody.BoundingBox.Center();
