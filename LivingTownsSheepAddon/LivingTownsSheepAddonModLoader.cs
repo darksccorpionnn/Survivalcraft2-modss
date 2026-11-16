@@ -9,6 +9,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorFallbackHitTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
         "Attack",
@@ -19,6 +20,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private static readonly FieldInfo s_chaseMaxAttackRangeField =
         typeof(ComponentChaseBehavior).GetField(
             "MaxAttackRange", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    private static readonly MethodInfo s_chaseGetHitBodyMethod =
+        typeof(ComponentChaseBehavior).GetMethod(
+            "GetHitBody",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new[] { typeof(ComponentBody), typeof(Engine.Vector3).MakeByRefType() },
+            null);
     private static readonly MethodInfo s_chaseStopAttackMethod =
         typeof(ComponentChaseBehavior).GetMethod(
             "StopAttack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -44,6 +52,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("CalculateCreatureInjuryAmount", this);
         ModsManager.RegisterHook("ChaseBehaviorScoreTarget", this);
         ModsManager.RegisterHook("UpdateChaseBehaviorLookingForTarget", this);
+        ModsManager.RegisterHook("UpdateChaseBehaviorChasing", this);
+        ModsManager.RegisterHook("OnChaseBehaviorAttacked", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -620,6 +630,86 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
+    /// Fallback only for predator models whose animation does not produce a
+    /// reliable native IsAttackHitMoment. The hit still goes through the game's
+    /// ComponentMiner.Hit method, so its normal hit interval, creature hit chance,
+    /// Attackment and damage calculation remain authoritative.
+    /// </summary>
+    public override void UpdateChaseBehaviorChasing(ComponentChaseBehavior chaseBehavior)
+    {
+        if (chaseBehavior == null || s_chaseGetHitBodyMethod == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        ComponentCreature target = chaseBehavior.Target;
+        if (!IsValidAnimalPrey(attacker, target))
+            return;
+
+        ComponentMiner miner = attacker.Entity.FindComponent<ComponentMiner>();
+        ComponentBody attackerBody = attacker.ComponentBody;
+        ComponentBody targetBody = target.ComponentBody;
+        if (miner == null || attackerBody == null || targetBody == null)
+            return;
+
+        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (!m_nextPredatorFallbackHitTime.TryGetValue(chaseBehavior, out double nextHit))
+        {
+            // Give the native model animation a chance to deliver its normal hit first.
+            m_nextPredatorFallbackHitTime[chaseBehavior] = now + 1.1;
+            return;
+        }
+        if (now < nextHit)
+            return;
+
+        object[] hitArgs = { targetBody, Engine.Vector3.Zero };
+        ComponentBody hitBody =
+            s_chaseGetHitBodyMethod.Invoke(chaseBehavior, hitArgs) as ComponentBody;
+        if (hitBody == null)
+        {
+            // No unobstructed target body in native attack range; retry gently.
+            m_nextPredatorFallbackHitTime[chaseBehavior] = now + 0.35;
+            return;
+        }
+
+        Engine.Vector3 hitPoint = (Engine.Vector3)hitArgs[1];
+
+        // Use the same entry point as the game's native animation-hit path.
+        // ComponentMiner.Hit enforces the creature's own HitInterval and uses
+        // the normal AI hit probability (1.0), preventing duplicate damage.
+        miner.Hit(hitBody, hitPoint, attackerBody.Matrix.Forward);
+
+        // A bounded fallback attempt rate avoids repeated attack spam. A native
+        // animation hit will extend this window through OnChaseBehaviorAttacked.
+        m_nextPredatorFallbackHitTime[chaseBehavior] = now + 1.25;
+    }
+
+    /// <summary>
+    /// When the native attack animation already produced a valid hit moment,
+    /// defer the fallback so the same chase cannot deliver a second strike.
+    /// Do not suppress the original native hit or its attack sound.
+    /// </summary>
+    public override void OnChaseBehaviorAttacked(
+        ComponentChaseBehavior chaseBehavior,
+        float chaseTimeBefore,
+        ref float chaseTime,
+        ref bool hitBody,
+        ref bool playAttackSound)
+    {
+        if (chaseBehavior == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (!IsNaturalPredator(attacker) ||
+            !IsValidAnimalPrey(attacker, chaseBehavior.Target))
+            return;
+
+        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        m_nextPredatorFallbackHitTime[chaseBehavior] = now + 1.25;
+    }
+
+    /// <summary>
     /// Gives prey a real counter-hit when a natural predator lands a native melee
     /// hit. The counter uses the prey's own melee power and the game's native
     /// Attackment -> Injury -> ComponentHealth pipeline, with a short per-prey
@@ -768,15 +858,19 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
             if (targetHealth.Health > 3f)
             {
-                attackment.m_injuryAmount = Math.Min(nativeInjury, 3f);
+                // Keep normal predator strikes meaningful even against high-
+                // resilience prey, while preventing a one-hit kill.
+                attackment.m_injuryAmount = Math.Clamp(nativeInjury, 1f, 3f);
             }
             else if (targetHealth.Health > 1f)
             {
-                attackment.m_injuryAmount = Math.Min(nativeInjury, targetHealth.Health * 0.5f);
+                attackment.m_injuryAmount = Math.Min(
+                    Math.Max(nativeInjury, 1f), targetHealth.Health * 0.5f);
             }
             else
             {
-                attackment.m_injuryAmount = Math.Min(nativeInjury, targetHealth.Health);
+                attackment.m_injuryAmount = Math.Min(
+                    Math.Max(nativeInjury, 1f), targetHealth.Health);
             }
         }
         else if (float.IsNaN(nativeInjury) || float.IsInfinity(nativeInjury) ||
