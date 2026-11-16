@@ -1,0 +1,59 @@
+name: Survivalcraft Mod Quality Gate
+
+on:
+  push:
+    branches: [ main, "automation/**" ]
+    paths:
+      - "TownBootstrap/**"
+      - "tools/**"
+      - "tests/**"
+      - ".github/workflows/mod-quality-gate.yml"
+  pull_request:
+    paths:
+      - "TownBootstrap/**"
+      - "tools/**"
+      - "tests/**"
+      - ".github/workflows/mod-quality-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run checker unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Restore mod
+        run: dotnet restore TownBootstrap/TownBootstrap.csproj --configfile nuget.config
+
+      - name: Build mod
+        run: dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release --no-restore
+
+      - name: Validate packaged mod
+        run: |
+          python tools/scmod_check.py TownBootstrap/bin/Release/TownBootstrap.scmod \
+            --api 1.9.5.1 --game 2.4.0.0
+
+      - name: Upload tested mod and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: TownBootstrap-tested
+          path: TownBootstrap/bin/Release/TownBootstrap.scmod
+          if-no-files-found: error
+          retention-days: 14
