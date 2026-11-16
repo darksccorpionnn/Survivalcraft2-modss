@@ -691,8 +691,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         ComponentHealth predatorHealth = predator.ComponentHealth;
+        ComponentHealth preyHealth = prey.ComponentHealth;
         if (predatorHealth == null || predatorHealth.Health <= 0f ||
-            predatorHealth.IsInvulnerable)
+            predatorHealth.IsInvulnerable ||
+            preyHealth == null || preyHealth.Health <= 0f)
             return;
 
         double now = prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
@@ -700,37 +702,22 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             now < nextRetaliation)
             return;
 
-        // Queue one retaliation after the incoming predator injury has completed.
-        // This is deliberately a direct Injury credited to the prey: many herbivore
-        // templates do not produce their own melee animation hit event, so a chase
-        // target or a synthetic Attackment alone does not reliably hurt the predator.
-        m_nextPreyRetaliationTime[prey] = now + 3.0;
+        // Apply the counter-hit immediately. The previous delayed callback could
+        // be skipped when the game-time queue was suspended or the entity changed
+        // state between the incoming strike and the queued execution.
+        m_nextPreyRetaliationTime[prey] = now + 2.5;
 
-        SubsystemTime subsystemTime =
-            prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true);
-        subsystemTime.QueueGameTimeDelayedExecution(
-            now + 0.05,
-            delegate
-            {
-                if (!prey.Entity.IsAddedToProject ||
-                    !predator.Entity.IsAddedToProject)
-                    return;
+        // Use the standard Injury pipeline and credit the herbivore as attacker.
+        // CalculateCreatureInjuryAmount below applies the same strict 5% cap.
+        float counterDamage = Math.Min(
+            predatorHealth.Health * 0.05f,
+            predatorHealth.Health);
+        if (counterDamage <= 0f ||
+            float.IsNaN(counterDamage) || float.IsInfinity(counterDamage))
+            return;
 
-                ComponentHealth currentPredatorHealth = predator.ComponentHealth;
-                ComponentHealth currentPreyHealth = prey.ComponentHealth;
-                if (currentPredatorHealth == null ||
-                    currentPredatorHealth.Health <= 0f ||
-                    currentPredatorHealth.IsInvulnerable ||
-                    currentPreyHealth == null ||
-                    currentPreyHealth.Health <= 0f)
-                    return;
-
-                // The final Injury hook below bounds this to <=1 HP and at most
-                // half the predator's remaining health, while still permitting a
-                // final blow once the predator is critically weak.
-                currentPredatorHealth.Injure(
-                    new Injury(currentPredatorHealth.Health * 0.04f, prey, false, "Melee"));
-            });
+        predatorHealth.Injure(
+            new Injury(counterDamage, prey, false, "Melee"));
     }
 
     /// <summary>
