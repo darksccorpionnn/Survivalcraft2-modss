@@ -482,9 +482,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // Natural predators may hunt ordinary animals. Other animals only receive
         // a target score for a predator that is actively engaging them (the
         // retaliation target is assigned in ProcessAttackment).
-        bool isPredator =
-            attacker.Category == CreatureCategory.LandPredator ||
-            attacker.Category == CreatureCategory.WaterPredator;
+        bool isPredator = IsNaturalPredator(attacker);
         if (!isPredator)
             return;
 
@@ -637,7 +635,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     /// </summary>
     public override void UpdateChaseBehaviorChasing(ComponentChaseBehavior chaseBehavior)
     {
-        if (chaseBehavior == null || s_chaseGetHitBodyMethod == null)
+        if (chaseBehavior == null || chaseBehavior.Entity == null)
             return;
 
         ComponentCreature attacker =
@@ -652,35 +650,51 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (miner == null || attackerBody == null || targetBody == null)
             return;
 
+        // Use the engine's own geometric attack-range test, but do not rely on
+        // IsAttackHitMoment or GetHitBody's body-raycast result. Custom animal
+        // models often never emit a reliable animation hit moment, and the
+        // raycast can miss their body even while the chase behavior says they
+        // are in melee range. Creating the same MeleeAttackment directly keeps
+        // the normal armor, resilience, injury, sound and death pipeline.
+        if (!chaseBehavior.IsTargetInAttackRange(targetBody))
+            return;
+
         double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        if (!m_nextPredatorFallbackHitTime.TryGetValue(chaseBehavior, out double nextHit))
+        if (m_nextPredatorFallbackHitTime.TryGetValue(chaseBehavior, out double nextHit) &&
+            now < nextHit)
+            return;
+
+        Engine.Vector3 hitPoint = targetBody.BoundingBox.Center();
+        Engine.Vector3 hitDirection = hitPoint - attackerBody.BoundingBox.Center();
+        if (hitDirection.LengthSquared() < 0.0001f)
+            hitDirection = attackerBody.Matrix.Forward;
+        else
+            hitDirection = Engine.Vector3.Normalize(hitDirection);
+
+        float attackPower = miner.AttackPower * miner.StrengthFactor;
+        if (float.IsNaN(attackPower) || float.IsInfinity(attackPower) || attackPower < 1f)
+            attackPower = 1f;
+
+        var attackment = new MeleeAttackment(
+            targetBody,
+            attacker.Entity,
+            hitPoint,
+            hitDirection,
+            attackPower)
         {
-            // Give the native model animation a chance to deliver its normal hit first.
-            m_nextPredatorFallbackHitTime[chaseBehavior] = now + 1.1;
-            return;
-        }
-        if (now < nextHit)
-            return;
+            EnableArmorProtection = true,
+            EnableResilienceFactor = true,
+            EnableHitValueParticleSystem = true
+        };
 
-        object[] hitArgs = { targetBody, Engine.Vector3.Zero };
-        ComponentBody hitBody =
-            s_chaseGetHitBodyMethod.Invoke(chaseBehavior, hitArgs) as ComponentBody;
-        if (hitBody == null)
-        {
-            // No unobstructed target body in native attack range; retry gently.
-            m_nextPredatorFallbackHitTime[chaseBehavior] = now + 0.35;
-            return;
-        }
+        // This bypasses only the fragile animation/raycast gate. Damage still
+        // goes through ComponentMiner.AttackBody -> Attackment.ProcessAttackment,
+        // where the balanced predator damage and prey retaliation are applied.
+        ComponentMiner.AttackBody(attackment);
+        miner.Poke(false);
 
-        Engine.Vector3 hitPoint = (Engine.Vector3)hitArgs[1];
-
-        // Use the same entry point as the game's native animation-hit path.
-        // ComponentMiner.Hit enforces the creature's own HitInterval and uses
-        // the normal AI hit probability (1.0), preventing duplicate damage.
-        miner.Hit(hitBody, hitPoint, attackerBody.Matrix.Forward);
-
-        // A bounded fallback attempt rate avoids repeated attack spam. A native
-        // animation hit will extend this window through OnChaseBehaviorAttacked.
+        // A single shared cooldown also prevents the native animation path from
+        // being followed immediately by this direct melee fallback.
         m_nextPredatorFallbackHitTime[chaseBehavior] = now + 1.25;
     }
 
