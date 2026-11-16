@@ -39,7 +39,7 @@ check("in_game_harness_loader_present", harness_loader.is_file(),
 if harness_info.is_file():
     info = json.loads(harness_info.read_text(encoding="utf-8"))
     check("harness_metadata_compatibility",
-          info.get("ApiVersion") == "1.9.5.1" and info.get("ScVersion") == "2.4.0.0" and info.get("Version") == "0.2.1",
+          info.get("ApiVersion") == "1.9.5.1" and info.get("ScVersion") == "2.4.0.0" and info.get("Version") == "0.2.2",
           "Harness metadata targets Survivalcraft 2.4.0.0 / API 1.9.5.1.")
 else:
     check("harness_metadata_compatibility", False, "Harness modinfo.json is missing.")
@@ -47,12 +47,12 @@ else:
 if harness_loader.is_file():
     source = harness_loader.read_text(encoding="utf-8")
     for token in ("RegisterHook(\"GuiUpdate\"", "RegisterHook(\"ProcessAttackment\"",
-                  "RunReadOnlyScan", "ProcessPendingWolfBullHits",
+                  "RunReadOnlyScan", "ProcessPendingWolfBullHits", "ProcessPendingBullWolfStrikes",
                   "SubsystemBodies", "ComponentLivingTownsVillager",
                   "ComponentLivingTownsSheepBehavior", "IsWolf(", "IsBull(",
-                  "GetTwelvePercentCap", "RetaliationCooldown", "now + remainingCooldown + 0.05", "READ ONLY"):
+                  "GetTwelvePercentCap", "RetaliationCooldown", "NativeStrikeCorrelationWindow", "BULL_NATIVE_MELEE_ATTEMPT", "BULL_NATIVE_MELEE_DAMAGE_CONFIRMED", "HEALTH_LOSS_WITHOUT_NATIVE_BULL_MELEE", "TryFindNativeBullStrike", "m_pendingBullWolfStrikes", "READ ONLY"):
         check("harness_" + token.replace(" ", "_").replace("\"", "").replace("(", ""),
-              token in source, "Expected read-only combat observer token is present.")
+              token in source, "Expected read-only combat observer token, native bull melee verification, and unmatched-health-loss failure gate are present.")
     check("harness_no_world_mutation_calls",
           all(token not in source for token in ("SpawnCreature(", ".Injure(", ".SetCellValue(",
                                                   ".Health =", "Attackment.AttackPower =")),
