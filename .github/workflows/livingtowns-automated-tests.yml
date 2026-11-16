@@ -61,12 +61,13 @@ jobs:
       - name: Publish installable test harness package
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: livingtowns-test-harness-v0.2.1
-          name: Living Towns Test Harness 0.2.1
+          tag_name: livingtowns-test-harness-v0.2.2
+          name: Living Towns Test Harness 0.2.2
           prerelease: true
           body: |
-            Read-only Android in-game observer for real wolf-versus-bull combat.
-            Checks actual health loss, counter-retaliation, 12% damage caps and the 2.5-second cooldown.
+            Read-only Android in-game observer for wolf-versus-bull combat.
+            Requires a native bull-to-wolf melee event before wolf health loss can count as a counterattack.
+            Checks native strike events, health correlation, 12% damage caps and the 2.5-second attack cooldown.
             Compatible with Survivalcraft 2.4.0.0 / API 1.9.5.1.
           files: LivingTownsTestHarness/bin/Release/LivingTownsTestHarness.scmod
         env:
