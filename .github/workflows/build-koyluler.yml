@@ -1,0 +1,76 @@
+name: Build Koyluler Mod
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "KoylulerModu/**"
+      - "nuget.config"
+      - ".github/workflows/build-koyluler.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
+      - name: Build
+        run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
+      - name: Verify villager templates
+        run: |
+          python3 - <<'PY'
+          import json
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          p = Path('KoylulerModu')
+          db = ET.parse(p / 'Assets/KoylulerDatabase.xdb').getroot()
+          entities = db.findall('EntityTemplate')
+          expected = {
+              'KoylulerModu_MaleVillager', 'KoylulerModu_FemaleVillager',
+              'KoylulerModu_Farmer', 'KoylulerModu_Blacksmith',
+              'KoylulerModu_Merchant', 'KoylulerModu_Healer',
+              'KoylulerModu_Guard', 'KoylulerModu_Hunter',
+              'KoylulerModu_Shepherd'
+          }
+          actual = {e.attrib.get('Name') for e in entities}
+          if actual != expected:
+              raise SystemExit(f'Unexpected entity set: {actual}')
+          for e in entities:
+              names = {c.attrib.get('Name') for c in e.findall('MemberComponentTemplate')}
+              if 'HumanModel' not in names or 'Creature' not in names or 'Locomotion' not in names:
+                  raise SystemExit(f'{e.attrib.get("Name")} is missing core native components')
+              if 'LivingTownsVillagerController' in names:
+                  raise SystemExit('Legacy custom controller must not be required')
+              model = next(c for c in e.findall('MemberComponentTemplate') if c.attrib.get('Name') == 'HumanModel')
+              params = {x.attrib.get('Name'): x.attrib.get('Value') for x in model.findall('Parameter')}
+              if not (p / 'Assets' / (params['ModelName'] + '.glb')).is_file():
+                  raise SystemExit(f'Missing model asset for {e.attrib.get("Name")}')
+              if not (p / 'Assets' / (params['AnimationConfigPath'] + '.json')).is_file():
+                  raise SystemExit(f'Missing animation config for {e.attrib.get("Name")}')
+          for lang in ('tr-TR', 'en-US'):
+              json.loads((p / f'Assets/Lang/{lang}.json').read_text(encoding='utf-8'))
+          dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
+          if not dll.is_file():
+              raise SystemExit(f'Missing compiled assembly: {dll}')
+          print(f'PASS: {len(entities)} templates and all source asset references.')
+          PY
+      - name: Upload compiled mod files
+        uses: actions/upload-artifact@v4
+        with:
+          name: KoylulerModu-build
+          path: |
+            KoylulerModu/bin/Release/net10.0/KoylulerModu.dll
+            KoylulerModu/bin/Release/net10.0/modinfo.json
+            KoylulerModu/bin/Release/net10.0/Assets/**
+          if-no-files-found: error
+          retention-days: 14
