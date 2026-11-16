@@ -769,7 +769,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
                 !predatorHealth.IsInvulnerable)
             {
                 predatorHealth.Injure(
-                    new Injury(1f, attackment.Target, false, "Melee"));
+                    new Injury(1f, targetCreature, false, "Melee"));
             }
 
             // Also ask the native chase behavior to face/chase the attacker,
