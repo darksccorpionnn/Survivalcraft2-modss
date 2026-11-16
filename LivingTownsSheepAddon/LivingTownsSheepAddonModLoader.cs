@@ -621,7 +621,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     /// Gives prey a real counter-hit when a natural predator lands a native melee
     /// hit. The counter uses the prey's own melee power and the game's native
     /// Attackment -> Injury -> ComponentHealth pipeline, with a short per-prey
-    /// cooldown and a strict one-HP / half-remaining-health ceiling.
+    /// cooldown and a small 0.03 (3%-of-full-health) counter-hit.
     /// </summary>
     private void TryApplyPreyRetaliation(
         ComponentCreature prey,
@@ -668,9 +668,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
                     currentPreyHealth.Health <= 0f)
                     return;
 
-                // The final Injury hook below bounds this to <=1 HP and at most
-                // half the predator's remaining health, while still permitting a
-                // final blow once the predator is critically weak.
                 // Health is normalized to 0..1 in Survivalcraft. This retaliation
                 // therefore removes only 3% of a full health bar, never multiple HP.
                 currentPredatorHealth.Injure(
@@ -679,9 +676,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
-    /// Makes creature-vs-creature melee attacks use a non-zero native attack power.
-    /// This hook is intentionally separate from player melee: AI attacks go through
-    /// Attackment.ProcessAttackment and do not pass through OnPlayerInputHit.
+    /// Applies a conservative normalized-health cap to native predator/prey melee.
+    /// Native hit timing, armor, resilience and attack animations remain authoritative.
     /// </summary>
     public override void ProcessAttackment(Attackment attackment)
     {
@@ -764,7 +760,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     /// every source of Injury: Attackment invokes later body/injury callbacks before
     /// health is reduced. This hook clamps the actual Injury.Amount immediately
     /// before ComponentHealth subtracts it, including native AI and direct Injury paths.
-    /// A healthy predator can never lose more than half of its remaining health to
+    /// A healthy predator can never lose more than 20% of its remaining health to
     /// one non-player, non-predator animal strike.
     /// </summary>
     public override void CalculateCreatureInjuryAmount(Injury injury)
