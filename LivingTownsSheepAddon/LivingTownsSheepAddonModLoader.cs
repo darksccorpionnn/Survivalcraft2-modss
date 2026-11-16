@@ -733,12 +733,12 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             !chaseBehavior.IsTargetInAttackRange(target.ComponentBody))
             return;
 
-        // Predator strikes and defensive prey strikes have separate per-creature
-        // cooldowns. Each strike is produced by this creature's own chase state.
+        // The predator fallback remains for creatures whose native animation
+        // callback is unreliable. Defensive prey must strike ONLY from
+        // OnChaseBehaviorAttacked; running a second per-frame fallback here caused
+        // one visible swing to deal damage twice (fallback + native animation hit).
         if (IsNaturalPredator(attacker))
             TryPerformPredatorStrike(chaseBehavior, attacker, target);
-        else
-            TryPerformDefensiveStrike(chaseBehavior, attacker, target);
     }
 
     private bool TryPerformPredatorStrike(
@@ -881,11 +881,15 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             !IsValidChaseStrikeTarget(attacker, chaseBehavior.Target))
             return;
 
-        // Never allow ComponentMiner.Hit to add a second, uncapped native strike.
+        // Consume the native animation hit frame and route it through exactly
+        // one controlled Attackment. This is the ONLY damage path for defensive
+        // prey; UpdateChaseBehaviorChasing no longer applies a parallel hit.
         hitBody = false;
 
-        bool applied = TryPerformPredatorStrike(
-            chaseBehavior, attacker, chaseBehavior.Target);
+        bool applied = IsNaturalPredator(attacker)
+            ? TryPerformPredatorStrike(chaseBehavior, attacker, chaseBehavior.Target)
+            : TryPerformDefensiveStrike(chaseBehavior, attacker, chaseBehavior.Target);
+
         if (!applied)
             playAttackSound = false;
     }
