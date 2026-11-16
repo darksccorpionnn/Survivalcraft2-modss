@@ -1,4 +1,4 @@
-# Living Towns Test Harness 0.2.0
+# Living Towns Test Harness 0.2.1
 
 Compatibility:
 - Survivalcraft 2.4.0.0
@@ -21,7 +21,7 @@ The observer records actual melee-hook events, then checks later health values. 
 - whether the bull caused a real wolf health loss after being hit;
 - whether each observed hit stayed at or below 12% of the target's remaining health;
 - one-hit deaths above the critical-health exception;
-- whether retaliation happened again inside the 2.5-second cooldown.
+- whether another retaliation occurred before the full 2.5-second cooldown expired. The observer waits through the entire remaining cooldown before marking a probe as passed.
 
 Species labels are read from runtime metadata. The harness does not guess species when it cannot identify a wolf or bull.
 
