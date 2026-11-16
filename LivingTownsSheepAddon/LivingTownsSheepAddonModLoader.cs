@@ -48,6 +48,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("OnMinerHit", this);
         ModsManager.RegisterHook("OnMinerHit2", this);
         ModsManager.RegisterHook("ProcessAttackment", this);
+        ModsManager.RegisterHook("CalculateCreatureInjuryAmount", this);
         ModsManager.RegisterHook("ChaseBehaviorScoreTarget", this);
         ModsManager.RegisterHook("UpdateChaseBehaviorLookingForTarget", this);
         ModsManager.RegisterHook("UpdateChaseBehaviorChasing", this);
@@ -842,6 +843,47 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             // hits without changing player damage or villager interactions.
             attackment.m_injuryAmount = 1f;
         }
+    }
+
+    /// <summary>
+    /// Last-stage prey damage guard. ProcessAttackment alone is not sufficient for
+    /// every source of Injury: Attackment invokes later body/injury callbacks before
+    /// health is reduced. This hook clamps the actual Injury.Amount immediately
+    /// before ComponentHealth subtracts it, including native AI and direct Injury paths.
+    /// A healthy predator can never lose more than half of its remaining health to
+    /// one non-player, non-predator animal strike.
+    /// </summary>
+    public override void CalculateCreatureInjuryAmount(Injury injury)
+    {
+        if (injury == null || injury.ComponentHealth == null)
+            return;
+
+        ComponentCreature attacker = injury.Attacker;
+        ComponentCreature target =
+            injury.ComponentHealth.Entity?.FindComponent<ComponentCreature>();
+        if (attacker == null || target == null ||
+            attacker.Entity == null || target.Entity == null)
+            return;
+
+        // Keep player combat, villagers and predator-vs-predator combat unchanged.
+        if (attacker.Entity.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(attacker.Entity) ||
+            IsLivingTownsVillager(target.Entity) ||
+            IsNaturalPredator(attacker) ||
+            !IsNaturalPredator(target))
+            return;
+
+        float amount = injury.Amount;
+        float health = injury.ComponentHealth.Health;
+        if (float.IsNaN(amount) || float.IsInfinity(amount) || amount <= 0f ||
+            float.IsNaN(health) || float.IsInfinity(health) || health <= 0.1f)
+            return;
+
+        // Limit each strike to at most 1 HP and at most 50% of current health.
+        // This also protects predators whose total health is below 2 HP.
+        float maximumInjury = Math.Min(1f, health * 0.5f);
+        if (amount > maximumInjury)
+            injury.Amount = maximumInjury;
     }
 
     public override void OnPlayerInputInteract(
