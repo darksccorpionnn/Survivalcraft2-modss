@@ -197,8 +197,6 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         if (!m_combatWatch || attackment == null ||
             !(attackment is MeleeAttackment) ||
             attackment.Attacker == null || attackment.Target == null ||
-            attackment.Attacker == attackment.Target ||
-            attackment.Attacker == null || attackment.Target == null ||
             attackment.Attacker == attackment.Target)
             return;
 
