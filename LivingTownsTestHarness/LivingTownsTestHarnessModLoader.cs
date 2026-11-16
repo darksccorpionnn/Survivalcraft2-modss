@@ -300,7 +300,15 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
                     {
                         double remainingCooldown = lastRetaliation + RetaliationCooldown - now;
                         hit.CooldownProbe = remainingCooldown > 0.0;
-                        hit.CooldownProbeWindowValid = remainingCooldown > RetaliationObservationWindow + 0.05;
+                        hit.CooldownProbeWindowValid = remainingCooldown > 0.0;
+                        if (hit.CooldownProbe && hit.CooldownProbeWindowValid)
+                        {
+                            // Observe the entire remaining cooldown, not just the ordinary
+                            // retaliation window. A shorter sample cannot prove a 2.5s cooldown.
+                            hit.ObserveUntil = Math.Max(
+                                hit.ObserveUntil,
+                                now + remainingCooldown + 0.05);
+                        }
                         if (hit.CooldownProbe && !hit.CooldownProbeWindowValid)
                         {
                             m_cooldownBlocked++;
