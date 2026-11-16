@@ -9,6 +9,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorMeleeTime = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
         "Attack",
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
@@ -476,7 +477,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
         }
 
-        // Only natural predators receive the broader animal-target selection.
+        // Natural predators may hunt ordinary animals. Other animals only receive
+        // a target score for a predator that is actively engaging them (the
+        // retaliation target is assigned in ProcessAttackment).
         bool isPredator =
             attacker.Category == CreatureCategory.LandPredator ||
             attacker.Category == CreatureCategory.WaterPredator;
@@ -504,6 +507,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             float distance = Engine.Vector3.Distance(
                 attacker.ComponentBody.Position,
                 creatureToBeTarget.ComponentBody.Position);
+            if (distance > 9f)
+                return;
             score = 0.01f / (1f + distance);
         }
 
@@ -564,7 +569,13 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             CreatureCategory.WaterOther |
             CreatureCategory.Bird;
         s_chaseAutoChaseMaskField?.SetValue(chaseBehavior, preyMask);
-        s_chaseNonPlayerProbabilityField?.SetValue(chaseBehavior, 1f);
+        s_chaseNonPlayerProbabilityField?.SetValue(chaseBehavior, 0.25f);
+
+        double scanNow = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextPredatorTargetScanTime.TryGetValue(chaseBehavior, out double nextScan) &&
+            scanNow < nextScan)
+            return;
+        m_nextPredatorTargetScanTime[chaseBehavior] = scanNow + 3.0;
 
         ComponentCreature currentTarget = chaseBehavior.Target;
         if (IsValidAnimalPrey(attacker, currentTarget))
@@ -572,7 +583,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         SubsystemBodies bodies =
             attacker.Project.FindSubsystem<SubsystemBodies>(throwOnError: true);
-        const float acquisitionRange = 18f;
+        const float acquisitionRange = 9f;
         float bestDistanceSquared = acquisitionRange * acquisitionRange;
         ComponentCreature nearestPrey = null;
 
@@ -684,7 +695,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // Do not apply a second fallback Injury here: doing so can double-hit
         // targets whose health update is delayed by another mod's hook.
 
-        m_nextPredatorMeleeTime[chaseBehavior] = now + 1.2;
+        m_nextPredatorMeleeTime[chaseBehavior] = now + 2.5;
     }
 
     /// <summary>
@@ -744,6 +755,24 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             targetHealth.IsInvulnerable)
             return;
 
+        // If a natural predator hits an ordinary animal, make that animal
+        // fight back using its own native chase/attack behavior. This is a
+        // defensive response, not permanent prey aggression: it only starts
+        // after the animal has actually been hit.
+        if (IsNaturalPredator(attackerCreature) &&
+            !IsNaturalPredator(targetCreature) &&
+            s_chaseAttackMethod != null)
+        {
+            ComponentChaseBehavior defenderChase =
+                targetCreature.Entity.FindComponent<ComponentChaseBehavior>();
+            if (defenderChase != null)
+            {
+                s_chaseAttackMethod.Invoke(
+                    defenderChase,
+                    new object[] { attackerCreature, 5f, 3f, false });
+            }
+        }
+
         // Record animation-driven native hits as well, so the bounded fallback
         // cannot create a second strike in the same attack window.
         ComponentChaseBehavior chaseBehavior =
@@ -753,7 +782,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         {
             double now = attackment.Attacker.Project
                 .FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-            m_nextPredatorMeleeTime[chaseBehavior] = now + 1.2;
+            m_nextPredatorMeleeTime[chaseBehavior] = now + 2.5;
         }
 
         // Native AI melee already created this Attackment after a successful hit
