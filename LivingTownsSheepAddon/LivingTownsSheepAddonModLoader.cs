@@ -637,7 +637,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ComponentHealth predatorHealth = predator.ComponentHealth;
         ComponentBody predatorBody = predator.ComponentBody;
         ComponentBody preyBody = prey.ComponentBody;
-        if (predatorHealth == null || predatorHealth.Health <= 0.1f ||
+        if (predatorHealth == null || predatorHealth.Health <= 0f ||
             predatorHealth.IsInvulnerable ||
             predatorBody == null || preyBody == null)
             return;
