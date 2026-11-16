@@ -10,6 +10,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
     private readonly HashSet<ComponentCreature> m_pendingPreyRetaliations = new();
+    private readonly Dictionary<ComponentChaseBehavior, ComponentCreature> m_defensiveTargets = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_defensiveTargetUntil = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_nextDefensiveStrikeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorStrikeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
@@ -424,7 +427,19 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // retaliation target is assigned in ProcessAttackment).
         bool isPredator = IsNaturalPredator(attacker);
         if (!isPredator)
+        {
+            // A non-predator may pursue only the predator that recently injured it.
+            // The prey's own ChaseBehavior controls movement and attack animation.
+            if (!IsValidDefensiveTarget(chaseBehavior, attacker, creatureToBeTarget))
+                return;
+
+            float defensiveDistance = Engine.Vector3.Distance(
+                attacker.ComponentBody.Position,
+                creatureToBeTarget.ComponentBody.Position);
+            score = Math.Max(score, 0.01f / (1f + defensiveDistance));
+            chaseBehavior.AttacksNonPlayerCreature = true;
             return;
+        }
 
         ComponentHealth targetHealth = creatureToBeTarget.ComponentHealth;
         if (targetHealth == null || targetHealth.Health <= 0f ||
@@ -484,7 +499,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
     // Player targets are allowed only when the creature's own chase state has
     // already selected that player. Non-player targets still use predator/prey rules.
-    private static bool IsValidChaseStrikeTarget(
+    private bool IsValidChaseStrikeTarget(
         ComponentCreature attacker,
         ComponentCreature target)
     {
@@ -503,7 +518,82 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (target.Entity.FindComponent<ComponentPlayer>() != null)
             return true;
 
-        return IsValidAnimalPrey(attacker, target);
+        return IsValidAnimalPrey(attacker, target) ||
+               IsValidDefensiveStrikeTarget(attacker, target);
+    }
+
+    private bool IsValidDefensiveTarget(
+        ComponentChaseBehavior chaseBehavior,
+        ComponentCreature defender,
+        ComponentCreature predator)
+    {
+        if (chaseBehavior == null || defender == null || predator == null ||
+            defender.Entity == null || predator.Entity == null ||
+            IsNaturalPredator(defender) || !IsNaturalPredator(predator) ||
+            !defender.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject ||
+            predator.Entity.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(predator.Entity))
+            return false;
+
+        if (!m_defensiveTargets.TryGetValue(chaseBehavior, out ComponentCreature expected) ||
+            expected != predator ||
+            !m_defensiveTargetUntil.TryGetValue(chaseBehavior, out double expiresAt))
+            return false;
+
+        double now = defender.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        ComponentHealth defenderHealth = defender.ComponentHealth;
+        ComponentHealth predatorHealth = predator.ComponentHealth;
+        return now <= expiresAt &&
+               defenderHealth != null && defenderHealth.Health > 0f &&
+               predatorHealth != null && predatorHealth.Health > 0f &&
+               !predatorHealth.IsInvulnerable;
+    }
+
+    private bool IsValidDefensiveStrikeTarget(
+        ComponentCreature defender,
+        ComponentCreature predator)
+    {
+        if (defender?.Entity == null)
+            return false;
+
+        ComponentChaseBehavior chaseBehavior =
+            defender.Entity.FindComponent<ComponentChaseBehavior>();
+        return IsValidDefensiveTarget(chaseBehavior, defender, predator);
+    }
+
+    private void ResumeDefensiveChase(ComponentChaseBehavior chaseBehavior)
+    {
+        if (chaseBehavior == null || chaseBehavior.Entity == null)
+            return;
+
+        ComponentCreature defender =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (defender == null ||
+            !m_defensiveTargets.TryGetValue(chaseBehavior, out ComponentCreature predator) ||
+            !IsValidDefensiveTarget(chaseBehavior, defender, predator) ||
+            s_chaseAttackMethod == null)
+        {
+            m_defensiveTargets.Remove(chaseBehavior);
+            m_defensiveTargetUntil.Remove(chaseBehavior);
+            s_chaseStopAttackMethod?.Invoke(chaseBehavior, null);
+            return;
+        }
+
+        float distance = Engine.Vector3.Distance(
+            defender.ComponentBody.Position,
+            predator.ComponentBody.Position);
+        if (distance > 7f)
+        {
+            m_defensiveTargets.Remove(chaseBehavior);
+            m_defensiveTargetUntil.Remove(chaseBehavior);
+            s_chaseStopAttackMethod?.Invoke(chaseBehavior, null);
+            return;
+        }
+
+        chaseBehavior.AttacksNonPlayerCreature = true;
+        s_chaseAttackMethod.Invoke(
+            chaseBehavior,
+            new object[] { predator, 6f, 6f, false });
     }
 
     private static bool HasNativeRetaliation(ComponentCreature creature)
@@ -546,9 +636,15 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         ComponentCreature attacker =
             chaseBehavior.Entity.FindComponent<ComponentCreature>();
-        if (attacker == null || !IsNaturalPredator(attacker) ||
-            attacker.ComponentHealth == null || attacker.ComponentHealth.Health <= 0f)
+        if (attacker == null || attacker.ComponentHealth == null ||
+            attacker.ComponentHealth.Health <= 0f)
             return;
+
+        if (!IsNaturalPredator(attacker))
+        {
+            ResumeDefensiveChase(chaseBehavior);
+            return;
+        }
 
         // Configure the native chase filter itself instead of relying only on
         // a post-score hook. The engine will now consider land, water and bird
@@ -637,10 +733,12 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             !chaseBehavior.IsTargetInAttackRange(target.ComponentBody))
             return;
 
-        // This is the fallback for predator models that do not emit a usable
-        // animation hit moment. It shares one cooldown with the native animation
-        // callback below, so there is never a second hit path for the same swing.
-        TryPerformPredatorStrike(chaseBehavior, attacker, target);
+        // Predator strikes and defensive prey strikes have separate per-creature
+        // cooldowns. Each strike is produced by this creature's own chase state.
+        if (IsNaturalPredator(attacker))
+            TryPerformPredatorStrike(chaseBehavior, attacker, target);
+        else
+            TryPerformDefensiveStrike(chaseBehavior, attacker, target);
     }
 
     private bool TryPerformPredatorStrike(
@@ -702,6 +800,66 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
+    /// A provoked herbivore makes its own melee strike against the predator.
+    /// This is called from that herbivore's chase/animation path, never from
+    /// the predator's incoming ProcessAttackment callback.
+    /// </summary>
+    private bool TryPerformDefensiveStrike(
+        ComponentChaseBehavior chaseBehavior,
+        ComponentCreature defender,
+        ComponentCreature predator)
+    {
+        if (chaseBehavior == null ||
+            !IsValidDefensiveStrikeTarget(defender, predator))
+            return false;
+
+        ComponentMiner miner = defender.Entity.FindComponent<ComponentMiner>();
+        ComponentBody defenderBody = defender.ComponentBody;
+        ComponentBody predatorBody = predator.ComponentBody;
+        ComponentHealth predatorHealth = predator.ComponentHealth;
+        if (miner == null || defenderBody == null || predatorBody == null ||
+            predatorHealth == null || predatorHealth.Health <= 0f ||
+            predatorHealth.IsInvulnerable ||
+            !chaseBehavior.IsTargetInAttackRange(predatorBody))
+            return false;
+
+        double now = defender.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextDefensiveStrikeTime.TryGetValue(chaseBehavior, out double nextHit) &&
+            now < nextHit)
+            return false;
+
+        m_nextDefensiveStrikeTime[chaseBehavior] = now + 2.5;
+
+        Engine.Vector3 hitPoint = predatorBody.BoundingBox.Center();
+        Engine.Vector3 hitDirection = hitPoint - defenderBody.BoundingBox.Center();
+        if (hitDirection.LengthSquared() < 0.0001f)
+            hitDirection = defenderBody.Matrix.Forward;
+        else
+            hitDirection = Engine.Vector3.Normalize(hitDirection);
+
+        float attackPower = miner.AttackPower * miner.StrengthFactor;
+        if (float.IsNaN(attackPower) || float.IsInfinity(attackPower) ||
+            attackPower <= 0f)
+            return false;
+
+        var attackment = new MeleeAttackment(
+            predatorBody,
+            defender.Entity,
+            hitPoint,
+            hitDirection,
+            attackPower)
+        {
+            EnableArmorProtection = true,
+            EnableResilienceFactor = true,
+            EnableHitValueParticleSystem = true
+        };
+
+        float healthBefore = predatorHealth.Health;
+        ComponentMiner.AttackBody(attackment);
+        return predatorHealth.Health < healthBefore;
+    }
+
+    /// <summary>
     /// Intercepts the native animation hit so it cannot stack with the direct
     /// fallback. A valid native hit moment is converted into the same single,
     /// rate-limited Attackment used by UpdateChaseBehaviorChasing.
@@ -733,12 +891,15 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
-    /// Applies one herbivore counter-injury only after the predator's incoming
-    /// injury has completed and the prey's Health value has actually decreased.
-    /// The delayed callback avoids nesting ComponentHealth.Injure inside
-    /// Injury.Process / CalculateCreatureInjuryAmount.
+    /// Starts an independent defensive AI response only after the incoming
+    /// predator injury has completed and the prey's Health value has decreased.
+    /// No ComponentHealth.Injure call is nested or injected here.
     /// </summary>
-    private void TryApplyPreyRetaliation(
+    /// <summary>
+    /// After a real predator hit is confirmed, starts the prey's own native
+    /// defensive chase. It does not directly injure the predator.
+    /// </summary>
+    private void TryStartPreyDefense(
         ComponentCreature prey,
         ComponentCreature predator,
         float preyHealthBefore)
@@ -746,7 +907,8 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (prey == null || predator == null ||
             prey.Entity == null || predator.Entity == null ||
             !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject ||
-            prey.Entity == predator.Entity)
+            prey.Entity == predator.Entity ||
+            IsNaturalPredator(prey) || !IsNaturalPredator(predator))
             return;
 
         ComponentHealth predatorHealth = predator.ComponentHealth;
@@ -756,6 +918,11 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             float.IsNaN(preyHealthBefore) || float.IsInfinity(preyHealthBefore))
             return;
 
+        ComponentChaseBehavior preyChase =
+            prey.Entity.FindComponent<ComponentChaseBehavior>();
+        if (preyChase == null || s_chaseAttackMethod == null)
+            return;
+
         SubsystemTime subsystemTime =
             prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true);
         double now = subsystemTime.GameTime;
@@ -763,8 +930,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             now < nextRetaliation)
             return;
 
-        // Prevent two predator strikes in the same update from queuing duplicate
-        // counter-hits for one prey. Cooldown starts only after a real health loss.
         if (!m_pendingPreyRetaliations.Add(prey))
             return;
 
@@ -792,30 +957,35 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
                 if (preyBody == null || predatorBody == null ||
                     Engine.Vector3.Distance(
                         preyBody.BoundingBox.Center(),
-                        predatorBody.BoundingBox.Center()) > 3.25f)
+                        predatorBody.BoundingBox.Center()) > 6f)
                     return;
 
-                double retaliationTime =
+                ComponentChaseBehavior currentChase =
+                    prey.Entity.FindComponent<ComponentChaseBehavior>();
+                if (currentChase == null || s_chaseAttackMethod == null)
+                    return;
+
+                double responseTime =
                     predator.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
                 if (m_nextPreyRetaliationTime.TryGetValue(prey, out double nextTime) &&
-                    retaliationTime < nextTime)
+                    responseTime < nextTime)
                     return;
 
-                float counterDamage =
-                    GetPreyStrikeDamageCap(currentPredatorHealth.Health);
-                if (counterDamage <= 0f ||
-                    float.IsNaN(counterDamage) || float.IsInfinity(counterDamage))
-                    return;
-
-                m_nextPreyRetaliationTime[prey] = retaliationTime + 2.5;
-                currentPredatorHealth.Injure(counterDamage, prey, false, "Melee");
+                // Remember who injured this prey, then start the prey's own chase.
+                // Its own animation event/fallback creates its later damage event.
+                m_nextPreyRetaliationTime[prey] = responseTime + 2.5;
+                m_defensiveTargets[currentChase] = predator;
+                m_defensiveTargetUntil[currentChase] = responseTime + 8.0;
+                currentChase.AttacksNonPlayerCreature = true;
+                s_chaseAttackMethod.Invoke(
+                    currentChase,
+                    new object[] { predator, 6f, 6f, false });
             });
     }
 
     /// <summary>
-    /// Makes creature-vs-creature melee attacks use a non-zero native attack power.
-    /// This hook is intentionally separate from player melee: AI attacks go through
-    /// Attackment.ProcessAttackment and do not pass through OnPlayerInputHit.
+    /// Keeps animal-versus-animal melee injuries bounded while allowing the
+    /// defender's own chase behavior to decide when its next strike occurs.
     /// </summary>
     public override void ProcessAttackment(Attackment attackment)
     {
@@ -823,7 +993,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             attackment.Target == null || attackment.Attacker == attackment.Target)
             return;
 
-        // Player combat and Living Towns villagers are deliberately untouched.
         if (attackment.Attacker.FindComponent<ComponentPlayer>() != null ||
             attackment.Target.FindComponent<ComponentPlayer>() != null ||
             IsLivingTownsVillager(attackment.Attacker) ||
@@ -844,8 +1013,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         bool attackerIsPredator = IsNaturalPredator(attackerCreature);
         bool targetIsPredator = IsNaturalPredator(targetCreature);
-
-        // Preserve species-defined weak attack values and reject invalid floats.
         if (float.IsNaN(attackment.AttackPower) ||
             float.IsInfinity(attackment.AttackPower) ||
             attackment.AttackPower <= 0f)
@@ -856,18 +1023,16 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             nativeInjury < 0f)
             nativeInjury = 0f;
 
-        // Keep the existing 12% per-hit cap for all animal-vs-animal damage.
         float maximumInjury = GetPredatorStrikeDamageCap(targetHealth.Health);
         float boundedInjury = Math.Min(nativeInjury, maximumInjury);
         attackment.m_injuryAmount = boundedInjury;
 
-        // Queue a counter only for a melee strike with positive calculated damage.
-        // The callback verifies that the prey actually lost health before
-        // applying the counter-injury to the predator.
+        // A predator hit may provoke the prey's AI, but never writes damage
+        // directly to the predator. The prey must later make its own strike.
         if (attackerIsPredator && !targetIsPredator &&
             attackment is MeleeAttackment && boundedInjury > 0f)
         {
-            TryApplyPreyRetaliation(
+            TryStartPreyDefense(
                 targetCreature, attackerCreature, targetHealth.Health);
         }
     }
@@ -886,21 +1051,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return currentPreyHealth;
 
         return currentPreyHealth * 0.12f;
-    }
-
-    private static float GetPreyStrikeDamageCap(float currentPredatorHealth)
-    {
-        if (float.IsNaN(currentPredatorHealth) ||
-            float.IsInfinity(currentPredatorHealth) ||
-            currentPredatorHealth <= 0f)
-            return 0f;
-
-        // Herbivore retaliation is capped at 12% of remaining predator health.
-        // A critically weak predator may receive a final blow.
-        if (currentPredatorHealth <= 0.05f)
-            return currentPredatorHealth;
-
-        return currentPredatorHealth * 0.12f;
     }
 
     /// <summary>
