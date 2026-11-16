@@ -46,14 +46,17 @@ else:
 
 if harness_loader.is_file():
     source = harness_loader.read_text(encoding="utf-8")
-    for token in ("RegisterHook(\"GuiUpdate\"", "RunReadOnlyScan",
+    for token in ("RegisterHook(\"GuiUpdate\"", "RegisterHook(\"ProcessAttackment\"",
+                  "RunReadOnlyScan", "ProcessPendingWolfBullHits",
                   "SubsystemBodies", "ComponentLivingTownsVillager",
-                  "ComponentLivingTownsSheepBehavior", "READ ONLY"):
+                  "ComponentLivingTownsSheepBehavior", "IsWolf(", "IsBull(",
+                  "GetTwelvePercentCap", "RetaliationCooldown", "READ ONLY"):
         check("harness_" + token.replace(" ", "_").replace("\"", "").replace("(", ""),
-              token in source, "Expected read-only runtime diagnostic token is present.")
+              token in source, "Expected read-only combat observer token is present.")
     check("harness_no_world_mutation_calls",
-          all(token not in source for token in ("SpawnCreature(", ".Injure(", ".SetCellValue(")),
-          "Harness must not spawn entities, injure creatures, or edit terrain.")
+          all(token not in source for token in ("SpawnCreature(", ".Injure(", ".SetCellValue(",
+                                                  "Health =", "Attackment.AttackPower =")),
+          "Harness must not spawn entities, apply injury, change health, or edit terrain.")
 else:
     blocked("harness_runtime_diagnostics", "Harness source is missing.")
 
@@ -92,7 +95,7 @@ else:
 
 # Actual game runtime tests always remain pending until an in-game harness is integrated.
 blocked("android_in_game_ai_and_world_tests",
-        "Static CI cannot launch the Android game or observe live NPC/animal AI. Requires an in-game test harness and a dedicated test world.")
+        "The read-only harness now observes native wolf-versus-bull attacks in Android, but the game runtime itself is not launched by static CI; an actual in-game WATCH run is still required.")
 
 report = {
     "suite": "Survivalcraft 2 Living Towns - initial static suite",
