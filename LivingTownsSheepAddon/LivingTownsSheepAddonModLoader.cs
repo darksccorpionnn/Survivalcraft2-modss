@@ -675,10 +675,9 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
-    /// Gives prey a real counter-hit when a natural predator lands a native melee
-    /// hit. The counter uses the prey's own melee power and the game's native
-    /// Attackment -> Injury -> ComponentHealth pipeline, with a short per-prey
-    /// cooldown and a strict one-HP / half-remaining-health ceiling.
+    /// Gives prey a counter-hit when a natural predator lands a native melee hit.
+    /// The counter is sent through the same native MeleeAttackment/AttackBody path
+    /// used for predator strikes, so it receives the game's normal Injury processing.
     /// </summary>
     private void TryApplyPreyRetaliation(
         ComponentCreature prey,
@@ -692,9 +691,12 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         ComponentHealth predatorHealth = predator.ComponentHealth;
         ComponentHealth preyHealth = prey.ComponentHealth;
+        ComponentBody preyBody = prey.ComponentBody;
+        ComponentBody predatorBody = predator.ComponentBody;
         if (predatorHealth == null || predatorHealth.Health <= 0f ||
             predatorHealth.IsInvulnerable ||
-            preyHealth == null || preyHealth.Health <= 0f)
+            preyHealth == null || preyHealth.Health <= 0f ||
+            preyBody == null || predatorBody == null)
             return;
 
         double now = prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
@@ -702,22 +704,46 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             now < nextRetaliation)
             return;
 
-        // Apply the counter-hit immediately. The previous delayed callback could
-        // be skipped when the game-time queue was suspended or the entity changed
-        // state between the incoming strike and the queued execution.
-        m_nextPreyRetaliationTime[prey] = now + 2.5;
-
-        // Use the standard Injury pipeline and credit the herbivore as attacker.
-        // CalculateCreatureInjuryAmount below applies the same strict 5% cap.
-        float counterDamage = Math.Min(
-            predatorHealth.Health * 0.05f,
-            predatorHealth.Health);
+        float counterDamage = GetPreyStrikeDamageCap(predatorHealth.Health);
         if (counterDamage <= 0f ||
             float.IsNaN(counterDamage) || float.IsInfinity(counterDamage))
             return;
 
-        predatorHealth.Injure(
-            new Injury(counterDamage, prey, false, "Melee"));
+        // One counter-hit per prey every 2.5 game seconds. Use the native
+        // AttackBody pipeline instead of constructing Injury directly.
+        m_nextPreyRetaliationTime[prey] = now + 2.5;
+
+        ComponentMiner preyMiner = prey.Entity.FindComponent<ComponentMiner>();
+        float attackPower = preyMiner != null
+            ? preyMiner.AttackPower * preyMiner.StrengthFactor
+            : 1f;
+        if (float.IsNaN(attackPower) || float.IsInfinity(attackPower) ||
+            attackPower < 1f)
+            attackPower = 1f;
+
+        Engine.Vector3 hitPoint = predatorBody.BoundingBox.Center();
+        Engine.Vector3 hitDirection = hitPoint - preyBody.BoundingBox.Center();
+        if (hitDirection.LengthSquared() < 0.0001f)
+            hitDirection = preyBody.Matrix.Forward;
+        else
+            hitDirection = Engine.Vector3.Normalize(hitDirection);
+
+        var counterAttackment = new MeleeAttackment(
+            predatorBody,
+            prey.Entity,
+            hitPoint,
+            hitDirection,
+            attackPower)
+        {
+            EnableArmorProtection = true,
+            EnableResilienceFactor = true,
+            EnableHitValueParticleSystem = true
+        };
+
+        // Give the counter a meaningful but bounded amount. A predator can never
+        // lose more than 12% of its remaining health to one herbivore counter-hit.
+        counterAttackment.m_injuryAmount = counterDamage;
+        ComponentMiner.AttackBody(counterAttackment);
     }
 
     /// <summary>
@@ -818,12 +844,12 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             currentPredatorHealth <= 0f)
             return 0f;
 
-        // Herbivore retaliation is capped at 5% of remaining predator health.
+        // Herbivore retaliation is capped at 12% of remaining predator health.
         // A critically weak predator may receive a final blow.
         if (currentPredatorHealth <= 0.05f)
             return currentPredatorHealth;
 
-        return currentPredatorHealth * 0.05f;
+        return currentPredatorHealth * 0.12f;
     }
 
     /// <summary>
