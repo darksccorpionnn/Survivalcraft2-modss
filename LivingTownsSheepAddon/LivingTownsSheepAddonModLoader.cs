@@ -9,9 +9,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
     private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
-    private readonly HashSet<Attackment> m_preyRetaliationAttackments = new();
-    private readonly Dictionary<ComponentCreature, ComponentCreature> m_pendingPreyRetaliationPredators = new();
-    private readonly Dictionary<ComponentCreature, double> m_pendingPreyRetaliationTimes = new();
+    private readonly HashSet<ComponentCreature> m_pendingPreyRetaliations = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorStrikeTime = new();
     private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
     private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
@@ -61,8 +59,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             return;
 
         ComponentPlayer player = componentGui.m_componentPlayer;
-        if (player != null)
-            ProcessPendingPreyRetaliations(player);
 
         if (player == null || player.ComponentInput == null ||
             player.ComponentCreatureModel == null || player.ComponentMiner == null)
@@ -150,45 +146,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // IsClicked is the button's one-frame touch/click event.
         if (nearestVillager != null && m_villagerTradeButton.IsClicked)
             OpenVillagerTrade(player, nearestVillager);
-    }
-
-    /// <summary>
-    /// Runs herbivore retaliation on a later GUI/game update, never from inside
-    /// the predator's own Attackment processing. A retaliation is queued only
-    /// after CalculateCreatureInjuryAmount confirms a real predator injury.
-    /// </summary>
-    private void ProcessPendingPreyRetaliations(ComponentPlayer player)
-    {
-        if (player == null)
-            return;
-
-        double now = player.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-        var pendingPrey = new List<ComponentCreature>(m_pendingPreyRetaliationPredators.Keys);
-        foreach (ComponentCreature prey in pendingPrey)
-        {
-            if (prey == null ||
-                !m_pendingPreyRetaliationPredators.TryGetValue(prey, out ComponentCreature predator) ||
-                predator == null ||
-                prey.Project != player.Project ||
-                predator.Project != player.Project ||
-                prey.Entity == null || predator.Entity == null ||
-                !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject)
-            {
-                m_pendingPreyRetaliationPredators.Remove(prey);
-                m_pendingPreyRetaliationTimes.Remove(prey);
-                continue;
-            }
-
-            if (!m_pendingPreyRetaliationTimes.TryGetValue(prey, out double dueTime) ||
-                now < dueTime)
-                continue;
-
-            // Remove before attacking: the counter-hit itself must not be able
-            // to re-enter or duplicate this pending retaliation.
-            m_pendingPreyRetaliationPredators.Remove(prey);
-            m_pendingPreyRetaliationTimes.Remove(prey);
-            TryApplyPreyRetaliation(prey, predator);
-        }
     }
 
     private static bool IsLivingTownsVillager(GameEntitySystem.Entity entity)
@@ -776,13 +733,15 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     }
 
     /// <summary>
-    /// Gives prey a counter-hit when a natural predator lands a native melee hit.
-    /// The counter is sent through the same native MeleeAttackment/AttackBody path
-    /// used for predator strikes, so it receives the game's normal Injury processing.
+    /// Applies one herbivore counter-injury only after the predator's incoming
+    /// injury has completed and the prey's Health value has actually decreased.
+    /// The delayed callback avoids nesting ComponentHealth.Injure inside
+    /// Injury.Process / CalculateCreatureInjuryAmount.
     /// </summary>
     private void TryApplyPreyRetaliation(
         ComponentCreature prey,
-        ComponentCreature predator)
+        ComponentCreature predator,
+        float preyHealthBefore)
     {
         if (prey == null || predator == null ||
             prey.Entity == null || predator.Entity == null ||
@@ -792,46 +751,65 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         ComponentHealth predatorHealth = predator.ComponentHealth;
         ComponentHealth preyHealth = prey.ComponentHealth;
-        ComponentBody preyBody = prey.ComponentBody;
-        ComponentBody predatorBody = predator.ComponentBody;
         if (predatorHealth == null || predatorHealth.Health <= 0f ||
-            predatorHealth.IsInvulnerable ||
-            preyHealth == null || preyHealth.Health <= 0f ||
-            preyBody == null || predatorBody == null)
+            predatorHealth.IsInvulnerable || preyHealth == null ||
+            float.IsNaN(preyHealthBefore) || float.IsInfinity(preyHealthBefore))
             return;
 
-        // A melee retaliation must remain physically plausible. The previous
-        // implementation could damage a predator from any distance after a hit.
-        float retaliationDistance = Engine.Vector3.Distance(
-            preyBody.BoundingBox.Center(), predatorBody.BoundingBox.Center());
-        if (retaliationDistance > 3.25f)
-            return;
-
-        double now = prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        SubsystemTime subsystemTime =
+            prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true);
+        double now = subsystemTime.GameTime;
         if (m_nextPreyRetaliationTime.TryGetValue(prey, out double nextRetaliation) &&
             now < nextRetaliation)
             return;
 
-        float counterDamage = GetPreyStrikeDamageCap(predatorHealth.Health);
-        if (counterDamage <= 0f ||
-            float.IsNaN(counterDamage) || float.IsInfinity(counterDamage))
+        // Prevent two predator strikes in the same update from queuing duplicate
+        // counter-hits for one prey. Cooldown starts only after a real health loss.
+        if (!m_pendingPreyRetaliations.Add(prey))
             return;
 
-        // One counter-hit per prey every 2.5 game seconds.
-        m_nextPreyRetaliationTime[prey] = now + 2.5;
+        subsystemTime.QueueGameTimeDelayedExecution(
+            now + 0.05,
+            delegate
+            {
+                m_pendingPreyRetaliations.Remove(prey);
 
-        // AttackBody/ProcessAttackment was producing the hit flash but did not
-        // reduce predator health for these herbivore templates. Apply the
-        // bounded Injury directly through ComponentHealth.Injure instead.
-        // This is the engine's health-damage entry point and still runs the
-        // normal Injury processing and CalculateCreatureInjuryAmount hooks.
-        float healthBefore = predatorHealth.Health;
-        predatorHealth.Injure(counterDamage, prey, false, "Melee");
+                if (prey.Entity == null || predator.Entity == null ||
+                    !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject)
+                    return;
 
-        // If the health component rejects the injury (e.g. invulnerability
-        // changed during processing), do not attempt a second damage route.
-        if (predatorHealth.Health >= healthBefore)
-            return;
+                ComponentHealth currentPreyHealth = prey.ComponentHealth;
+                ComponentHealth currentPredatorHealth = predator.ComponentHealth;
+                if (currentPreyHealth == null ||
+                    currentPreyHealth.Health >= preyHealthBefore - 0.0001f ||
+                    currentPredatorHealth == null ||
+                    currentPredatorHealth.Health <= 0f ||
+                    currentPredatorHealth.IsInvulnerable)
+                    return;
+
+                ComponentBody preyBody = prey.ComponentBody;
+                ComponentBody predatorBody = predator.ComponentBody;
+                if (preyBody == null || predatorBody == null ||
+                    Engine.Vector3.Distance(
+                        preyBody.BoundingBox.Center(),
+                        predatorBody.BoundingBox.Center()) > 3.25f)
+                    return;
+
+                double retaliationTime =
+                    predator.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+                if (m_nextPreyRetaliationTime.TryGetValue(prey, out double nextTime) &&
+                    retaliationTime < nextTime)
+                    return;
+
+                float counterDamage =
+                    GetPreyStrikeDamageCap(currentPredatorHealth.Health);
+                if (counterDamage <= 0f ||
+                    float.IsNaN(counterDamage) || float.IsInfinity(counterDamage))
+                    return;
+
+                m_nextPreyRetaliationTime[prey] = retaliationTime + 2.5;
+                currentPredatorHealth.Injure(counterDamage, prey, false, "Melee");
+            });
     }
 
     /// <summary>
@@ -844,33 +822,6 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (attackment == null || attackment.Attacker == null ||
             attackment.Target == null || attackment.Attacker == attackment.Target)
             return;
-
-        // Our herbivore counter-hit already carries a deliberately selected
-        // injury amount. Preserve it instead of replacing it with
-        // CalculateInjuryAmount(), which may be zero for creature templates
-        // without a configured native attack power.
-        if (m_preyRetaliationAttackments.Contains(attackment))
-        {
-            ComponentHealth retaliationTargetHealth =
-                attackment.Target.FindComponent<ComponentHealth>();
-            float assignedDamage = attackment.m_injuryAmount ?? 0f;
-            if (retaliationTargetHealth == null ||
-                retaliationTargetHealth.Health <= 0f ||
-                retaliationTargetHealth.IsInvulnerable ||
-                float.IsNaN(assignedDamage) ||
-                float.IsInfinity(assignedDamage) ||
-                assignedDamage <= 0f)
-            {
-                attackment.m_injuryAmount = 0f;
-            }
-            else
-            {
-                attackment.m_injuryAmount = Math.Min(
-                    assignedDamage,
-                    GetPreyStrikeDamageCap(retaliationTargetHealth.Health));
-            }
-            return;
-        }
 
         // Player combat and Living Towns villagers are deliberately untouched.
         if (attackment.Attacker.FindComponent<ComponentPlayer>() != null ||
@@ -894,17 +845,10 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         bool attackerIsPredator = IsNaturalPredator(attackerCreature);
         bool targetIsPredator = IsNaturalPredator(targetCreature);
 
-        // Prey retaliation is deliberately not started here. ProcessAttackment
-        // runs inside the incoming hit pipeline, before the target's health is
-        // reduced. A confirmed injury is queued later by
-        // CalculateCreatureInjuryAmount and handled on the next GUI/game update.
-
-        // Do not turn weak or zero-power mod creatures into 1-damage attackers.
-        // Invalid floating-point values are neutralized; positive sub-1 values
-        // remain exactly as defined by the creature template.
-        if (float.IsNaN(attackment.AttackPower) || float.IsInfinity(attackment.AttackPower))
-            attackment.AttackPower = 0f;
-        if (attackment.AttackPower <= 0f)
+        // Preserve species-defined weak attack values and reject invalid floats.
+        if (float.IsNaN(attackment.AttackPower) ||
+            float.IsInfinity(attackment.AttackPower) ||
+            attackment.AttackPower <= 0f)
             return;
 
         float nativeInjury = attackment.CalculateInjuryAmount();
@@ -912,11 +856,20 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             nativeInjury < 0f)
             nativeInjury = 0f;
 
-        // Apply one consistent ceiling to every animal-vs-animal matchup. This
-        // also protects creatures from third-party mods whose category flags are
-        // mislabeled but whose AttackPower can be hundreds or thousands.
+        // Keep the existing 12% per-hit cap for all animal-vs-animal damage.
         float maximumInjury = GetPredatorStrikeDamageCap(targetHealth.Health);
-        attackment.m_injuryAmount = Math.Min(nativeInjury, maximumInjury);
+        float boundedInjury = Math.Min(nativeInjury, maximumInjury);
+        attackment.m_injuryAmount = boundedInjury;
+
+        // Queue a counter only for a melee strike with positive calculated damage.
+        // The callback verifies that the prey actually lost health before
+        // applying the counter-injury to the predator.
+        if (attackerIsPredator && !targetIsPredator &&
+            attackment is MeleeAttackment && boundedInjury > 0f)
+        {
+            TryApplyPreyRetaliation(
+                targetCreature, attackerCreature, targetHealth.Health);
+        }
     }
 
     private static float GetPredatorStrikeDamageCap(float currentPreyHealth)
@@ -970,69 +923,26 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             attacker.Entity == null || target.Entity == null)
             return;
 
-        // Leave both directions of player combat untouched. A creature hitting
-        // the player must retain native damage just as player attacks do.
+        // Leave player combat and Living Towns villager damage unchanged.
         if (attacker.Entity.FindComponent<ComponentPlayer>() != null ||
             target.Entity.FindComponent<ComponentPlayer>() != null ||
             IsLivingTownsVillager(attacker.Entity) ||
             IsLivingTownsVillager(target.Entity))
             return;
 
-        bool attackerIsPredator = IsNaturalPredator(attacker);
-        bool targetIsPredator = IsNaturalPredator(target);
         float amount = injury.Amount;
         float health = injury.ComponentHealth.Health;
-
         if (float.IsNaN(amount) || float.IsInfinity(amount) ||
             amount <= 0f || float.IsNaN(health) ||
             float.IsInfinity(health) || health <= 0f)
             return;
 
-        // Last-stage safety net for every animal matchup, independent of
-        // CreatureCategory. This covers third-party templates with unusual or
-        // incorrect category flags and extreme AttackPower values.
+        // Final safety cap for every animal-vs-animal Injury. Retaliation itself
+        // is queued after the incoming Injury has completed, never from inside
+        // this callback.
         float maximumInjury = GetPredatorStrikeDamageCap(health);
         if (amount > maximumInjury)
             injury.Amount = maximumInjury;
-
-        // Apply the herbivore's counter-damage from the confirmed predator
-        // injury itself. Do not depend on a later GUI update or on Attackment
-        // subtype metadata: some native creature attacks reach Injury.Process
-        // with no MeleeAttackment reference even though the health loss is real.
-        // This callback runs only after a positive injury has been calculated.
-        if (attackerIsPredator && !targetIsPredator &&
-            injury.Amount > 0f &&
-            IsValidAnimalPrey(attacker, target))
-        {
-            ComponentHealth predatorHealth = attacker.ComponentHealth;
-            if (predatorHealth != null &&
-                predatorHealth.Health > 0f &&
-                !predatorHealth.IsInvulnerable)
-            {
-                double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
-                if (!m_nextPreyRetaliationTime.TryGetValue(target, out double nextRetaliation) ||
-                    now >= nextRetaliation)
-                {
-                    m_nextPreyRetaliationTime[target] = now + 2.5;
-                    float counterDamage = GetPreyStrikeDamageCap(predatorHealth.Health);
-                    if (counterDamage > 0f &&
-                        !float.IsNaN(counterDamage) &&
-                        !float.IsInfinity(counterDamage))
-                    {
-                        float healthBefore = predatorHealth.Health;
-                        // Use the engine injury route first so normal hit effects,
-                        // death handling and injury listeners remain available.
-                        predatorHealth.Injure(counterDamage, target, false, "Melee");
-
-                        // Deterministic fallback: if another hook cancels the
-                        // Injury route, still subtract the bounded amount from
-                        // the predator's actual health value.
-                        if (predatorHealth.Health >= healthBefore)
-                            predatorHealth.Health = Math.Max(0f, healthBefore - counterDamage);
-                    }
-                }
-            }
-        }
     }
 
     public override void OnPlayerInputInteract(
