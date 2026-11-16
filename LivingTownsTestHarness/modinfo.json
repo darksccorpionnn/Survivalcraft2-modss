@@ -1,0 +1,15 @@
+{
+  "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
+  "Name": "Living Towns Test Harness",
+  "Version": "0.1.0",
+  "ApiVersion": "1.9.5.1",
+  "Description": "Read-only in-game diagnostic overlay for Living Towns. Tap TEST to scan loaded villagers and sheep-family entities and write results to the game log. This first version does not modify the world.",
+  "ScVersion": "2.4.0.0",
+  "LoadOrder": 10001,
+  "NonPersistentMod": false,
+  "GameplayImpactLevel": "NoImpact",
+  "Link": "https://github.com/darksccorpionnn/Survivalcraft2-modss",
+  "Author": "darksccorpionnn",
+  "PackageName": "darksccorpionnn.LivingTownsTestHarness",
+  "Dependencies": {}
+}
