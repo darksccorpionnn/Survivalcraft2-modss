@@ -817,53 +817,21 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             float.IsNaN(counterDamage) || float.IsInfinity(counterDamage))
             return;
 
-        // One counter-hit per prey every 2.5 game seconds. Use the native
-        // AttackBody pipeline instead of constructing Injury directly.
+        // One counter-hit per prey every 2.5 game seconds.
         m_nextPreyRetaliationTime[prey] = now + 2.5;
 
-        ComponentMiner preyMiner = prey.Entity.FindComponent<ComponentMiner>();
-        float attackPower = preyMiner != null
-            ? preyMiner.AttackPower * preyMiner.StrengthFactor
-            : 1f;
-        if (float.IsNaN(attackPower) || float.IsInfinity(attackPower) ||
-            attackPower < 1f)
-            attackPower = 1f;
+        // AttackBody/ProcessAttackment was producing the hit flash but did not
+        // reduce predator health for these herbivore templates. Apply the
+        // bounded Injury directly through ComponentHealth.Injure instead.
+        // This is the engine's health-damage entry point and still runs the
+        // normal Injury processing and CalculateCreatureInjuryAmount hooks.
+        float healthBefore = predatorHealth.Health;
+        predatorHealth.Injure(counterDamage, prey, false, "Melee");
 
-        Engine.Vector3 hitPoint = predatorBody.BoundingBox.Center();
-        Engine.Vector3 hitDirection = hitPoint - preyBody.BoundingBox.Center();
-        if (hitDirection.LengthSquared() < 0.0001f)
-            hitDirection = preyBody.Matrix.Forward;
-        else
-            hitDirection = Engine.Vector3.Normalize(hitDirection);
-
-        var counterAttackment = new MeleeAttackment(
-            predatorBody,
-            prey.Entity,
-            hitPoint,
-            hitDirection,
-            attackPower)
-        {
-            EnableArmorProtection = true,
-            EnableResilienceFactor = true,
-            EnableHitValueParticleSystem = true
-        };
-
-        // Give the counter a meaningful but bounded amount. A predator can never
-        // lose more than 12% of its remaining health to one herbivore counter-hit.
-        counterAttackment.m_injuryAmount = counterDamage;
-        // Mark this specific Attackment while AttackBody runs. ProcessAttackment
-        // normally recalculates injury from AttackPower, which can erase the
-        // explicit bounded counter damage (especially for herbivore templates).
-        // The marker is removed even if the engine throws during hit processing.
-        m_preyRetaliationAttackments.Add(counterAttackment);
-        try
-        {
-            ComponentMiner.AttackBody(counterAttackment);
-        }
-        finally
-        {
-            m_preyRetaliationAttackments.Remove(counterAttackment);
-        }
+        // If the health component rejects the injury (e.g. invulnerability
+        // changed during processing), do not attempt a second damage route.
+        if (predatorHealth.Health >= healthBefore)
+            return;
     }
 
     /// <summary>
