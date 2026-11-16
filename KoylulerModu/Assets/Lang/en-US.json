@@ -1,0 +1,20 @@
+{
+  "DisplayName:KoylulerModu_MaleVillager": "Male Villager",
+  "Description:KoylulerModu_MaleVillager": "Male villager character.",
+  "DisplayName:KoylulerModu_FemaleVillager": "Female Villager",
+  "Description:KoylulerModu_FemaleVillager": "Female villager character.",
+  "DisplayName:KoylulerModu_Farmer": "Farmer",
+  "Description:KoylulerModu_Farmer": "Farmer character. Job behavior will be added later.",
+  "DisplayName:KoylulerModu_Blacksmith": "Blacksmith",
+  "Description:KoylulerModu_Blacksmith": "Blacksmith character. Job behavior will be added later.",
+  "DisplayName:KoylulerModu_Merchant": "Merchant",
+  "Description:KoylulerModu_Merchant": "Merchant character. Trade behavior will be added later.",
+  "DisplayName:KoylulerModu_Healer": "Healer",
+  "Description:KoylulerModu_Healer": "Healer character. Job behavior will be added later.",
+  "DisplayName:KoylulerModu_Guard": "Guard",
+  "Description:KoylulerModu_Guard": "Guard character. Protection behavior will be added later.",
+  "DisplayName:KoylulerModu_Hunter": "Hunter",
+  "Description:KoylulerModu_Hunter": "Hunter character. Hunting behavior will be added later.",
+  "DisplayName:KoylulerModu_Shepherd": "Shepherd",
+  "Description:KoylulerModu_Shepherd": "Shepherd character. Animal care behavior will be added later."
+}
