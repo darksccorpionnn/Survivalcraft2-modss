@@ -66,6 +66,16 @@ if sheep_loader.is_file():
                  "CalculateCreatureInjuryAmount", "InitializeCreatureTypes"):
         check("sheep_hook_" + hook, hook in source,
               "Expected hook registration/name appears in the sheep addon source.")
+    for token in ("TryStartPreyDefense", "TryPerformDefensiveStrike",
+                  "m_defensiveTargets", "m_nextDefensiveStrikeTime",
+                  "s_chaseAttackMethod.Invoke"):
+        check("independent_defense_" + token.replace(" ", "_").replace(".", "_"),
+              token in source,
+              "Prey defensive chase/strike is routed through its own AI and cooldown.")
+    check("no_direct_predator_counter_injury",
+          "currentPredatorHealth.Injure(" not in source and
+          "TryApplyPreyRetaliation(" not in source,
+          "Predator damage is not directly injected from the prey's incoming-hit callback.")
 else:
     blocked("sheep_hook_registration", "Sheep addon source is missing.")
 
