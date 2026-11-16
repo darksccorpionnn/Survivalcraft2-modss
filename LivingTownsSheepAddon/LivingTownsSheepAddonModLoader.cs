@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Game;
 
@@ -7,6 +8,27 @@ namespace Game;
 public sealed class LivingTownsSheepAddonModLoader : ModLoader
 {
     private readonly Dictionary<ComponentPlayer, double> m_nextCreatureMeleeTime = new();
+    private readonly Dictionary<ComponentCreature, double> m_nextPreyRetaliationTime = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorStrikeTime = new();
+    private readonly Dictionary<ComponentChaseBehavior, double> m_nextPredatorTargetScanTime = new();
+    private static readonly MethodInfo s_chaseAttackMethod = typeof(ComponentChaseBehavior).GetMethod(
+        "Attack",
+        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+        null,
+        new[] { typeof(ComponentCreature), typeof(float), typeof(float), typeof(bool) },
+        null);
+    private static readonly FieldInfo s_chaseMaxAttackRangeField =
+        typeof(ComponentChaseBehavior).GetField(
+            "MaxAttackRange", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    private static readonly MethodInfo s_chaseStopAttackMethod =
+        typeof(ComponentChaseBehavior).GetMethod(
+            "StopAttack", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+    private static readonly FieldInfo s_chaseAutoChaseMaskField =
+        typeof(ComponentChaseBehavior).GetField(
+            "m_autoChaseMask", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo s_chaseNonPlayerProbabilityField =
+        typeof(ComponentChaseBehavior).GetField(
+            "m_chaseNonPlayerProbability", BindingFlags.Instance | BindingFlags.NonPublic);
     private BevelledButtonWidget m_villagerTradeButton;
     private CanvasWidget m_villagerTradeCanvas;
     private ContainerWidget m_villagerTradeButtonParent;
@@ -17,6 +39,12 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         ModsManager.RegisterHook("GuiUpdate", this);
         ModsManager.RegisterHook("OnPlayerInputInteract", this);
         ModsManager.RegisterHook("OnPlayerInputHit", this);
+        ModsManager.RegisterHook("ProcessAttackment", this);
+        ModsManager.RegisterHook("CalculateCreatureInjuryAmount", this);
+        ModsManager.RegisterHook("ChaseBehaviorScoreTarget", this);
+        ModsManager.RegisterHook("UpdateChaseBehaviorLookingForTarget", this);
+        ModsManager.RegisterHook("UpdateChaseBehaviorChasing", this);
+        ModsManager.RegisterHook("OnChaseBehaviorAttacked", this);
         ModsManager.RegisterHook("InitializeCreatureTypes", this);
     }
 
@@ -358,6 +386,513 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
 
         // Do not consume the input if the direct Attackment did not lower health.
         // ComponentPlayer.Update will then perform exactly one normal vanilla hit.
+    }
+
+    public override void ChaseBehaviorScoreTarget(
+        ComponentChaseBehavior chaseBehavior,
+        ComponentCreature creatureToBeTarget,
+        ref float score)
+    {
+        if (chaseBehavior == null || creatureToBeTarget == null ||
+            creatureToBeTarget.Entity == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (attacker == null || attacker == creatureToBeTarget ||
+            attacker.Entity == null || !attacker.Entity.IsAddedToProject)
+            return;
+
+        // Keep player combat settings and villagers untouched.
+        if (attacker.Entity.FindComponent<ComponentPlayer>() != null ||
+            creatureToBeTarget.Entity.FindComponent<ComponentPlayer>() != null)
+            return;
+
+        if (IsLivingTownsVillager(creatureToBeTarget.Entity))
+        {
+            score = 0f;
+            return;
+        }
+
+        // Natural predators may hunt ordinary animals. Other animals only receive
+        // a target score for a predator that is actively engaging them (the
+        // retaliation target is assigned in ProcessAttackment).
+        bool isPredator = IsNaturalPredator(attacker);
+        if (!isPredator)
+            return;
+
+        ComponentHealth targetHealth = creatureToBeTarget.ComponentHealth;
+        if (targetHealth == null || targetHealth.Health <= 0f ||
+            targetHealth.IsInvulnerable)
+            return;
+
+        // Do not let predators lock onto one another; only living prey can
+        // receive a positive chase score.
+        if (IsNaturalPredator(creatureToBeTarget))
+        {
+            score = 0f;
+            return;
+        }
+
+        // Native target scoring can produce zero when AutoChaseMask does not
+        // include prey or ChaseNonPlayerProbability rejects it. Restore a small
+        // positive score so native FindTarget can select the living prey.
+        if (score <= 0f)
+        {
+            float distance = Engine.Vector3.Distance(
+                attacker.ComponentBody.Position,
+                creatureToBeTarget.ComponentBody.Position);
+            if (distance > 5f)
+                return;
+            score = 0.01f / (1f + distance);
+        }
+
+        chaseBehavior.AttacksNonPlayerCreature = true;
+    }
+
+    private static bool IsNaturalPredator(ComponentCreature creature)
+    {
+        const CreatureCategory predatorMask =
+            CreatureCategory.LandPredator | CreatureCategory.WaterPredator;
+        return creature != null && (creature.Category & predatorMask) != 0;
+    }
+
+    private static bool IsValidAnimalPrey(
+        ComponentCreature attacker,
+        ComponentCreature target)
+    {
+        if (attacker == null || target == null || attacker == target ||
+            attacker.Entity == null || target.Entity == null ||
+            attacker.Entity == target.Entity ||
+            !attacker.Entity.IsAddedToProject || !target.Entity.IsAddedToProject)
+            return false;
+
+        if (!IsNaturalPredator(attacker) ||
+            target.Entity.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(target.Entity) ||
+            IsNaturalPredator(target))
+            return false;
+
+        ComponentHealth health = target.ComponentHealth;
+        return health != null && health.Health > 0f && !health.IsInvulnerable;
+    }
+
+    /// <summary>
+    /// The native ScoreTarget hook can still be unable to produce a target when
+    /// a predator's AutoChaseMask/ChaseNonPlayerProbability excludes prey.
+    /// Explicitly start the normal native chase state for the nearest living
+    /// non-player creature when the predator has no valid current target.
+    /// </summary>
+    public override void UpdateChaseBehaviorLookingForTarget(
+        ComponentChaseBehavior chaseBehavior)
+    {
+        if (chaseBehavior == null || s_chaseAttackMethod == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (attacker == null || !IsNaturalPredator(attacker) ||
+            attacker.ComponentHealth == null || attacker.ComponentHealth.Health <= 0f)
+            return;
+
+        // Configure the native chase filter itself instead of relying only on
+        // a post-score hook. The engine will now consider land, water and bird
+        // prey; ScoreTarget below removes players, villagers and other predators.
+        chaseBehavior.AttacksNonPlayerCreature = true;
+        CreatureCategory preyMask =
+            CreatureCategory.LandOther |
+            CreatureCategory.WaterOther |
+            CreatureCategory.Bird;
+        s_chaseAutoChaseMaskField?.SetValue(chaseBehavior, preyMask);
+        s_chaseNonPlayerProbabilityField?.SetValue(chaseBehavior, 0.10f);
+
+        double scanNow = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextPredatorTargetScanTime.TryGetValue(chaseBehavior, out double nextScan) &&
+            scanNow < nextScan)
+            return;
+        m_nextPredatorTargetScanTime[chaseBehavior] = scanNow + 5.0;
+
+        ComponentCreature currentTarget = chaseBehavior.Target;
+        if (IsValidAnimalPrey(attacker, currentTarget))
+            return;
+
+        SubsystemBodies bodies =
+            attacker.Project.FindSubsystem<SubsystemBodies>(throwOnError: true);
+        const float acquisitionRange = 5f;
+        float bestDistanceSquared = acquisitionRange * acquisitionRange;
+        ComponentCreature nearestPrey = null;
+
+        foreach (ComponentBody body in bodies.Bodies)
+        {
+            if (body == null || body.Entity == null || body.Entity == attacker.Entity)
+                continue;
+
+            ComponentCreature candidate = body.Entity.FindComponent<ComponentCreature>();
+            if (!IsValidAnimalPrey(attacker, candidate))
+                continue;
+
+            // Avoid predator-on-predator targeting. Natural predators hunt
+            // other living animals, rather than constantly fighting each other.
+            if (IsNaturalPredator(candidate))
+                continue;
+
+            float distanceSquared = Engine.Vector3.DistanceSquared(
+                attacker.ComponentBody.Position, candidate.ComponentBody.Position);
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                nearestPrey = candidate;
+            }
+        }
+
+        if (nearestPrey != null)
+        {
+            // Keep the engine's own pathfinding, facing, chase timeout and
+            // animation state machine. Only seed its native Attack target.
+            s_chaseAttackMethod.Invoke(
+                chaseBehavior,
+                new object[] { nearestPrey, acquisitionRange, 6f, false });
+        }
+        else if (currentTarget != null &&
+                 IsLivingTownsVillager(currentTarget.Entity) &&
+                 s_chaseStopAttackMethod != null)
+        {
+            // Do not keep an older chase target when it is a protected villager.
+            s_chaseStopAttackMethod.Invoke(chaseBehavior, null);
+        }
+    }
+
+    /// <summary>
+    /// Fallback only for predator models whose animation does not produce a
+    /// reliable native IsAttackHitMoment. The hit still goes through the game's
+    /// ComponentMiner.Hit method, so its normal hit interval, creature hit chance,
+    /// Attackment and damage calculation remain authoritative.
+    /// </summary>
+    public override void UpdateChaseBehaviorChasing(ComponentChaseBehavior chaseBehavior)
+    {
+        if (chaseBehavior == null || chaseBehavior.Entity == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        ComponentCreature target = chaseBehavior.Target;
+
+        if (!IsValidAnimalPrey(attacker, target) ||
+            target.ComponentBody == null ||
+            !chaseBehavior.IsTargetInAttackRange(target.ComponentBody))
+            return;
+
+        // This is the fallback for predator models that do not emit a usable
+        // animation hit moment. It shares one cooldown with the native animation
+        // callback below, so there is never a second hit path for the same swing.
+        TryPerformPredatorStrike(chaseBehavior, attacker, target);
+    }
+
+    private bool TryPerformPredatorStrike(
+        ComponentChaseBehavior chaseBehavior,
+        ComponentCreature attacker,
+        ComponentCreature target)
+    {
+        if (chaseBehavior == null || !IsValidAnimalPrey(attacker, target))
+            return false;
+
+        ComponentMiner miner = attacker.Entity.FindComponent<ComponentMiner>();
+        ComponentBody attackerBody = attacker.ComponentBody;
+        ComponentBody targetBody = target.ComponentBody;
+        ComponentHealth targetHealth = target.ComponentHealth;
+        if (miner == null || attackerBody == null || targetBody == null ||
+            targetHealth == null || targetHealth.Health <= 0f ||
+            targetHealth.IsInvulnerable ||
+            !chaseBehavior.IsTargetInAttackRange(targetBody))
+            return false;
+
+        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextPredatorStrikeTime.TryGetValue(chaseBehavior, out double nextHit) &&
+            now < nextHit)
+            return false;
+
+        // One controlled strike every 2.0 game seconds. The native animation hit
+        // is cancelled in OnChaseBehaviorAttacked, and both routes arrive here.
+        m_nextPredatorStrikeTime[chaseBehavior] = now + 2.5;
+
+        Engine.Vector3 hitPoint = targetBody.BoundingBox.Center();
+        Engine.Vector3 hitDirection = hitPoint - attackerBody.BoundingBox.Center();
+        if (hitDirection.LengthSquared() < 0.0001f)
+            hitDirection = attackerBody.Matrix.Forward;
+        else
+            hitDirection = Engine.Vector3.Normalize(hitDirection);
+
+        float attackPower = miner.AttackPower * miner.StrengthFactor;
+        if (float.IsNaN(attackPower) || float.IsInfinity(attackPower) ||
+            attackPower < 1f)
+            attackPower = 1f;
+
+        var attackment = new MeleeAttackment(
+            targetBody,
+            attacker.Entity,
+            hitPoint,
+            hitDirection,
+            attackPower)
+        {
+            EnableArmorProtection = true,
+            EnableResilienceFactor = true,
+            EnableHitValueParticleSystem = true
+        };
+
+        float healthBefore = targetHealth.Health;
+        ComponentMiner.AttackBody(attackment);
+        return targetHealth.Health < healthBefore;
+    }
+
+    /// <summary>
+    /// Intercepts the native animation hit so it cannot stack with the direct
+    /// fallback. A valid native hit moment is converted into the same single,
+    /// rate-limited Attackment used by UpdateChaseBehaviorChasing.
+    /// </summary>
+    public override void OnChaseBehaviorAttacked(
+        ComponentChaseBehavior chaseBehavior,
+        float chaseTimeBefore,
+        ref float chaseTime,
+        ref bool hitBody,
+        ref bool playAttackSound)
+    {
+        if (chaseBehavior == null || chaseBehavior.Entity == null)
+            return;
+
+        ComponentCreature attacker =
+            chaseBehavior.Entity.FindComponent<ComponentCreature>();
+        if (!IsNaturalPredator(attacker) ||
+            !IsValidAnimalPrey(attacker, chaseBehavior.Target))
+            return;
+
+        // Never allow ComponentMiner.Hit to add a second, uncapped native strike.
+        hitBody = false;
+
+        bool applied = TryPerformPredatorStrike(
+            chaseBehavior, attacker, chaseBehavior.Target);
+        if (!applied)
+            playAttackSound = false;
+    }
+
+    /// <summary>
+    /// Gives prey a real counter-hit when a natural predator lands a native melee
+    /// hit. The counter uses the prey's own melee power and the game's native
+    /// Attackment -> Injury -> ComponentHealth pipeline, with a short per-prey
+    /// cooldown and a strict one-HP / half-remaining-health ceiling.
+    /// </summary>
+    private void TryApplyPreyRetaliation(
+        ComponentCreature prey,
+        ComponentCreature predator)
+    {
+        if (prey == null || predator == null ||
+            prey.Entity == null || predator.Entity == null ||
+            !prey.Entity.IsAddedToProject || !predator.Entity.IsAddedToProject ||
+            prey.Entity == predator.Entity)
+            return;
+
+        ComponentHealth predatorHealth = predator.ComponentHealth;
+        if (predatorHealth == null || predatorHealth.Health <= 0f ||
+            predatorHealth.IsInvulnerable)
+            return;
+
+        double now = prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        if (m_nextPreyRetaliationTime.TryGetValue(prey, out double nextRetaliation) &&
+            now < nextRetaliation)
+            return;
+
+        // Queue one retaliation after the incoming predator injury has completed.
+        // This is deliberately a direct Injury credited to the prey: many herbivore
+        // templates do not produce their own melee animation hit event, so a chase
+        // target or a synthetic Attackment alone does not reliably hurt the predator.
+        m_nextPreyRetaliationTime[prey] = now + 3.0;
+
+        SubsystemTime subsystemTime =
+            prey.Project.FindSubsystem<SubsystemTime>(throwOnError: true);
+        subsystemTime.QueueGameTimeDelayedExecution(
+            now + 0.05,
+            delegate
+            {
+                if (!prey.Entity.IsAddedToProject ||
+                    !predator.Entity.IsAddedToProject)
+                    return;
+
+                ComponentHealth currentPredatorHealth = predator.ComponentHealth;
+                ComponentHealth currentPreyHealth = prey.ComponentHealth;
+                if (currentPredatorHealth == null ||
+                    currentPredatorHealth.Health <= 0f ||
+                    currentPredatorHealth.IsInvulnerable ||
+                    currentPreyHealth == null ||
+                    currentPreyHealth.Health <= 0f)
+                    return;
+
+                // The final Injury hook below bounds this to <=1 HP and at most
+                // half the predator's remaining health, while still permitting a
+                // final blow once the predator is critically weak.
+                currentPredatorHealth.Injure(
+                    new Injury(currentPredatorHealth.Health * 0.04f, prey, false, "Melee"));
+            });
+    }
+
+    /// <summary>
+    /// Makes creature-vs-creature melee attacks use a non-zero native attack power.
+    /// This hook is intentionally separate from player melee: AI attacks go through
+    /// Attackment.ProcessAttackment and do not pass through OnPlayerInputHit.
+    /// </summary>
+    public override void ProcessAttackment(Attackment attackment)
+    {
+        if (attackment == null || attackment.Attacker == null ||
+            attackment.Target == null || attackment.Attacker == attackment.Target)
+            return;
+
+        // Player combat and Living Towns villagers are deliberately untouched.
+        if (attackment.Attacker.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(attackment.Attacker) ||
+            IsLivingTownsVillager(attackment.Target))
+            return;
+
+        ComponentCreature attackerCreature =
+            attackment.Attacker.FindComponent<ComponentCreature>();
+        ComponentCreature targetCreature =
+            attackment.Target.FindComponent<ComponentCreature>();
+        ComponentHealth targetHealth =
+            attackment.Target.FindComponent<ComponentHealth>();
+
+        if (attackerCreature == null || targetCreature == null ||
+            targetHealth == null || targetHealth.Health <= 0f ||
+            targetHealth.IsInvulnerable)
+            return;
+
+        bool attackerIsPredator = IsNaturalPredator(attackerCreature);
+        bool targetIsPredator = IsNaturalPredator(targetCreature);
+
+        // A prey animal retaliates once after a real predator melee strike.
+        // It does not rely on its own model having an attack-hit animation.
+        if (attackerIsPredator && !targetIsPredator &&
+            attackment is MeleeAttackment)
+        {
+            TryApplyPreyRetaliation(targetCreature, attackerCreature);
+        }
+
+        if (float.IsNaN(attackment.AttackPower) ||
+            float.IsInfinity(attackment.AttackPower) ||
+            attackment.AttackPower < 1f)
+        {
+            attackment.AttackPower = 1f;
+        }
+
+        float nativeInjury = attackment.CalculateInjuryAmount();
+        if (float.IsNaN(nativeInjury) || float.IsInfinity(nativeInjury) ||
+            nativeInjury < 0f)
+            nativeInjury = 0f;
+
+        if (attackerIsPredator && !targetIsPredator)
+        {
+            // Adaptive per-hit ceiling: no more than 20% of current prey health,
+            // and never more than 2 HP. This gives low-health species multiple
+            // hits too; only the final 0.25 HP may be taken in one finishing hit.
+            float maximumInjury = GetPredatorStrikeDamageCap(targetHealth.Health);
+            attackment.m_injuryAmount =
+                Math.Min(Math.Max(nativeInjury, 0.05f), maximumInjury);
+            return;
+        }
+
+        if (!attackerIsPredator && targetIsPredator)
+        {
+            // Keep a prey creature's individual hit small against a predator.
+            float maximumInjury = GetPreyStrikeDamageCap(targetHealth.Health);
+            attackment.m_injuryAmount =
+                Math.Min(Math.Max(nativeInjury, 0.05f), maximumInjury);
+            return;
+        }
+
+        // Other animal matchups retain the game's native attack and resilience values.
+    }
+
+    private static float GetPredatorStrikeDamageCap(float currentPreyHealth)
+    {
+        if (float.IsNaN(currentPreyHealth) ||
+            float.IsInfinity(currentPreyHealth) ||
+            currentPreyHealth <= 0f)
+            return 0f;
+
+        // Limit each predator hit to 20% of the target's remaining health.
+        // This works for native 0..1 creatures and custom creatures with larger
+        // Health values (for example, Living Towns sheep with Health=30).
+        if (currentPreyHealth <= 0.05f)
+            return currentPreyHealth;
+
+        return currentPreyHealth * 0.12f;
+    }
+
+    private static float GetPreyStrikeDamageCap(float currentPredatorHealth)
+    {
+        if (float.IsNaN(currentPredatorHealth) ||
+            float.IsInfinity(currentPredatorHealth) ||
+            currentPredatorHealth <= 0f)
+            return 0f;
+
+        // Herbivore retaliation is capped at 5% of remaining predator health.
+        // A critically weak predator may receive a final blow.
+        if (currentPredatorHealth <= 0.05f)
+            return currentPredatorHealth;
+
+        return currentPredatorHealth * 0.05f;
+    }
+
+    /// <summary>
+    /// Last-stage prey damage guard. ProcessAttackment alone is not sufficient for
+    /// every source of Injury: Attackment invokes later body/injury callbacks before
+    /// health is reduced. This hook clamps the actual Injury.Amount immediately
+    /// before ComponentHealth subtracts it, including native AI and direct Injury paths.
+    /// A healthy predator can never lose more than half of its remaining health to
+    /// one non-player, non-predator animal strike.
+    /// </summary>
+    public override void CalculateCreatureInjuryAmount(Injury injury)
+    {
+        if (injury == null || injury.ComponentHealth == null)
+            return;
+
+        ComponentCreature attacker = injury.Attacker;
+        ComponentCreature target =
+            injury.ComponentHealth.Entity?.FindComponent<ComponentCreature>();
+        if (attacker == null || target == null ||
+            attacker.Entity == null || target.Entity == null)
+            return;
+
+        // Do not alter player combat, villager interactions or predator-vs-predator.
+        if (attacker.Entity.FindComponent<ComponentPlayer>() != null ||
+            IsLivingTownsVillager(attacker.Entity) ||
+            IsLivingTownsVillager(target.Entity))
+            return;
+
+        bool attackerIsPredator = IsNaturalPredator(attacker);
+        bool targetIsPredator = IsNaturalPredator(target);
+        float amount = injury.Amount;
+        float health = injury.ComponentHealth.Health;
+
+        if (float.IsNaN(amount) || float.IsInfinity(amount) ||
+            amount <= 0f || float.IsNaN(health) ||
+            float.IsInfinity(health) || health <= 0f)
+            return;
+
+        if (attackerIsPredator && !targetIsPredator)
+        {
+            // Final guard immediately before Health is reduced. It also covers
+            // injuries produced by the native animation path or another mod,
+            // so no later Attackment calculation can turn one strike into a kill.
+            float maximumInjury = GetPredatorStrikeDamageCap(health);
+            if (amount > maximumInjury)
+                injury.Amount = maximumInjury;
+            return;
+        }
+
+        if (!attackerIsPredator && targetIsPredator)
+        {
+            // A herbivore hit cannot remove more than 15% of remaining predator health.
+            float maximumInjury = GetPreyStrikeDamageCap(health);
+            if (amount > maximumInjury)
+                injury.Amount = maximumInjury;
+        }
     }
 
     public override void OnPlayerInputInteract(
