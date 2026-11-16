@@ -76,6 +76,14 @@ if sheep_loader.is_file():
           "currentPredatorHealth.Injure(" not in source and
           "TryApplyPreyRetaliation(" not in source,
           "Predator damage is not directly injected from the prey's incoming-hit callback.")
+    update_hook = source[source.index("public override void UpdateChaseBehaviorChasing"):source.index("private bool TryPerformPredatorStrike")]
+    attacked_hook = source[source.index("public override void OnChaseBehaviorAttacked"):source.index("private void TryStartPreyDefense")]
+    check("defensive_strike_not_duplicated_by_update_fallback",
+          "TryPerformDefensiveStrike" not in update_hook,
+          "Defensive prey damage is not applied by a per-frame fallback in addition to the animation hit.")
+    check("defensive_strike_uses_single_animation_hit_path",
+          "TryPerformDefensiveStrike" in attacked_hook and "hitBody = false" in attacked_hook,
+          "The native animation hit is consumed and routed through one controlled defensive Attackment.")
 else:
     blocked("sheep_hook_registration", "Sheep addon source is missing.")
 
