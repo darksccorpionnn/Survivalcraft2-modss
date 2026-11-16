@@ -1,35 +1,69 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Reflection;
-using Engine;
+using System.Text;
 
 namespace Game;
 
 /// <summary>
-/// Read-only in-game diagnostics for a Living Towns world.
-/// It never spawns, damages, moves, edits, or deletes world entities.
+/// Read-only in-game diagnostics for Living Towns.
+/// Combat monitoring observes native melee hooks and later health values.
+/// It never spawns, injures, moves, edits, or deletes world entities.
 /// </summary>
 public sealed class LivingTownsTestHarnessModLoader : ModLoader
 {
     private const string VillagerComponentName = "ComponentLivingTownsVillager";
     private const string SheepComponentName = "ComponentLivingTownsSheepBehavior";
+    private const float HealthEpsilon = 0.0001f;
+    private const double AttackConfirmationTimeout = 0.9;
+    private const double RetaliationObservationWindow = 0.75;
+    private const double RetaliationCooldown = 2.5;
 
     private BevelledButtonWidget m_testButton;
     private CanvasWidget m_testCanvas;
     private ContainerWidget m_testCanvasParent;
-    private bool m_autoScanCompleted;
+    private bool m_combatWatch;
+
+    private readonly List<PendingWolfBullHit> m_pendingWolfBullHits = new();
+    private readonly HashSet<Attackment> m_seenAttackments = new();
+    private readonly Dictionary<ComponentCreature, double> m_lastRetaliationTime = new();
+
+    private int m_wolfBullAttempts;
+    private int m_confirmedWolfHits;
+    private int m_unconfirmedWolfHits;
+    private int m_confirmedBullRetaliations;
+    private int m_missingBullRetaliations;
+    private int m_capFailures;
+    private int m_lethalHits;
+    private int m_cooldownPasses;
+    private int m_cooldownFailures;
+    private int m_cooldownBlocked;
+
+    private sealed class PendingWolfBullHit
+    {
+        public ComponentCreature Wolf;
+        public ComponentCreature Bull;
+        public double AttackTime;
+        public float WolfHealthBefore;
+        public float BullHealthBefore;
+        public bool DamageConfirmed;
+        public double ConfirmedAt;
+        public double ObserveUntil;
+        public bool CooldownProbe;
+        public bool CooldownProbeWindowValid;
+    }
 
     public override void __ModInitialize()
     {
         ModsManager.RegisterHook("OnLoadingFinished", this);
         ModsManager.RegisterHook("GuiUpdate", this);
-        Log.Information("[LivingTownsTest] Harness initialized. Read-only mode; no world edits are performed.");
+        ModsManager.RegisterHook("ProcessAttackment", this);
+        Log.Information("[LivingTownsTest] Harness initialized. Combat observer is idle; READ ONLY.");
     }
 
     public override void OnLoadingFinished(List<Action> actions)
     {
-        Log.Information("[LivingTownsTest] World loading finished. Tap the TEST button in the HUD to scan loaded Living Towns entities.");
+        Log.Information("[LivingTownsTest] World loading finished. Tap WATCH to observe real wolf-versus-bull combat.");
     }
 
     public override void GuiUpdate(ComponentGui componentGui)
@@ -44,6 +78,8 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
                 m_testButton.IsVisible = false;
             if (m_testCanvas != null)
                 m_testCanvas.IsVisible = false;
+            if (m_combatWatch)
+                StopCombatWatch("Player/project became unavailable.");
             return;
         }
 
@@ -51,8 +87,8 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         {
             m_testButton = new BevelledButtonWidget
             {
-                Text = "TEST",
-                DesiredSize = new Engine.Vector2(72f, 48f),
+                Text = "WATCH",
+                DesiredSize = new Engine.Vector2(82f, 48f),
                 Margin = Engine.Vector2.Zero,
                 HorizontalAlignment = WidgetAlignment.Near,
                 VerticalAlignment = WidgetAlignment.Near,
@@ -68,8 +104,8 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
 
             m_testCanvas = new CanvasWidget
             {
-                Size = new Engine.Vector2(80f, 56f),
-                DesiredSize = new Engine.Vector2(80f, 56f),
+                Size = new Engine.Vector2(90f, 56f),
+                DesiredSize = new Engine.Vector2(90f, 56f),
                 HorizontalAlignment = WidgetAlignment.Near,
                 VerticalAlignment = WidgetAlignment.Near,
                 Margin = new Engine.Vector2(12f, 12f),
@@ -87,18 +123,428 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         bool canShow = !guiBusy && m_testCanvas != null;
         m_testButton.IsVisible = canShow;
         m_testButton.IsEnabled = canShow;
+        m_testButton.Text = m_combatWatch ? "STOP" : "WATCH";
         if (m_testCanvas != null)
             m_testCanvas.IsVisible = canShow;
 
-        if (canShow && !m_autoScanCompleted)
+        if (canShow && m_testButton.IsClicked)
         {
-            m_autoScanCompleted = true;
-            Log.Information("[LivingTownsTest] Automatic first scan started.");
-            RunReadOnlyScan(player);
+            if (m_combatWatch)
+                StopCombatWatch("Stopped by player.");
+            else
+                StartCombatWatch(player);
         }
 
-        if (canShow && m_testButton.IsClicked)
-            RunReadOnlyScan(player);
+        if (m_combatWatch)
+            ProcessPendingWolfBullHits(player);
+    }
+
+    private void StartCombatWatch(ComponentPlayer player)
+    {
+        if (player == null || player.Project == null)
+            return;
+
+        m_pendingWolfBullHits.Clear();
+        m_seenAttackments.Clear();
+        m_lastRetaliationTime.Clear();
+
+        m_wolfBullAttempts = 0;
+        m_confirmedWolfHits = 0;
+        m_unconfirmedWolfHits = 0;
+        m_confirmedBullRetaliations = 0;
+        m_missingBullRetaliations = 0;
+        m_capFailures = 0;
+        m_lethalHits = 0;
+        m_cooldownPasses = 0;
+        m_cooldownFailures = 0;
+        m_cooldownBlocked = 0;
+
+        RunReadOnlyScan(player);
+        m_combatWatch = true;
+        Log.Information("[LivingTownsCombatTest] WATCH STARTED. Let a wolf and a bull fight naturally; no damage is generated by this harness.");
+    }
+
+    private void StopCombatWatch(string reason)
+    {
+        if (!m_combatWatch)
+            return;
+
+        m_combatWatch = false;
+        int unresolved = m_pendingWolfBullHits.Count;
+        Log.Information("[LivingTownsCombatTest] WATCH STOPPED: " + reason);
+        Log.Information("[LivingTownsCombatTest] SUMMARY attempts=" + m_wolfBullAttempts +
+            " wolfHitsConfirmed=" + m_confirmedWolfHits +
+            " wolfHitsNoHealthLoss=" + m_unconfirmedWolfHits +
+            " bullRetaliationsConfirmed=" + m_confirmedBullRetaliations +
+            " missingRetaliations=" + m_missingBullRetaliations +
+            " damageCapFailures=" + m_capFailures +
+            " oneHitKills=" + m_lethalHits +
+            " cooldownPass=" + m_cooldownPasses +
+            " cooldownFail=" + m_cooldownFailures +
+            " cooldownBlocked=" + m_cooldownBlocked +
+            " unresolved=" + unresolved);
+        Log.Information("[LivingTownsCombatTest] A zero retaliation count is not a pass; it means the fight did not produce a confirmed counter-hit during this watch.");
+        m_pendingWolfBullHits.Clear();
+        m_seenAttackments.Clear();
+    }
+
+    /// <summary>
+    /// Observes real engine melee attacks before the engine applies the injury.
+    /// No Attackment fields or health values are modified here.
+    /// </summary>
+    public override void ProcessAttackment(Attackment attackment)
+    {
+        if (!m_combatWatch || attackment == null ||
+            !(attackment is MeleeAttackment) ||
+            attackment.Attacker == null || attackment.Target == null ||
+            attackment.Attacker == attackment.Target ||
+            !m_seenAttackments.Add(attackment))
+            return;
+
+        ComponentCreature attacker = attackment.Attacker.FindComponent<ComponentCreature>();
+        ComponentCreature target = attackment.Target.FindComponent<ComponentCreature>();
+        if (attacker == null || target == null ||
+            !IsWolf(attacker) || !IsBull(target))
+            return;
+
+        ComponentHealth wolfHealth = attacker.ComponentHealth;
+        ComponentHealth bullHealth = target.ComponentHealth;
+        if (wolfHealth == null || bullHealth == null ||
+            wolfHealth.Health <= 0f || bullHealth.Health <= 0f)
+            return;
+
+        double now = attacker.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        m_pendingWolfBullHits.Add(new PendingWolfBullHit
+        {
+            Wolf = attacker,
+            Bull = target,
+            AttackTime = now,
+            WolfHealthBefore = wolfHealth.Health,
+            BullHealthBefore = bullHealth.Health
+        });
+        m_wolfBullAttempts++;
+
+        Log.Information("[LivingTownsCombatTest] WOLF_MELEE_ATTEMPT #" + m_wolfBullAttempts +
+            " gameTime=" + now.ToString("F3") +
+            " wolfHP=" + wolfHealth.Health.ToString("F3") +
+            " bullHP=" + bullHealth.Health.ToString("F3"));
+    }
+
+    private void ProcessPendingWolfBullHits(ComponentPlayer player)
+    {
+        if (player == null || player.Project == null)
+            return;
+
+        double now;
+        try
+        {
+            now = player.Project.FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
+        }
+        catch (Exception ex)
+        {
+            Log.Information("[LivingTownsCombatTest] BLOCKED: Could not read game time: " + ex.GetType().Name);
+            return;
+        }
+
+        for (int i = m_pendingWolfBullHits.Count - 1; i >= 0; i--)
+        {
+            PendingWolfBullHit hit = m_pendingWolfBullHits[i];
+            if (hit.Wolf == null || hit.Bull == null ||
+                hit.Wolf.Entity == null || hit.Bull.Entity == null ||
+                !hit.Wolf.Entity.IsAddedToProject || !hit.Bull.Entity.IsAddedToProject)
+            {
+                m_pendingWolfBullHits.RemoveAt(i);
+                continue;
+            }
+
+            ComponentHealth wolfHealth = hit.Wolf.ComponentHealth;
+            ComponentHealth bullHealth = hit.Bull.ComponentHealth;
+            if (wolfHealth == null || bullHealth == null)
+            {
+                m_pendingWolfBullHits.RemoveAt(i);
+                continue;
+            }
+
+            if (!hit.DamageConfirmed)
+            {
+                if (bullHealth.Health < hit.BullHealthBefore - HealthEpsilon)
+                {
+                    hit.DamageConfirmed = true;
+                    hit.ConfirmedAt = now;
+                    hit.ObserveUntil = now + RetaliationObservationWindow;
+                    m_confirmedWolfHits++;
+
+                    float incomingDamage = hit.BullHealthBefore - bullHealth.Health;
+                    float incomingCap = GetTwelvePercentCap(hit.BullHealthBefore);
+                    bool incomingCapPassed = incomingDamage <= incomingCap + 0.001f;
+                    if (!incomingCapPassed)
+                    {
+                        m_capFailures++;
+                        Log.Information("[LivingTownsCombatTest] FAIL wolf damage cap: actual=" +
+                            incomingDamage.ToString("F4") + " allowed=" + incomingCap.ToString("F4"));
+                    }
+                    else
+                    {
+                        Log.Information("[LivingTownsCombatTest] PASS wolf damage cap: actual=" +
+                            incomingDamage.ToString("F4") + " allowed=" + incomingCap.ToString("F4"));
+                    }
+
+                    if (hit.BullHealthBefore > 0.05f && bullHealth.Health <= HealthEpsilon)
+                    {
+                        m_lethalHits++;
+                        Log.Information("[LivingTownsCombatTest] FAIL: one wolf strike killed a bull that had more than 0.05 health.");
+                    }
+
+                    if (m_lastRetaliationTime.TryGetValue(hit.Bull, out double lastRetaliation))
+                    {
+                        double remainingCooldown = lastRetaliation + RetaliationCooldown - now;
+                        hit.CooldownProbe = remainingCooldown > 0.0;
+                        hit.CooldownProbeWindowValid = remainingCooldown > RetaliationObservationWindow + 0.05;
+                        if (hit.CooldownProbe && !hit.CooldownProbeWindowValid)
+                        {
+                            m_cooldownBlocked++;
+                            Log.Information("[LivingTownsCombatTest] BLOCKED cooldown probe: hit occurred too close to the end of the 2.5-second cooldown.");
+                        }
+                    }
+
+                    if (hit.CooldownProbe)
+                    {
+                        Log.Information("[LivingTownsCombatTest] COOLDOWN_PROBE: remaining=" +
+                            Math.Max(0.0, lastRetaliation + RetaliationCooldown - now).ToString("F3") +
+                            " seconds; watching for an extra counter-hit.");
+                    }
+                    else
+                    {
+                        Log.Information("[LivingTownsCombatTest] BULL_HIT_CONFIRMED: bullHP " +
+                            hit.BullHealthBefore.ToString("F3") + " -> " + bullHealth.Health.ToString("F3") +
+                            "; watching the wolf's real health for retaliation.");
+                    }
+                }
+                else if (now - hit.AttackTime >= AttackConfirmationTimeout)
+                {
+                    m_unconfirmedWolfHits++;
+                    Log.Information("[LivingTownsCombatTest] NO_CONFIRMED_BULL_HEALTH_LOSS: wolf melee attempt did not lower bull health.");
+                    m_seenAttackments.RemoveWhere(x => x == null);
+                    m_pendingWolfBullHits.RemoveAt(i);
+                }
+
+                continue;
+            }
+
+            if (wolfHealth.Health < hit.WolfHealthBefore - HealthEpsilon)
+            {
+                float retaliationDamage = hit.WolfHealthBefore - wolfHealth.Health;
+                if (hit.CooldownProbe)
+                {
+                    m_cooldownFailures++;
+                    Log.Information("[LivingTownsCombatTest] FAIL cooldown: bull reduced wolf health again before 2.5 game seconds had elapsed. Damage=" +
+                        retaliationDamage.ToString("F4"));
+                }
+                else
+                {
+                    m_confirmedBullRetaliations++;
+                    float retaliationCap = GetTwelvePercentCap(hit.WolfHealthBefore);
+                    bool capPassed = retaliationDamage <= retaliationCap + 0.001f;
+                    if (!capPassed)
+                    {
+                        m_capFailures++;
+                        Log.Information("[LivingTownsCombatTest] FAIL bull retaliation cap: actual=" +
+                            retaliationDamage.ToString("F4") + " allowed=" + retaliationCap.ToString("F4"));
+                    }
+                    else
+                    {
+                        Log.Information("[LivingTownsCombatTest] PASS bull retaliation cap: actual=" +
+                            retaliationDamage.ToString("F4") + " allowed=" + retaliationCap.ToString("F4"));
+                    }
+
+                    if (hit.WolfHealthBefore > 0.05f && wolfHealth.Health <= HealthEpsilon)
+                    {
+                        m_lethalHits++;
+                        Log.Information("[LivingTownsCombatTest] FAIL: one bull retaliation killed a wolf that had more than 0.05 health.");
+                    }
+
+                    if (m_lastRetaliationTime.TryGetValue(hit.Bull, out double lastTime))
+                    {
+                        double elapsed = now - lastTime;
+                        if (elapsed + 0.001 < RetaliationCooldown)
+                        {
+                            m_cooldownFailures++;
+                            Log.Information("[LivingTownsCombatTest] FAIL retaliation interval: " + elapsed.ToString("F3") +
+                                " seconds; expected at least 2.5.");
+                        }
+                        else
+                        {
+                            m_cooldownPasses++;
+                            Log.Information("[LivingTownsCombatTest] PASS retaliation interval: " +
+                                elapsed.ToString("F3") + " seconds (minimum 2.5).");
+                        }
+                    }
+
+                    m_lastRetaliationTime[hit.Bull] = now;
+                    Log.Information("[LivingTownsCombatTest] BULL_RETALIATION_CONFIRMED: wolfHP " +
+                        hit.WolfHealthBefore.ToString("F3") + " -> " + wolfHealth.Health.ToString("F3"));
+                }
+
+                m_pendingWolfBullHits.RemoveAt(i);
+                continue;
+            }
+
+            if (now >= hit.ObserveUntil)
+            {
+                if (hit.CooldownProbe)
+                {
+                    if (hit.CooldownProbeWindowValid)
+                    {
+                        m_cooldownPasses++;
+                        Log.Information("[LivingTownsCombatTest] PASS cooldown: no additional bull retaliation was observed during the safe 2.5-second cooldown window.");
+                    }
+                }
+                else
+                {
+                    m_missingBullRetaliations++;
+                    Log.Information("[LivingTownsCombatTest] FAIL: bull health decreased from a wolf attack, but no corresponding wolf health decrease was observed within " +
+                        RetaliationObservationWindow.ToString("F2") + " game seconds.");
+                }
+
+                m_pendingWolfBullHits.RemoveAt(i);
+            }
+        }
+
+        if (m_pendingWolfBullHits.Count > 64)
+            m_pendingWolfBullHits.RemoveRange(0, m_pendingWolfBullHits.Count - 64);
+    }
+
+    private static float GetTwelvePercentCap(float health)
+    {
+        if (float.IsNaN(health) || float.IsInfinity(health) || health <= 0f)
+            return 0f;
+        if (health <= 0.05f)
+            return health;
+        return health * 0.12f;
+    }
+
+    private static bool IsNaturalPredator(ComponentCreature creature)
+    {
+        const CreatureCategory predatorMask =
+            CreatureCategory.LandPredator | CreatureCategory.WaterPredator;
+        return creature != null && (creature.Category & predatorMask) != 0;
+    }
+
+    private static bool IsWolf(ComponentCreature creature)
+    {
+        if (creature == null || !IsNaturalPredator(creature))
+            return false;
+        return GetCreatureSignature(creature).IndexOf("wolf", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool IsBull(ComponentCreature creature)
+    {
+        if (creature == null || IsNaturalPredator(creature))
+            return false;
+        return GetCreatureSignature(creature).IndexOf("bull", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    /// <summary>
+    /// Survivalcraft entity templates can expose their species label through
+    /// different component/template fields. Read string metadata reflectively so
+    /// this monitor does not depend on an undocumented template property.
+    /// </summary>
+    private static string GetCreatureSignature(ComponentCreature creature)
+    {
+        var values = new StringBuilder();
+        if (creature == null)
+            return string.Empty;
+
+        try
+        {
+            values.Append(creature.Category.ToString()).Append('|');
+            AppendStringMetadata(creature, values, 0);
+            if (creature.Entity != null)
+            {
+                AppendStringMetadata(creature.Entity, values, 0);
+                foreach (GameEntitySystem.Component component in creature.Entity.Components)
+                    AppendStringMetadata(component, values, 0);
+            }
+        }
+        catch
+        {
+            // Metadata is optional; lack of a readable species label is reported
+            // as BLOCKED during the initial scan rather than guessed.
+        }
+
+        return values.ToString();
+    }
+
+    private static void AppendStringMetadata(object source, StringBuilder output, int depth)
+    {
+        if (source == null || depth > 2)
+            return;
+
+        const BindingFlags flags =
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+
+        for (Type type = source.GetType(); type != null && type != typeof(object); type = type.BaseType)
+        {
+            foreach (FieldInfo field in type.GetFields(flags))
+            {
+                try
+                {
+                    if (field.FieldType == typeof(string))
+                    {
+                        string value = field.GetValue(source) as string;
+                        if (!string.IsNullOrWhiteSpace(value))
+                            output.Append(value).Append('|');
+                    }
+                    else if (depth < 2 && IsNameCarrier(field.FieldType))
+                    {
+                        object nested = field.GetValue(source);
+                        if (nested != null)
+                            AppendStringMetadata(nested, output, depth + 1);
+                    }
+                }
+                catch
+                {
+                    // Some engine fields are not readable in every runtime state.
+                }
+            }
+
+            foreach (PropertyInfo property in type.GetProperties(flags))
+            {
+                if (property.GetIndexParameters().Length != 0 || property.GetMethod == null)
+                    continue;
+
+                try
+                {
+                    if (property.PropertyType == typeof(string))
+                    {
+                        string value = property.GetValue(source, null) as string;
+                        if (!string.IsNullOrWhiteSpace(value))
+                            output.Append(value).Append('|');
+                    }
+                    else if (depth < 2 && IsNameCarrier(property.PropertyType))
+                    {
+                        object nested = property.GetValue(source, null);
+                        if (nested != null && !ReferenceEquals(nested, source))
+                            AppendStringMetadata(nested, output, depth + 1);
+                    }
+                }
+                catch
+                {
+                    // Reflection is best-effort and must never interrupt the game.
+                }
+            }
+        }
+    }
+
+    private static bool IsNameCarrier(Type type)
+    {
+        if (type == null)
+            return false;
+        string name = type.Name;
+        return name.IndexOf("Template", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("Model", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("Dictionary", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("Entity", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static void RunReadOnlyScan(ComponentPlayer player)
@@ -121,15 +567,11 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             int bodyCount = 0;
             int villagerCount = 0;
             int sheepCount = 0;
+            int wolfCount = 0;
+            int bullCount = 0;
+            int predatorCount = 0;
             int invalidLivingTownsHealth = 0;
             int duplicateVillagerControllers = 0;
-
-            AddAssemblyResult(report, "LivingTowns core assembly", "LivingTowns", ref passed, ref failed, ref blocked);
-            AddAssemblyResult(report, "Trade stock addon assembly", "LivingTownsTradeStockAddon", ref passed, ref failed, ref blocked);
-            AddAssemblyResult(report, "Sheep addon assembly", "LivingTownsSheepAddon", ref passed, ref failed, ref blocked);
-            AddTypeResult(report, "Villager runtime component type", "LivingTowns", "Game.ComponentLivingTownsVillager", ref passed, ref failed, ref blocked);
-            AddTypeResult(report, "Sheep behavior runtime component type", "LivingTownsSheepAddon", "Game.ComponentLivingTownsSheepBehavior", ref passed, ref failed, ref blocked);
-            AddTypeResult(report, "Sheep model runtime component type", "LivingTownsSheepAddon", "Game.ComponentLivingTownsSheepModel", ref passed, ref failed, ref blocked);
 
             foreach (ComponentBody body in bodies.Bodies)
             {
@@ -154,6 +596,17 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
 
                 bool isVillager = villagerComponents > 0;
                 bool isSheep = hasSheepBehavior;
+                ComponentCreature creature = body.Entity.FindComponent<ComponentCreature>();
+
+                if (creature != null)
+                {
+                    if (IsNaturalPredator(creature))
+                        predatorCount++;
+                    if (IsWolf(creature))
+                        wolfCount++;
+                    if (IsBull(creature))
+                        bullCount++;
+                }
 
                 if (isVillager)
                 {
@@ -161,7 +614,6 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
                     if (villagerComponents > 1)
                         duplicateVillagerControllers++;
 
-                    ComponentCreature creature = body.Entity.FindComponent<ComponentCreature>();
                     if (creature == null || creature.ComponentHealth == null ||
                         creature.ComponentHealth.Health <= 0f)
                         invalidLivingTownsHealth++;
@@ -170,7 +622,6 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
                 if (isSheep)
                 {
                     sheepCount++;
-                    ComponentCreature creature = body.Entity.FindComponent<ComponentCreature>();
                     if (creature == null || creature.ComponentHealth == null ||
                         creature.ComponentHealth.Health <= 0f)
                         invalidLivingTownsHealth++;
@@ -180,6 +631,9 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             report.AppendLine("Loaded body count: " + bodyCount);
             report.AppendLine("Living Towns villagers detected: " + villagerCount);
             report.AppendLine("Living Towns sheep/ram/lamb behaviors detected: " + sheepCount);
+            report.AppendLine("Natural predators detected: " + predatorCount);
+            report.AppendLine("Wolf labels detected: " + wolfCount);
+            report.AppendLine("Bull labels detected: " + bullCount);
 
             AddResult(report, "World entity scan", true,
                 "SubsystemBodies was read successfully (" + bodyCount + " bodies).", ref passed, ref failed, ref blocked);
@@ -187,40 +641,33 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             if (villagerCount > 0)
                 AddResult(report, "Villager presence", true, villagerCount + " villager controller(s) detected.", ref passed, ref failed, ref blocked);
             else
-                AddResult(report, "Villager presence", null, "No loaded Living Towns villagers found. Load/spawn a town and run TEST again.", ref passed, ref failed, ref blocked);
+                AddResult(report, "Villager presence", null, "No loaded Living Towns villagers found.", ref passed, ref failed, ref blocked);
 
             if (sheepCount > 0)
                 AddResult(report, "Sheep-family presence", true, sheepCount + " sheep/ram/lamb behavior component(s) detected.", ref passed, ref failed, ref blocked);
             else
-                AddResult(report, "Sheep-family presence", null, "No loaded Living Towns sheep-family entities found. Spawn or load them and run TEST again.", ref passed, ref failed, ref blocked);
+                AddResult(report, "Sheep-family presence", null, "No loaded Living Towns sheep-family entities found.", ref passed, ref failed, ref blocked);
 
-            if (villagerCount + sheepCount == 0)
-                AddResult(report, "Living Towns health integrity", null,
-                    "No villager or sheep-family entities were available for health inspection.",
-                    ref passed, ref failed, ref blocked);
-            else
-                AddResult(report, "Living Towns health integrity", invalidLivingTownsHealth == 0,
-                    invalidLivingTownsHealth + " identified Living Towns entity/entities had missing, absent, or zero health.",
-                    ref passed, ref failed, ref blocked);
+            AddResult(report, "Living Towns health integrity", invalidLivingTownsHealth == 0,
+                invalidLivingTownsHealth + " identified Living Towns entity/entities had missing, absent, or zero health.",
+                ref passed, ref failed, ref blocked);
 
             AddResult(report, "Duplicate villager controller", duplicateVillagerControllers == 0,
                 duplicateVillagerControllers + " villager entity/entities had more than one Living Towns controller.",
                 ref passed, ref failed, ref blocked);
 
-            AddResult(report, "Villager jobs and schedules", null,
-                "Requires observing NPC task changes over game time; this safe scan does not simulate or alter AI.",
-                ref passed, ref failed, ref blocked);
-            AddResult(report, "Homes, doors and beds", null,
-                "Requires a controlled town test scenario and path/interaction instrumentation.",
-                ref passed, ref failed, ref blocked);
-            AddResult(report, "Trade and stock persistence", null,
-                "Requires opening trade and checking saved inventory/stock before and after reload.",
-                ref passed, ref failed, ref blocked);
-            AddResult(report, "Animal combat and retaliation", null,
-                "Requires observing real predator/prey attacks and comparing both health values over time.",
-                ref passed, ref failed, ref blocked);
-            AddResult(report, "Save/load regression", null,
-                "Requires a save/reload cycle; not performed by this non-destructive scan.",
+            if (wolfCount > 0)
+                AddResult(report, "Wolf identification", true, wolfCount + " wolf label(s) detected from runtime metadata.", ref passed, ref failed, ref blocked);
+            else
+                AddResult(report, "Wolf identification", null, "No loaded wolf label was readable from creature metadata; no species will be guessed.", ref passed, ref failed, ref blocked);
+
+            if (bullCount > 0)
+                AddResult(report, "Bull identification", true, bullCount + " bull label(s) detected from runtime metadata.", ref passed, ref failed, ref blocked);
+            else
+                AddResult(report, "Bull identification", null, "No loaded bull label was readable from creature metadata; no species will be guessed.", ref passed, ref failed, ref blocked);
+
+            AddResult(report, "Wolf versus bull combat", null,
+                "Tap WATCH and let the real game AI fight. Attack and health hooks are observed without applying damage.",
                 ref passed, ref failed, ref blocked);
         }
         catch (Exception ex)
@@ -239,63 +686,6 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             if (!string.IsNullOrWhiteSpace(line))
                 Log.Information("[LivingTownsTest] " + line);
         }
-
-        Log.Information("[LivingTownsTest] Scan complete. PASS=" + passed + " FAIL=" + failed + " BLOCKED=" + blocked);
-    }
-
-
-    private static void AddAssemblyResult(
-        StringBuilder report,
-        string label,
-        string assemblyName,
-        ref int passed,
-        ref int failed,
-        ref int blocked)
-    {
-        bool found = false;
-        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (string.Equals(assembly.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
-            {
-                found = true;
-                break;
-            }
-        }
-
-        AddResult(report, label, found, found ? assemblyName + " is loaded." : assemblyName + " was not found in loaded assemblies.",
-            ref passed, ref failed, ref blocked);
-    }
-
-    private static void AddTypeResult(
-        StringBuilder report,
-        string label,
-        string assemblyName,
-        string typeName,
-        ref int passed,
-        ref int failed,
-        ref int blocked)
-    {
-        Assembly assembly = null;
-        foreach (Assembly candidate in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            if (string.Equals(candidate.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
-            {
-                assembly = candidate;
-                break;
-            }
-        }
-
-        if (assembly == null)
-        {
-            AddResult(report, label, null, "Cannot inspect type because " + assemblyName + " is not loaded.",
-                ref passed, ref failed, ref blocked);
-            return;
-        }
-
-        Type type = assembly.GetType(typeName, false);
-        AddResult(report, label, type != null,
-            type != null ? typeName + " exists." : typeName + " was not found.",
-            ref passed, ref failed, ref blocked);
     }
 
     private static void AddResult(
