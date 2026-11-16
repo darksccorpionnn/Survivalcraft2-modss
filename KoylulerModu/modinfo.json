@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.1.1",
+  "Version": "0.2.1",
   "ApiVersion": "1.9.5.1",
-  "Description": "Nine independent villager character templates with their original GLB rigs and embedded animation clips. This first gameplay build registers the characters as low-frequency grassland surface spawns with basic native wandering only.",
+  "Description": "Nine villager characters with persistent Turkish identities, door-linked birth, individual spawn eggs, and named wooden-sign bed routines.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

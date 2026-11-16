@@ -18,8 +18,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Restore compressed database source
-        run: base64 -d KoylulerModu/Assets/KoylulerDatabase.xdb.gz.b64 | gzip -d > KoylulerModu/Assets/KoylulerDatabase.xdb
+      - name: Restore compressed database and prepare door-linked templates
+        run: |
+          base64 -d KoylulerModu/Assets/KoylulerDatabase.xdb.gz.b64 | gzip -d > KoylulerModu/Assets/KoylulerDatabase.xdb
+          python3 KoylulerModu/prepare_koyluler_db.py KoylulerModu/Assets/KoylulerDatabase.xdb
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -28,7 +30,7 @@ jobs:
         run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
       - name: Build
         run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
-      - name: Verify villager templates
+      - name: Verify door spawning, villager identity, and eggs
         run: |
           python3 - <<'PY'
           import json
@@ -37,39 +39,44 @@ jobs:
           p = Path('KoylulerModu')
           db = ET.parse(p / 'Assets/KoylulerDatabase.xdb').getroot()
           entities = db.findall('EntityTemplate')
-          expected = {
-              'KoylulerModu_MaleVillager', 'KoylulerModu_FemaleVillager',
-              'KoylulerModu_Farmer', 'KoylulerModu_Blacksmith',
-              'KoylulerModu_Merchant', 'KoylulerModu_Healer',
-              'KoylulerModu_Guard', 'KoylulerModu_Hunter',
-              'KoylulerModu_Shepherd'
-          }
+          names = ['MaleVillager','FemaleVillager','Farmer','Blacksmith','Merchant','Healer','Guard','Hunter','Shepherd']
+          primary = {f'KoylulerModu_{n}' for n in names}
+          aliases = {f'LivingTowns_{n}' for n in names}
           actual = {e.attrib.get('Name') for e in entities}
-          if actual != expected:
-              raise SystemExit(f'Unexpected entity set: {actual}')
+          if len(entities) != 18 or not primary.issubset(actual) or not aliases.issubset(actual):
+              raise SystemExit(f'Unexpected templates; missing={primary.union(aliases)-actual}, count={len(entities)}')
+          project = next((e for e in db if e.tag == 'ProjectTemplate' and e.attrib.get('Name') == 'Project'), None)
+          if project is None or not any(s.attrib.get('Name') == 'LivingTownsDoorBehavior' for s in project.findall('MemberSubsystemTemplate')):
+              raise SystemExit('Missing Project/LivingTownsDoorBehavior')
+          egg_indices = []
           for e in entities:
-              names = {c.attrib.get('Name') for c in e.findall('MemberComponentTemplate')}
-              if 'HumanModel' not in names or 'Creature' not in names or 'Locomotion' not in names:
-                  raise SystemExit(f'{e.attrib.get("Name")} is missing core native components')
-              if 'LivingTownsVillagerController' in names:
-                  raise SystemExit('Legacy custom controller must not be required')
+              template_name = e.attrib['Name']
+              components = {c.attrib.get('Name') for c in e.findall('MemberComponentTemplate')}
+              if not {'HumanModel','Creature','Locomotion','LivingTownsVillagerController','KoylulerIdentity'}.issubset(components):
+                  raise SystemExit(f'{template_name} is missing required components')
               model = next(c for c in e.findall('MemberComponentTemplate') if c.attrib.get('Name') == 'HumanModel')
               params = {x.attrib.get('Name'): x.attrib.get('Value') for x in model.findall('Parameter')}
-              model_rel = params['ModelName']
-              anim_rel = params['AnimationConfigPath']
-              if not model_rel.startswith('Models/') or not anim_rel.startswith('Animations/'):
-                  raise SystemExit(f'Invalid model/animation asset path for {e.attrib.get("Name")}')
-              expected_model = e.attrib['Name'].replace('KoylulerModu_', '')
-              if model_rel != f'Models/{expected_model}/{expected_model}':
-                  raise SystemExit(f'Model path mismatch for {e.attrib.get("Name")}: {model_rel}')
-              if anim_rel != f'Animations/{expected_model}':
-                  raise SystemExit(f'Animation path mismatch for {e.attrib.get("Name")}: {anim_rel}')
-          for lang in ('tr-TR', 'en-US'):
+              if not params.get('ModelName','').startswith('Models/') or not params.get('AnimationConfigPath','').startswith('Animations/'):
+                  raise SystemExit(f'Invalid model/animation reference in {template_name}')
+              eggs = [x for x in e.findall('ParameterSet') if x.attrib.get('Name') == 'CreatureEggData']
+              if template_name in primary:
+                  if len(eggs) != 1:
+                      raise SystemExit(f'{template_name} must have one spawn egg')
+                  egg_indices.append(int(next(x for x in eggs[0].findall('Parameter') if x.attrib.get('Name') == 'EggTypeIndex').attrib['Value']))
+              elif eggs:
+                  raise SystemExit(f'Door alias must not add a duplicate egg: {template_name}')
+          if sorted(egg_indices) != list(range(700,709)):
+              raise SystemExit(f'Unexpected egg indices: {egg_indices}')
+          for lang in ('tr-TR','en-US'):
               json.loads((p / f'Assets/Lang/{lang}.json').read_text(encoding='utf-8'))
+          loader = (p / 'KoylulerModuModLoader.cs').read_text(encoding='utf-8')
+          if 'InitializeCreatureTypes' in loader or 'SpawnLocationType.Surface' in loader:
+              raise SystemExit('Random surface spawning remains enabled')
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
           if not dll.is_file():
               raise SystemExit(f'Missing compiled assembly: {dll}')
-          print(f'PASS: {len(entities)} templates and all source asset references.')
+          print('PASS: 9 player templates + 9 door-spawn aliases; door subsystem; identity; 9 egg types.')
+          print(f'Compiled assembly: {dll.stat().st_size} bytes')
           PY
       - name: Upload compiled mod files
         uses: actions/upload-artifact@v4
