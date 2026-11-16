@@ -67,7 +67,7 @@ if sheep_loader.is_file():
         check("sheep_hook_" + hook, hook in source,
               "Expected hook registration/name appears in the sheep addon source.")
     for token in ("TryStartPreyDefense", "TryPerformDefensiveStrike",
-                  "m_defensiveTargets", "m_nextDefensiveStrikeTime",
+                  "m_defensiveTargets", "s_nextDefensiveStrikeTime",
                   "s_chaseAttackMethod.Invoke"):
         check("independent_defense_" + token.replace(" ", "_").replace(".", "_"),
               token in source,
@@ -84,6 +84,11 @@ if sheep_loader.is_file():
     check("defensive_strike_uses_single_animation_hit_path",
           "TryPerformDefensiveStrike" in attacked_hook and "hitBody = false" in attacked_hook,
           "The native animation hit is consumed and routed through one controlled defensive Attackment.")
+    check("defensive_cooldown_shared_per_creature",
+          "private static readonly Dictionary<ComponentCreature, double> s_nextDefensiveStrikeTime" in source
+          and "s_nextDefensiveStrikeTime.TryGetValue(defender" in source
+          and "s_nextDefensiveStrikeTime[defender] = now + 2.5" in source,
+          "Every chase callback for the same defending creature shares one 2.5-second cooldown.")
 else:
     blocked("sheep_hook_registration", "Sheep addon source is missing.")
 
