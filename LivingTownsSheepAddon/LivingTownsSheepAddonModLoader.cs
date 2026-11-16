@@ -787,7 +787,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
                 // half the predator's remaining health, while still permitting a
                 // final blow once the predator is critically weak.
                 currentPredatorHealth.Injure(
-                    new Injury(1f, prey, false, "Melee"));
+                    new Injury(2f, prey, false, "Melee"));
             });
     }
 
@@ -859,7 +859,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             // Keep a prey creature's individual hit small against a predator.
             float maximumInjury = targetHealth.Health <= 0.1f
                 ? targetHealth.Health
-                : Math.Min(1f, targetHealth.Health * 0.5f);
+                : Math.Min(2f, targetHealth.Health * 0.5f);
             attackment.m_injuryAmount =
                 Math.Min(Math.Max(nativeInjury, 0.25f), maximumInjury);
             return;
@@ -880,7 +880,7 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (currentPreyHealth <= 0.25f)
             return currentPreyHealth;
 
-        return Math.Min(2f, Math.Max(0.25f, currentPreyHealth * 0.2f));
+        return Math.Min(4f, Math.Max(0.25f, currentPreyHealth * 0.5f));
     }
 
     /// <summary>
@@ -933,11 +933,11 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         if (!attackerIsPredator && targetIsPredator)
         {
             // Non-predator animals can damage predators, but one retaliation
-            // removes at most 1 HP / half the remaining health. At critical
+            // removes at most 2 HP / half the remaining health. At critical
             // health (<=0.1 HP), allow the finishing blow.
             float maximumInjury = health <= 0.1f
                 ? health
-                : Math.Min(1f, health * 0.5f);
+                : Math.Min(2f, health * 0.5f);
             if (amount > maximumInjury)
                 injury.Amount = maximumInjury;
         }
