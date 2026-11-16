@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Reflection;
 using Engine;
 
 namespace Game;
@@ -17,6 +18,7 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
     private BevelledButtonWidget m_testButton;
     private CanvasWidget m_testCanvas;
     private ContainerWidget m_testCanvasParent;
+    private bool m_autoScanCompleted;
 
     public override void __ModInitialize()
     {
@@ -88,6 +90,13 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         if (m_testCanvas != null)
             m_testCanvas.IsVisible = canShow;
 
+        if (canShow && !m_autoScanCompleted)
+        {
+            m_autoScanCompleted = true;
+            Log.Information("[LivingTownsTest] Automatic first scan started.");
+            RunReadOnlyScan(player);
+        }
+
         if (canShow && m_testButton.IsClicked)
             RunReadOnlyScan(player);
     }
@@ -114,6 +123,13 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             int sheepCount = 0;
             int invalidLivingTownsHealth = 0;
             int duplicateVillagerControllers = 0;
+
+            AddAssemblyResult(report, "LivingTowns core assembly", "LivingTowns", ref passed, ref failed, ref blocked);
+            AddAssemblyResult(report, "Trade stock addon assembly", "LivingTownsTradeStockAddon", ref passed, ref failed, ref blocked);
+            AddAssemblyResult(report, "Sheep addon assembly", "LivingTownsSheepAddon", ref passed, ref failed, ref blocked);
+            AddTypeResult(report, "Villager runtime component type", "LivingTowns", "Game.ComponentLivingTownsVillager", ref passed, ref failed, ref blocked);
+            AddTypeResult(report, "Sheep behavior runtime component type", "LivingTownsSheepAddon", "Game.ComponentLivingTownsSheepBehavior", ref passed, ref failed, ref blocked);
+            AddTypeResult(report, "Sheep model runtime component type", "LivingTownsSheepAddon", "Game.ComponentLivingTownsSheepModel", ref passed, ref failed, ref blocked);
 
             foreach (ComponentBody body in bodies.Bodies)
             {
@@ -178,9 +194,14 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             else
                 AddResult(report, "Sheep-family presence", null, "No loaded Living Towns sheep-family entities found. Spawn or load them and run TEST again.", ref passed, ref failed, ref blocked);
 
-            AddResult(report, "Living Towns health integrity", invalidLivingTownsHealth == 0,
-                invalidLivingTownsHealth + " identified Living Towns entity/entities had missing, absent, or zero health.",
-                ref passed, ref failed, ref blocked);
+            if (villagerCount + sheepCount == 0)
+                AddResult(report, "Living Towns health integrity", null,
+                    "No villager or sheep-family entities were available for health inspection.",
+                    ref passed, ref failed, ref blocked);
+            else
+                AddResult(report, "Living Towns health integrity", invalidLivingTownsHealth == 0,
+                    invalidLivingTownsHealth + " identified Living Towns entity/entities had missing, absent, or zero health.",
+                    ref passed, ref failed, ref blocked);
 
             AddResult(report, "Duplicate villager controller", duplicateVillagerControllers == 0,
                 duplicateVillagerControllers + " villager entity/entities had more than one Living Towns controller.",
@@ -220,6 +241,61 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
         }
 
         Log.Information("[LivingTownsTest] Scan complete. PASS=" + passed + " FAIL=" + failed + " BLOCKED=" + blocked);
+    }
+
+
+    private static void AddAssemblyResult(
+        StringBuilder report,
+        string label,
+        string assemblyName,
+        ref int passed,
+        ref int failed,
+        ref int blocked)
+    {
+        bool found = false;
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (string.Equals(assembly.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
+            {
+                found = true;
+                break;
+            }
+        }
+
+        AddResult(report, label, found, found ? assemblyName + " is loaded." : assemblyName + " was not found in loaded assemblies.",
+            ref passed, ref failed, ref blocked);
+    }
+
+    private static void AddTypeResult(
+        StringBuilder report,
+        string label,
+        string assemblyName,
+        string typeName,
+        ref int passed,
+        ref int failed,
+        ref int blocked)
+    {
+        Assembly assembly = null;
+        foreach (Assembly candidate in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            if (string.Equals(candidate.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase))
+            {
+                assembly = candidate;
+                break;
+            }
+        }
+
+        if (assembly == null)
+        {
+            AddResult(report, label, null, "Cannot inspect type because " + assemblyName + " is not loaded.",
+                ref passed, ref failed, ref blocked);
+            return;
+        }
+
+        Type type = assembly.GetType(typeName, false);
+        AddResult(report, label, type != null,
+            type != null ? typeName + " exists." : typeName + " was not found.",
+            ref passed, ref failed, ref blocked);
     }
 
     private static void AddResult(
