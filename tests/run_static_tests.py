@@ -22,6 +22,9 @@ sheep_loader = ROOT / "LivingTownsSheepAddon/LivingTownsSheepAddonModLoader.cs"
 sheep_behavior = ROOT / "LivingTownsSheepAddon/ComponentLivingTownsSheepBehavior.cs"
 sheep_project = ROOT / "LivingTownsSheepAddon/LivingTownsSheepAddon.csproj"
 town_project = ROOT / "TownBootstrap/TownBootstrap.csproj"
+harness_project = ROOT / "LivingTownsTestHarness/LivingTownsTestHarness.csproj"
+harness_loader = ROOT / "LivingTownsTestHarness/LivingTownsTestHarnessModLoader.cs"
+harness_info = ROOT / "LivingTownsTestHarness/modinfo.json"
 
 check("sheep_addon_source_present", sheep_loader.is_file() and sheep_behavior.is_file(),
       "Sheep addon loader and behavior source files are present.")
@@ -29,6 +32,30 @@ check("sheep_addon_targets_net10", sheep_project.is_file() and "net10.0" in shee
       "Sheep addon project targets .NET 10.")
 check("town_bootstrap_project_present", town_project.is_file(),
       "TownBootstrap project is present.")
+check("in_game_harness_project_present", harness_project.is_file(),
+      "Read-only in-game diagnostics project is present.")
+check("in_game_harness_loader_present", harness_loader.is_file(),
+      "Read-only diagnostic ModLoader source is present.")
+if harness_info.is_file():
+    info = json.loads(harness_info.read_text(encoding="utf-8"))
+    check("harness_metadata_compatibility",
+          info.get("ApiVersion") == "1.9.5.1" and info.get("ScVersion") == "2.4.0.0",
+          "Harness metadata targets Survivalcraft 2.4.0.0 / API 1.9.5.1.")
+else:
+    check("harness_metadata_compatibility", False, "Harness modinfo.json is missing.")
+
+if harness_loader.is_file():
+    source = harness_loader.read_text(encoding="utf-8")
+    for token in ("RegisterHook(\"GuiUpdate\"", "RunReadOnlyScan",
+                  "SubsystemBodies", "ComponentLivingTownsVillager",
+                  "ComponentLivingTownsSheepBehavior", "READ ONLY"):
+        check("harness_" + token.replace(" ", "_").replace("\"", "").replace("(", ""),
+              token in source, "Expected read-only runtime diagnostic token is present.")
+    check("harness_no_world_mutation_calls",
+          all(token not in source for token in ("SpawnCreature(", ".Injure(", ".SetCellValue(")),
+          "Harness must not spawn entities, injure creatures, or edit terrain.")
+else:
+    blocked("harness_runtime_diagnostics", "Harness source is missing.")
 
 if sheep_loader.is_file():
     source = sheep_loader.read_text(encoding="utf-8")
