@@ -29,6 +29,15 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
     private static readonly FieldInfo s_chaseNonPlayerProbabilityField =
         typeof(ComponentChaseBehavior).GetField(
             "m_chaseNonPlayerProbability", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo s_creatureAttackSoundField =
+        typeof(ComponentCreatureSounds).GetField(
+            "m_attackSound", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo s_creatureMoanSoundField =
+        typeof(ComponentCreatureSounds).GetField(
+            "m_moanSound", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo s_creaturePainSoundField =
+        typeof(ComponentCreatureSounds).GetField(
+            "m_painSound", BindingFlags.Instance | BindingFlags.NonPublic);
     private BevelledButtonWidget m_villagerTradeButton;
     private CanvasWidget m_villagerTradeCanvas;
     private ContainerWidget m_villagerTradeButtonParent;
@@ -743,7 +752,42 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
         // Give the counter a meaningful but bounded amount. A predator can never
         // lose more than 12% of its remaining health to one herbivore counter-hit.
         counterAttackment.m_injuryAmount = counterDamage;
+        float predatorHealthBefore = predatorHealth.Health;
         ComponentMiner.AttackBody(counterAttackment);
+
+        // Play one species-appropriate vocalization only after the counter-hit lands.
+        if (predatorHealth.Health < predatorHealthBefore)
+            PlayPreyCounterAttackSound(prey);
+    }
+
+    private static void PlayPreyCounterAttackSound(ComponentCreature prey)
+    {
+        if (prey == null)
+            return;
+
+        ComponentCreatureSounds sounds = prey.ComponentCreatureSounds;
+        if (sounds == null)
+            return;
+
+        // Most predators have AttackSound. Herbivores often leave it empty,
+        // so use their configured alarm/moan voice, then their pain voice.
+        string attackSound = s_creatureAttackSoundField?.GetValue(sounds) as string;
+        if (!string.IsNullOrEmpty(attackSound))
+        {
+            sounds.PlayAttackSound();
+            return;
+        }
+
+        string moanSound = s_creatureMoanSoundField?.GetValue(sounds) as string;
+        if (!string.IsNullOrEmpty(moanSound))
+        {
+            sounds.PlayMoanSound();
+            return;
+        }
+
+        string painSound = s_creaturePainSoundField?.GetValue(sounds) as string;
+        if (!string.IsNullOrEmpty(painSound))
+            sounds.PlayPainSound();
     }
 
     /// <summary>
