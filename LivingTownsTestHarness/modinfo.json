@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Living Towns Test Harness",
-  "Version": "0.2.0",
+  "Version": "0.2.1",
   "ApiVersion": "1.9.5.1",
-  "Description": "Read-only in-game diagnostic overlay for Living Towns. Tap WATCH to observe real wolf-versus-bull melee attacks and compare health changes, retaliation damage caps, and cooldown timing. Never modifies world entities or terrain.",
+  "Description": "Read-only in-game diagnostic overlay for Living Towns. Tap WATCH to observe real wolf-versus-bull melee attacks and compare health changes, retaliation damage caps, and the full remaining cooldown interval. Never modifies world entities or terrain.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10001,
   "NonPersistentMod": false,
