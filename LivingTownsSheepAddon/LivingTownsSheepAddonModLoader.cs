@@ -755,25 +755,12 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             targetHealth.IsInvulnerable)
             return;
 
-        // Prey retaliation is applied as a real native Injury to the predator.
-        // Merely assigning the prey's ChaseBehavior target is not sufficient:
-        // many herbivore templates have no active melee attack state, so they
-        // turn toward the predator but never produce an Attackment of their own.
-        // Apply a small counter-hit only after a predator has actually damaged
-        // the prey. The predator's own health component receives the injury.
+        // When a prey animal is attacked, ask its native chase behavior to face
+        // the predator. Damage is dealt only through the normal Attackment path
+        // below, where prey retaliation is explicitly capped.
         if (IsNaturalPredator(attackerCreature) &&
             !IsNaturalPredator(targetCreature))
         {
-            ComponentHealth predatorHealth = attackerCreature.ComponentHealth;
-            if (predatorHealth != null && predatorHealth.Health > 0f &&
-                !predatorHealth.IsInvulnerable)
-            {
-                predatorHealth.Injure(
-                    new Injury(1f, targetCreature, false, "Melee"));
-            }
-
-            // Also ask the native chase behavior to face/chase the attacker,
-            // but do not depend on it for applying retaliation damage.
             ComponentChaseBehavior defenderChase =
                 targetCreature.Entity.FindComponent<ComponentChaseBehavior>();
             if (defenderChase != null && s_chaseAttackMethod != null)
@@ -794,6 +781,20 @@ public sealed class LivingTownsSheepAddonModLoader : ModLoader
             double now = attackment.Attacker.Project
                 .FindSubsystem<SubsystemTime>(throwOnError: true).GameTime;
             m_nextPredatorMeleeTime[chaseBehavior] = now + 2.5;
+        }
+
+        // Herbivore/prey retaliation must never one-shot a natural predator.
+        // Cap each non-predator animal hit against a predator to 1 HP; this is
+        // applied to the actual native Attackment so armor/resilience extremes
+        // cannot turn a single retaliation into a lethal strike.
+        if (!IsNaturalPredator(attackerCreature) &&
+            IsNaturalPredator(targetCreature))
+        {
+            float preyInjury = attackment.CalculateInjuryAmount();
+            if (float.IsNaN(preyInjury) || float.IsInfinity(preyInjury) ||
+                preyInjury < 0f)
+                preyInjury = 0f;
+            attackment.m_injuryAmount = Math.Min(preyInjury, 1f);
         }
 
         // Native AI melee already created this Attackment after a successful hit
