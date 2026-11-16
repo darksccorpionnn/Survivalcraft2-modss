@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Restore compressed database source
+        run: base64 -d KoylulerModu/Assets/KoylulerDatabase.xdb.gz.b64 | gzip -d > KoylulerModu/Assets/KoylulerDatabase.xdb
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -53,10 +55,15 @@ jobs:
                   raise SystemExit('Legacy custom controller must not be required')
               model = next(c for c in e.findall('MemberComponentTemplate') if c.attrib.get('Name') == 'HumanModel')
               params = {x.attrib.get('Name'): x.attrib.get('Value') for x in model.findall('Parameter')}
-              if not (p / 'Assets' / (params['ModelName'] + '.glb')).is_file():
-                  raise SystemExit(f'Missing model asset for {e.attrib.get("Name")}')
-              if not (p / 'Assets' / (params['AnimationConfigPath'] + '.json')).is_file():
-                  raise SystemExit(f'Missing animation config for {e.attrib.get("Name")}')
+              model_rel = params['ModelName']
+              anim_rel = params['AnimationConfigPath']
+              if not model_rel.startswith('Models/') or not anim_rel.startswith('Animations/'):
+                  raise SystemExit(f'Invalid model/animation asset path for {e.attrib.get("Name")}')
+              expected_model = e.attrib['Name'].replace('KoylulerModu_', '')
+              if model_rel != f'Models/{expected_model}/{expected_model}':
+                  raise SystemExit(f'Model path mismatch for {e.attrib.get("Name")}: {model_rel}')
+              if anim_rel != f'Animations/{expected_model}':
+                  raise SystemExit(f'Animation path mismatch for {e.attrib.get("Name")}: {anim_rel}')
           for lang in ('tr-TR', 'en-US'):
               json.loads((p / f'Assets/Lang/{lang}.json').read_text(encoding='utf-8'))
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
