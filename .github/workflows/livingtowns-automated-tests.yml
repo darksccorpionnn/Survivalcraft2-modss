@@ -36,6 +36,11 @@ jobs:
           dotnet restore TownBootstrap/TownBootstrap.csproj --configfile nuget.config
           dotnet build TownBootstrap/TownBootstrap.csproj --configuration Release --no-restore
 
+      - name: Restore and build in-game test harness
+        run: |
+          dotnet restore LivingTownsTestHarness/LivingTownsTestHarness.csproj --configfile nuget.config
+          dotnet build LivingTownsTestHarness/LivingTownsTestHarness.csproj --configuration Release --no-restore
+
       - name: Run static test suite
         run: python3 tests/run_static_tests.py
 
@@ -48,5 +53,6 @@ jobs:
             test-results/LivingTowns-TestReport.json
             LivingTownsSheepAddon/bin/Release/net10.0/LivingTownsSheepAddon.dll
             TownBootstrap/bin/Release/TownBootstrap.scmod
+            LivingTownsTestHarness/bin/Release/LivingTownsTestHarness.scmod
           if-no-files-found: error
           retention-days: 30
