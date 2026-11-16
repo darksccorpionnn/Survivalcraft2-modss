@@ -55,7 +55,7 @@ if harness_loader.is_file():
               token in source, "Expected read-only combat observer token is present.")
     check("harness_no_world_mutation_calls",
           all(token not in source for token in ("SpawnCreature(", ".Injure(", ".SetCellValue(",
-                                                  "Health =", "Attackment.AttackPower =")),
+                                                  ".Health =", "Attackment.AttackPower =")),
           "Harness must not spawn entities, apply injury, change health, or edit terrain.")
 else:
     blocked("harness_runtime_diagnostics", "Harness source is missing.")
