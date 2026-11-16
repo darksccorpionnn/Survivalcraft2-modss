@@ -1,9 +1,11 @@
 import json
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from scmod_check import validate_archive, inspect_log
 
 
@@ -59,7 +61,7 @@ class ScmodCheckTests(unittest.TestCase):
     def test_log_fatal_patterns_are_found(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "game.log"
-            log.write_text("INFO started\\nERROR NullReferenceException in mod\\n", encoding="utf-8")
+            log.write_text("INFO started\nERROR NullReferenceException in mod\n", encoding="utf-8")
             findings = inspect_log(str(log))
             self.assertEqual(len(findings), 1)
             self.assertIn(":2:", findings[0])
