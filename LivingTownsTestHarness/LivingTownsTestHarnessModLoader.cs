@@ -198,13 +198,15 @@ public sealed class LivingTownsTestHarnessModLoader : ModLoader
             !(attackment is MeleeAttackment) ||
             attackment.Attacker == null || attackment.Target == null ||
             attackment.Attacker == attackment.Target ||
-            !m_seenAttackments.Add(attackment))
+            attackment.Attacker == null || attackment.Target == null ||
+            attackment.Attacker == attackment.Target)
             return;
 
         ComponentCreature attacker = attackment.Attacker.FindComponent<ComponentCreature>();
         ComponentCreature target = attackment.Target.FindComponent<ComponentCreature>();
         if (attacker == null || target == null ||
-            !IsWolf(attacker) || !IsBull(target))
+            !IsWolf(attacker) || !IsBull(target) ||
+            !m_seenAttackments.Add(attackment))
             return;
 
         ComponentHealth wolfHealth = attacker.ComponentHealth;
