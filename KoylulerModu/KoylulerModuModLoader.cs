@@ -1,11 +1,14 @@
-using Engine;
 using System.Collections.Generic;
+using System.Reflection;
+using Engine;
+using HarmonyLib;
 
 namespace Game;
 
 /// <summary>
 /// The embedded LivingTownsDoorBehavior subsystem owns villager births.
 /// This loader deliberately does not register any random surface-spawn types.
+/// A small Harmony postfix puts the persistent villager name in the inventory title.
 /// </summary>
 public sealed class KoylulerModuModLoader : ModLoader
 {
@@ -19,6 +22,17 @@ public sealed class KoylulerModuModLoader : ModLoader
 
     public override void OnLoadingFinished(List<System.Action> actions)
     {
-        Log.Information(LogPrefix + "World loaded. Door-linked villager birth subsystem is registered in the project database.");
+        try
+        {
+            Harmony harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
+            harmony.PatchAll(Assembly.GetExecutingAssembly());
+            Log.Information(LogPrefix + "Inventory-title name patch installed; floating name labels are disabled.");
+        }
+        catch (System.Exception ex)
+        {
+            Log.Error(LogPrefix + "Inventory-title patch could not be installed: " + ex);
+        }
+
+        Log.Information(LogPrefix + "World loaded. Door-linked villager birth subsystem and inventory-name display are ready.");
     }
 }

@@ -30,7 +30,7 @@ jobs:
         run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
       - name: Build
         run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
-      - name: Verify door spawning, villager identity, and eggs
+      - name: Verify door spawning, villager identity, inventory title, and eggs
         run: |
           python3 - <<'PY'
           import json
@@ -73,12 +73,20 @@ jobs:
                   if f'DisplayName:KoylulerModu_{name}Egg' not in data:
                       raise SystemExit(f'Missing localized egg name for {name} in {lang}')
           loader = (p / 'KoylulerModuModLoader.cs').read_text(encoding='utf-8')
+          identity = (p / 'ComponentKoyluIdentity.cs').read_text(encoding='utf-8')
+          ui_patch = (p / 'VillagerInventoryNamePatch.cs').read_text(encoding='utf-8')
+          if 'HarmonyLib' not in loader or 'PatchAll' not in loader:
+              raise SystemExit('Harmony UI patch is not initialized')
+          if 'ChestLabel' not in ui_patch or 'Envanteri' not in ui_patch or 'LivingTownsTradeWidget' not in ui_patch:
+              raise SystemExit('Villager inventory title patch is incomplete')
+          if 'm_displayName' in identity or 'DisplayName' in identity:
+              raise SystemExit('World creature display name must remain untouched')
           if 'InitializeCreatureTypes' in loader or 'SpawnLocationType.Surface' in loader:
               raise SystemExit('Random surface spawning remains enabled')
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
           if not dll.is_file():
               raise SystemExit(f'Missing compiled assembly: {dll}')
-          print('PASS: 9 player templates + 9 door-spawn aliases; door subsystem; identity; 9 egg types.')
+          print('PASS: 9 player templates + 9 door-spawn aliases; door subsystem; saved villager identity; inventory title patch; 9 egg types.')
           print(f'Compiled assembly: {dll.stat().st_size} bytes')
           PY
       - name: Upload compiled mod files

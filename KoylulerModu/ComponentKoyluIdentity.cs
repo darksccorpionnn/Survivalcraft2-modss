@@ -10,7 +10,8 @@ namespace Game;
 
 /// <summary>
 /// Gives each villager a stable Turkish identity and mirrors it into the
-/// legacy Living Towns villager controller used by named wooden signs.
+/// Living Towns controller. The name is shown in the villager inventory title,
+/// not as a floating world label.
 /// </summary>
 public sealed class ComponentKoyluIdentity : Component, IUpdateable
 {
@@ -52,10 +53,7 @@ public sealed class ComponentKoyluIdentity : Component, IUpdateable
     private void ApplyNameWhenComponentsAreReady()
     {
         object controller = FindComponentByTypeName("Game.ComponentLivingTownsVillager");
-        ComponentCreature creature = Entity != null
-            ? Entity.FindComponent<ComponentCreature>(throwOnError: false)
-            : null;
-        if (controller == null || creature == null)
+        if (controller == null)
             return;
 
         // Preserve an existing saved Köylü### name; otherwise allocate the next number.
@@ -76,13 +74,11 @@ public sealed class ComponentKoyluIdentity : Component, IUpdateable
             s_highestAssignedNumber = number;
 
         bool controllerUpdated = SetStringMember(controller, "m_villagerName", "Name", m_name);
-        bool creatureUpdated = SetStringMember(creature, "m_displayName", "DisplayName", m_name);
         if (controllerUpdated)
         {
             m_applied = true;
             Log.Information("[KoylulerModu] Villager identity assigned: " + m_name +
-                (creatureUpdated ? " (creature display name synchronized)." :
-                                   " (controller name synchronized; display field not writable)."));
+                " (saved on villager; displayed in inventory title only).");
         }
     }
 
