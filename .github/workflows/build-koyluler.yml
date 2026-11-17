@@ -82,12 +82,15 @@ jobs:
           loader = (p / 'KoylulerModuModLoader.cs').read_text(encoding='utf-8')
           identity = (p / 'ComponentKoyluIdentity.cs').read_text(encoding='utf-8')
           ui_patch = (p / 'VillagerInventoryNamePatch.cs').read_text(encoding='utf-8')
+          bridge = (p / 'VillagerInventoryNameBridge.cs').read_text(encoding='utf-8')
           if 'HarmonyLib' not in loader or 'VillagerInventoryNamePatch.Install' not in loader:
               raise SystemExit('Dynamic Harmony installation is missing')
-          if 'LivingTownsTradeWidget' not in ui_patch or 'ConstructorPostfix' not in ui_patch or 'TryOpenPostfix' not in ui_patch:
-              raise SystemExit('LivingTowns inventory constructor/TryOpen patches are incomplete')
-          if 'ChestLabel' not in ui_patch or 'Envanteri' not in ui_patch or 'EnsureNameNow' not in ui_patch:
-              raise SystemExit('Villager inventory title update is incomplete')
+          if 'LivingTownsTradeWidget' not in ui_patch or 'OpCodes.Ldarg_2' not in ui_patch or 'Takas Stoğu' not in ui_patch:
+              raise SystemExit('Direct trade-stock caption replacement is incomplete')
+          if 'ResolveStockLabel' not in ui_patch or 'm_villagerName' not in bridge:
+              raise SystemExit('Villager-name bridge is incomplete')
+          if 'Köylü' not in bridge or 'return name' not in bridge:
+              raise SystemExit('Villager name resolver does not return the name as the stock label')
           if 'return m_name' not in identity:
               raise SystemExit('Identity name is not returned independently from the controller')
           if 'm_displayName' in identity or 'DisplayName' in identity:

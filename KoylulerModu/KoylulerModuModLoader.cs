@@ -1,13 +1,14 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Engine;
 using HarmonyLib;
 
 namespace Game;
 
 /// <summary>
-/// Installs the name hook for the actual LivingTowns inventory panel.
-/// The hook attaches to its constructor and TryOpen method as soon as
-/// the LivingTowns assembly is available.
+/// Installs a transpiler that replaces the literal "Köylünün Takas Stoğu"
+/// inside LivingTownsTradeWidget's constructor with the current villager name.
 /// </summary>
 public sealed class KoylulerModuModLoader : ModLoader
 {
@@ -20,20 +21,26 @@ public sealed class KoylulerModuModLoader : ModLoader
         {
             s_harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
             VillagerInventoryNamePatch.Install(s_harmony);
-            Log.Information(LogPrefix + "Listening for the LivingTowns villager inventory panel.");
+            Log.Information(LogPrefix + "Direct villager stock-label replacement initialized.");
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            Log.Error(LogPrefix + "Could not install inventory title hook: " + ex);
+            Log.Error(LogPrefix + "Could not initialize direct stock-label replacement: " + ex);
         }
 
         ModsManager.RegisterHook("OnLoadingFinished", this);
-        Log.Information(LogPrefix + "Initialized; random surface spawning is disabled.");
     }
 
-    public override void OnLoadingFinished(List<System.Action> actions)
+    public override void OnLoadingFinished(List<Action> actions)
     {
-        VillagerInventoryNamePatch.Install(s_harmony);
-        Log.Information(LogPrefix + "World loaded. Villager names are assigned when their inventory is opened.");
+        try
+        {
+            VillagerInventoryNamePatch.Install(s_harmony);
+            Log.Information(LogPrefix + "World loaded. The hard-coded trade-stock caption will be replaced by each villager's name.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(LogPrefix + "Inventory title hook retry failed: " + ex);
+        }
     }
 }
