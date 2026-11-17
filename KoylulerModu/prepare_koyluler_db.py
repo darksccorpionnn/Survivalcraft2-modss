@@ -101,6 +101,9 @@ if farmer_plot is None:
     root.insert(2, farmer_plot)
 
 farmer_entity = primary["KoylulerModu_Farmer"]
+# ComponentLivingTownsVillager defaults Job to 0 (Unemployed). A Farmer
+# entity must load with Job=1 or the native TickFarmer routine never runs.
+set_component_parameter(farmer_entity, "LivingTownsVillagerController", "Job", "1", "int")
 farmer_plot_member = next((c for c in farmer_entity.findall("MemberComponentTemplate")
                            if c.attrib.get("Name") == "KoyluFarmerPlot"), None)
 if farmer_plot_member is None:
@@ -266,6 +269,14 @@ for farmer_template in farmer_templates:
                           if c.attrib.get("Name") == "KoyluFarmerPlot"), None)
     if farmer_member is None or farmer_member.attrib.get("InheritanceParent") != farmer_plot.attrib["Guid"]:
         raise SystemExit("Farmer plot builder component is missing or incorrectly inherited in " + farmer_template.attrib["Name"])
+    controller_member = next((c for c in farmer_template.findall("MemberComponentTemplate")
+                               if c.attrib.get("Name") == "LivingTownsVillagerController"), None)
+    if controller_member is None:
+        raise SystemExit("Farmer has no LivingTowns controller: " + farmer_template.attrib["Name"])
+    job_parameter = next((p for p in controller_member.findall("Parameter")
+                           if p.attrib.get("Name") == "Job"), None)
+    if job_parameter is None or job_parameter.attrib.get("Type") != "int" or job_parameter.attrib.get("Value") != "1":
+        raise SystemExit("Farmer must load with Job=1 (Farmer), not Unemployed: " + farmer_template.attrib["Name"])
     farmer_optional = next((p for p in farmer_member.findall("Parameter")
                             if p.attrib.get("Name") == "IsOptional"), None)
     if farmer_optional is None or farmer_optional.attrib.get("Value") != "False":
