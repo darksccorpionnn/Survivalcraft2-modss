@@ -128,7 +128,10 @@ jobs:
               b"m_fallbackRestPosition",
               b"KoylulerDoorStages",
           ]
-          missing = [item.decode("ascii") for item in required if item not in data]
+          missing = [
+              item.decode("ascii") for item in required
+              if item not in data and item.decode("ascii").encode("utf-16le") not in data
+          ]
           if missing:
               raise SystemExit("Patch assembly is missing expected names: " + ", ".join(missing))
           print("Door-stage patch assembly verified. Size:", len(data))
