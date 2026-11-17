@@ -4,7 +4,7 @@
   "DisplayName:KoylulerModu_FemaleVillager": "Kadın Köylü",
   "Description:KoylulerModu_FemaleVillager": "Kasabada yaşayacak kadın köylü.",
   "DisplayName:KoylulerModu_Farmer": "Çiftçi",
-  "Description:KoylulerModu_Farmer": "Çiftçi karakteri. Meslek davranışları daha sonra eklenecek.",
+  "Description:KoylulerModu_Farmer": "Kendi iş tabelasının yanında 12x10 çitli tarla kurar, toprağı işler, tuz uygular, su kanalları açar ve çavdar eker.",
   "DisplayName:KoylulerModu_Blacksmith": "Demirci",
   "Description:KoylulerModu_Blacksmith": "Demirci karakteri. Meslek davranışları daha sonra eklenecek.",
   "DisplayName:KoylulerModu_Merchant": "Tüccar",
@@ -12,11 +12,11 @@
   "DisplayName:KoylulerModu_Healer": "Şifacı",
   "Description:KoylulerModu_Healer": "Şifacı karakteri. Meslek davranışları daha sonra eklenecek.",
   "DisplayName:KoylulerModu_Guard": "Muhafız",
-  "Description:KoylulerModu_Guard": "Muhafız karakteri. Koruma davranışları daha sonra eklenecek.",
+  "Description:KoylulerModu_Guard": "Koruma görevlisi.",
   "DisplayName:KoylulerModu_Hunter": "Avcı",
-  "Description:KoylulerModu_Hunter": "Avcı karakteri. Avlanma davranışları daha sonra eklenecek.",
+  "Description:KoylulerModu_Hunter": "Avcı karakteri.",
   "DisplayName:KoylulerModu_Shepherd": "Çoban",
-  "Description:KoylulerModu_Shepherd": "Çoban karakteri. Hayvanlarla ilgilenme davranışları daha sonra eklenecek.",
+  "Description:KoylulerModu_Shepherd": "Hayvanlarla ilgilenen çoban.",
   "DisplayName:KoylulerModu_MaleVillagerEgg": "Erkek Köylü Yumurtası",
   "DisplayName:KoylulerModu_FemaleVillagerEgg": "Kadın Köylü Yumurtası",
   "DisplayName:KoylulerModu_FarmerEgg": "Çiftçi Yumurtası",
@@ -25,5 +25,7 @@
   "DisplayName:KoylulerModu_HealerEgg": "Şifacı Yumurtası",
   "DisplayName:KoylulerModu_GuardEgg": "Muhafız Yumurtası",
   "DisplayName:KoylulerModu_HunterEgg": "Avcı Yumurtası",
-  "DisplayName:KoylulerModu_ShepherdEgg": "Çoban Yumurtası"
+  "DisplayName:KoylulerModu_ShepherdEgg": "Çoban Yumurtası",
+  "DisplayName:KoyluSaltBlock": "Tuz",
+  "Description:KoyluSaltBlock": "Çiftçinin kurduğu tarlayı işlemek için kullandığı tuz."
 }
