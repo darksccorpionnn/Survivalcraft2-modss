@@ -23,6 +23,8 @@ assert "maxY - minY > 3" in source
 assert "IsClearableVegetation" in source
 assert "entranceZ" in source
 assert "ConsumeOneItem(salt)" in source
+assert "Salt is a custom optional item" in source
+assert "waterBucketIndex <= 0 || EnsureInventoryCount" in source
 assert "EnsureFarmerJob()" in source and 'ReadField(m_controller, "m_job")' not in source
 assert 'FindField(m_controller, "m_job")' in source
 assert "requiredData ?? 0" in source
