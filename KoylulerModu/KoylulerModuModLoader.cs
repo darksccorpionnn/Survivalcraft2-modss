@@ -1,29 +1,29 @@
 using System.Collections.Generic;
-using System.Reflection;
 using Engine;
 using HarmonyLib;
 
 namespace Game;
 
 /// <summary>
-/// Registers a postfix on the base-game hit method. This postfix runs after
-/// LivingTowns opens its villager inventory from its own prefix.
+/// Installs a late-bound postfix on LivingTownsTradeWidget.TryOpen, the exact
+/// method that creates the villager inventory panel.
 /// </summary>
 public sealed class KoylulerModuModLoader : ModLoader
 {
     private const string LogPrefix = "[KoylulerModu] ";
+    private static Harmony s_harmony;
 
     public override void __ModInitialize()
     {
         try
         {
-            Harmony harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
-            harmony.PatchAll(Assembly.GetExecutingAssembly());
-            Log.Information(LogPrefix + "Villager inventory title postfix registered on ComponentMiner.Hit.");
+            s_harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
+            VillagerInventoryNamePatch.Install(s_harmony);
+            Log.Information(LogPrefix + "Listening for LivingTownsTradeWidget.TryOpen.");
         }
         catch (System.Exception ex)
         {
-            Log.Error(LogPrefix + "Could not register inventory title postfix: " + ex);
+            Log.Error(LogPrefix + "Could not install inventory title hook: " + ex);
         }
 
         ModsManager.RegisterHook("OnLoadingFinished", this);
@@ -32,6 +32,7 @@ public sealed class KoylulerModuModLoader : ModLoader
 
     public override void OnLoadingFinished(List<System.Action> actions)
     {
-        Log.Information(LogPrefix + "World loaded. Door-linked villager birth subsystem is registered; names will be assigned when the inventory opens.");
+        VillagerInventoryNamePatch.Install(s_harmony);
+        Log.Information(LogPrefix + "World loaded. Villager identity will be written into the villager inventory title.");
     }
 }
