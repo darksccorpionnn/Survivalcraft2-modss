@@ -33,6 +33,7 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
     private float m_plotRetryTimer;
     private bool m_loggedWaitingForSign;
     private bool m_loggedNoSite;
+    private bool m_loggedKitIssue;
 
     public UpdateOrder UpdateOrder => UpdateOrder.Default;
 
@@ -61,9 +62,20 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         if (!TryBindNativeFarmer())
             return;
 
+        // A Farmer entity template is a villager type, not automatically a job.
+        // LivingTowns defaults Job to Unemployed (0); its TickFarmer loop only
+        // runs for Farmer (1). Promote only an otherwise-unassigned Farmer.
+        EnsureFarmerJob();
         EnsureNativeStarterKit();
         if (!m_extraKitGranted)
+        {
             m_extraKitGranted = EnsureExtraStarterItems();
+            if (!m_extraKitGranted && !m_loggedKitIssue)
+            {
+                Log.Error("[KoylulerModu] Farmer starter kit is incomplete. Check KoyluSaltBlock, WaterBucketBlock and Rye Seeds data=5 block registration.");
+                m_loggedKitIssue = true;
+            }
+        }
 
         if (m_plotBuilt || !m_extraKitGranted)
             return;
@@ -129,6 +141,38 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         return m_terrain != null && m_inventory != null && m_body != null;
     }
 
+    private void EnsureFarmerJob()
+    {
+        FieldInfo jobField = FindField(m_controller, "m_job");
+        if (jobField == null)
+        {
+            if (!m_loggedKitIssue)
+            {
+                Log.Error("[KoylulerModu] Could not find LivingTowns m_job field; farmer job was not activated.");
+                m_loggedKitIssue = true;
+            }
+            return;
+        }
+
+        try
+        {
+            object current = jobField.GetValue(m_controller);
+            int jobValue = Convert.ToInt32(current);
+            if (jobValue == 0)
+            {
+                object farmerJob = jobField.FieldType.IsEnum
+                    ? Enum.ToObject(jobField.FieldType, 1)
+                    : Convert.ChangeType(1, jobField.FieldType);
+                jobField.SetValue(m_controller, farmerJob);
+                Log.Information("[KoylulerModu] Farmer role activated (LivingTowns Job=Farmer/1).");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[KoylulerModu] Could not activate Farmer job: " + ex);
+        }
+    }
+
     private void EnsureNativeStarterKit()
     {
         try
@@ -151,20 +195,23 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         if (saltIndex <= 0 || waterBucketIndex <= 0 || seedsIndex <= 0)
             return false;
 
-        bool saltReady = EnsureInventoryCount(saltIndex, 1);
-        bool bucketReady = EnsureInventoryCount(waterBucketIndex, 1);
-        bool seedsReady = EnsureInventoryCount(seedsIndex, RequiredSeedCount);
+        bool saltReady = EnsureInventoryCount(saltIndex, 1, null);
+        bool bucketReady = EnsureInventoryCount(waterBucketIndex, 1, null);
+        // LivingTowns searches specifically for SeedsBlock data=5 (rye).
+        bool seedsReady = EnsureInventoryCount(seedsIndex, RequiredSeedCount, 5);
 
         return saltReady && bucketReady && seedsReady;
     }
 
-    private bool EnsureInventoryCount(int contents, int requiredCount)
+    private bool EnsureInventoryCount(int contents, int requiredCount, int? requiredData)
     {
         int present = 0;
         for (int slot = 0; slot < m_inventory.SlotsCount; slot++)
         {
             int count = m_inventory.GetSlotCount(slot);
-            if (count > 0 && Terrain.ExtractContents(m_inventory.GetSlotValue(slot)) == contents)
+            int value = m_inventory.GetSlotValue(slot);
+            if (count > 0 && Terrain.ExtractContents(value) == contents &&
+                (!requiredData.HasValue || Terrain.ExtractData(value) == requiredData.Value))
                 present += count;
         }
 
@@ -172,13 +219,14 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         if (remaining <= 0)
             return true;
 
-        int blockValue = Terrain.MakeBlockValue(contents);
+        int blockValue = Terrain.MakeBlockValue(contents, 0, requiredData ?? 0);
         for (int slot = 0; slot < m_inventory.SlotsCount && remaining > 0; slot++)
         {
             int slotCount = m_inventory.GetSlotCount(slot);
             int slotValue = m_inventory.GetSlotValue(slot);
             bool compatible = slotCount == 0 ||
-                Terrain.ExtractContents(slotValue) == contents;
+                (Terrain.ExtractContents(slotValue) == contents &&
+                 (!requiredData.HasValue || Terrain.ExtractData(slotValue) == requiredData.Value));
             if (!compatible)
                 continue;
 
@@ -511,6 +559,22 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         {
             return 0;
         }
+    }
+
+    private static FieldInfo FindField(object instance, string name)
+    {
+        if (instance == null)
+            return null;
+
+        for (Type current = instance.GetType(); current != null; current = current.BaseType)
+        {
+            FieldInfo field = current.GetField(name,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            if (field != null)
+                return field;
+        }
+
+        return null;
     }
 
     private static object ReadField(object instance, string name)
