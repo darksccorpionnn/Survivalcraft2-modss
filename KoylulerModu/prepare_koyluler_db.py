@@ -68,9 +68,71 @@ for name in NAMES:
         ET.SubElement(member, "Parameter", {
             "Name": "IsOptional", "Guid": guid(entity_name + "/Controller/IsOptional"),
             "Value": "False", "Type": "bool"})
-    if not any(c.tag == "MemberComponentTemplate" and c.attrib.get("Name") == "KoylulerIdentity" for c in entity):
-        ET.SubElement(entity, "MemberComponentTemplate", {
-            "Name": "KoylulerIdentity", "Guid": guid(entity_name + "/Identity")})
+    identity_member = next((c for c in entity.findall("MemberComponentTemplate")
+                            if c.attrib.get("Name") == "KoylulerIdentity"), None)
+    if identity_member is None:
+        identity_member = ET.SubElement(entity, "MemberComponentTemplate", {
+            "Name": "KoylulerIdentity",
+            "Guid": guid(entity_name + "/Identity"),
+            "InheritanceParent": identity.attrib["Guid"]})
+    else:
+        # Custom component members must inherit the ComponentTemplate that
+        # declares their runtime Class. Without this link Entity construction
+        # fails with "Required value Class not found in values dictionary".
+        identity_member.attrib["InheritanceParent"] = identity.attrib["Guid"]
+
+    # The LivingTowns controller uses the engine's terrain-aware pathfinding.
+    # ComponentPilot.Load requires ComponentCreature; ComponentPathfinding.Load
+    # requires both ComponentCreature and ComponentPilot. Insert in dependency
+    # order before the LivingTowns controller is loaded.
+    path_components = []
+    for component_name, class_name in (
+        ("Pilot", "Game.ComponentPilot"),
+        ("Pathfinding", "Game.ComponentPathfinding"),
+    ):
+        member = next((c for c in entity.findall("MemberComponentTemplate")
+                       if c.attrib.get("Name") == component_name), None)
+        if member is not None:
+            entity.remove(member)
+        else:
+            member = ET.Element("MemberComponentTemplate", {
+                "Name": component_name,
+                "Guid": guid(entity_name + "/" + component_name),
+            })
+
+        class_parameter = next((p for p in member.findall("Parameter")
+                                if p.attrib.get("Name") == "Class"), None)
+        if class_parameter is None:
+            ET.SubElement(member, "Parameter", {
+                "Name": "Class",
+                "Guid": guid(entity_name + "/" + component_name + "/Class"),
+                "Value": class_name,
+                "Type": "string",
+            })
+        else:
+            class_parameter.attrib["Value"] = class_name
+            class_parameter.attrib["Type"] = "string"
+
+        optional_parameter = next((p for p in member.findall("Parameter")
+                                   if p.attrib.get("Name") == "IsOptional"), None)
+        if optional_parameter is None:
+            ET.SubElement(member, "Parameter", {
+                "Name": "IsOptional",
+                "Guid": guid(entity_name + "/" + component_name + "/IsOptional"),
+                "Value": "False",
+                "Type": "bool",
+            })
+        else:
+            optional_parameter.attrib["Value"] = "False"
+            optional_parameter.attrib["Type"] = "bool"
+        path_components.append(member)
+
+    creature_index = next((i for i, c in enumerate(list(entity))
+                           if c.tag == "MemberComponentTemplate" and c.attrib.get("Name") == "Creature"), None)
+    if creature_index is None:
+        raise SystemExit(entity_name + ": missing Creature component for pathfinding")
+    for offset, member in enumerate(path_components, start=1):
+        entity.insert(creature_index + offset, member)
 
 # Add the nine distinct creature eggs (indices 700-708) to player-facing templates.
 egg_data = {
@@ -204,6 +266,22 @@ for entity in entities:
     comps = {c.attrib.get("Name"): c for c in entity.findall("MemberComponentTemplate")}
     if not {"HumanModel", "Creature", "Locomotion", "LivingTownsVillagerController", "KoylulerIdentity", "WalkAroundBehavior"}.issubset(comps):
         raise SystemExit("Missing required component in " + name)
+    if comps["KoylulerIdentity"].attrib.get("InheritanceParent") != identity.attrib["Guid"]:
+        raise SystemExit("KoylulerIdentity has no valid Class template link in " + name)
+    for component_name, expected_class in (
+        ("Pilot", "Game.ComponentPilot"),
+        ("Pathfinding", "Game.ComponentPathfinding"),
+    ):
+        if component_name not in comps:
+            raise SystemExit("Missing " + component_name + " in " + name)
+        component_values = {p.attrib.get("Name"): p.attrib.get("Value")
+                            for p in comps[component_name].findall("Parameter")}
+        if component_values.get("Class") != expected_class:
+            raise SystemExit("Invalid " + component_name + " Class in " + name)
+    component_order = [c.attrib.get("Name") for c in entity.findall("MemberComponentTemplate")]
+    if not (component_order.index("Creature") < component_order.index("Pilot") <
+            component_order.index("Pathfinding") < component_order.index("LivingTownsVillagerController")):
+        raise SystemExit("Pathfinding component load order is invalid in " + name)
     walk_class = next((p.attrib.get("Value") for p in comps["WalkAroundBehavior"].findall("Parameter")
                        if p.attrib.get("Name") == "Class"), None)
     if walk_class != "Game.ComponentNoEffect":
