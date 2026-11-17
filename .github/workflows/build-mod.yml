@@ -2,9 +2,10 @@ name: Build Survivalcraft Mod
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, villager-staged-door-navigation ]
     paths:
       - "TownBootstrap/**"
+      - "VillagerDoorSequence/**"
       - "nuget.config"
       - ".github/workflows/build-mod.yml"
   workflow_dispatch:
@@ -91,16 +92,53 @@ jobs:
               if "m_internalCellChange" not in behavior_source or "SetCellInternally" not in behavior_source:
                   raise SystemExit("Village Egg placement re-entry guard is missing")
 
-              print("Package verified:")
-              for name in sorted(names):
-                  print(" -", name)
-              print("CrossBlock renderer, texture asset, player grant, and placement re-entry guard verified.")
-          PY
+              print("TownBootstrap package verified.")
 
-      - name: Upload .scmod artifact
+      - name: Upload TownBootstrap artifact
         uses: actions/upload-artifact@v4
         with:
           name: TownBootstrap-scmod
           path: TownBootstrap/bin/Release/TownBootstrap.scmod
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Restore door-stage patch
+        run: dotnet restore VillagerDoorSequence/VillagerDoorSequence.csproj --configfile nuget.config
+
+      - name: Build door-stage patch
+        run: dotnet build VillagerDoorSequence/VillagerDoorSequence.csproj --configuration Release --no-restore
+
+      - name: Verify door-stage patch assembly
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          dll = Path("VillagerDoorSequence/bin/Release/KoylulerDoorStages.dll")
+          if not dll.is_file():
+              raise SystemExit(f"Patch assembly not found: {dll}")
+          data = dll.read_bytes()
+          if data[:2] != b"MZ":
+              raise SystemExit("Patch output is not a Windows/CLI PE assembly")
+          required = [
+              b"TickRestRoutine",
+              b"m_hasHomeDoor",
+              b"m_homeDoor",
+              b"FindHomeDoorApproachPoint",
+              b"RestAtPosition",
+              b"m_fallbackRestPosition",
+              b"KoylulerDoorStages",
+          ]
+          missing = [item.decode("ascii") for item in required if item not in data]
+          if missing:
+              raise SystemExit("Patch assembly is missing expected names: " + ", ".join(missing))
+          print("Door-stage patch assembly verified. Size:", len(data))
+          PY
+
+      - name: Upload door-stage patch artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KoylulerDoorStages-dll
+          path: VillagerDoorSequence/bin/Release/KoylulerDoorStages.dll
           if-no-files-found: error
           retention-days: 14
