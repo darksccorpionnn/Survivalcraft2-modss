@@ -18,6 +18,10 @@ assert "SafeBlockIndex<SoilBlock>()" in source
 assert "DamageRake" in source
 assert "TryGetWorkSign" in source and "GetWorkCenterCell" in source
 assert "TryValidateCandidate" in source
+assert "int[] distances = { 3, 6, 9, 12, 15, 18, 21, 24, 27, 30 }" in source
+assert "maxY - minY > 3" in source
+assert "IsClearableVegetation" in source
+assert "entranceZ" in source
 assert "ConsumeOneItem(salt)" in source
 assert "EnsureFarmerJob()" in source and 'ReadField(m_controller, "m_job")' not in source
 assert 'FindField(m_controller, "m_job")' in source
@@ -63,4 +67,4 @@ for lang in ("tr-TR", "en-US"):
     assert "DisplayName:KoyluSaltBlock" in data
     assert "Description:KoyluSaltBlock" in data
 
-print("PASS: Farmer Job=1 on both farmer templates; runtime promotion from Unemployed; 12x10 plot, farmer-only attachment, wooden fence, water channels, two rake passes, 64 rye seeds with data=5, dedicated salt item and translations.")
+print("PASS: Farmer Job=1; runtime promotion; expanding plot search; natural vegetation clearing; up-to-3-block leveling; 12x10 fenced plot with entrance; water channels; two rake passes; 64 rye seeds with data=5; salt item and translations.")
