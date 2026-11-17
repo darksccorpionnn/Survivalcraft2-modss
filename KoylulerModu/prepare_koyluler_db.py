@@ -139,6 +139,24 @@ for name in NAMES:
                 param.attrib["Guid"] = guid(alias_name + "/" + set_name + "/" + param.attrib.get("Name", "parameter"))
     root.append(alias)
 
+# Every entity member component must explicitly declare IsOptional.
+# Missing this value makes Entity construction fail at world load.
+for entity in [e for e in root.findall("EntityTemplate")
+               if e.attrib.get("Name", "").startswith(("KoylulerModu_", "LivingTowns_"))]:
+    for member in entity.findall("MemberComponentTemplate"):
+        optional = next((p for p in member.findall("Parameter")
+                         if p.attrib.get("Name") == "IsOptional"), None)
+        if optional is None:
+            ET.SubElement(member, "Parameter", {
+                "Name": "IsOptional",
+                "Guid": guid("Entity/" + entity.attrib["Name"] + "/" + member.attrib.get("Name", "Component") + "/IsOptional"),
+                "Value": "False",
+                "Type": "bool",
+            })
+        else:
+            optional.attrib["Value"] = "False"
+            optional.attrib["Type"] = "bool"
+
 # Coordinate movement: LivingTownsVillagerController is the sole destination owner.
 # The inherited vanilla WalkAroundBehavior otherwise picks independent roam targets,
 # which can overwrite a job/home/door/bed destination while the controller is routing.
