@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the standalone villager DB after restoring the compressed source."""
+"""Prepare the standalone villager DB with one coordinated movement owner."""
 import sys
 import uuid
 import xml.etree.ElementTree as ET
@@ -15,6 +15,24 @@ root = ET.parse(DB).getroot()
 
 def find(tag, name):
     return next((e for e in root if e.tag == tag and e.attrib.get("Name") == name), None)
+
+def set_component_parameter(entity, component_name, parameter_name, value, value_type):
+    component = next((c for c in entity.findall("MemberComponentTemplate")
+                      if c.attrib.get("Name") == component_name), None)
+    if component is None:
+        raise SystemExit(f"{entity.attrib.get('Name')}: missing {component_name}")
+    parameter = next((p for p in component.findall("Parameter")
+                      if p.attrib.get("Name") == parameter_name), None)
+    if parameter is None:
+        parameter = ET.SubElement(component, "Parameter", {
+            "Name": parameter_name,
+            "Guid": guid(f"Entity/{entity.attrib.get('Name')}/{component_name}/{parameter_name}"),
+            "Value": str(value),
+            "Type": value_type,
+        })
+    else:
+        parameter.attrib["Value"] = str(value)
+        parameter.attrib["Type"] = value_type
 
 identity = find("ComponentTemplate", "KoylulerIdentity")
 if identity is None:
@@ -52,11 +70,9 @@ for name in NAMES:
             "Value": "False", "Type": "bool"})
     if not any(c.tag == "MemberComponentTemplate" and c.attrib.get("Name") == "KoylulerIdentity" for c in entity):
         ET.SubElement(entity, "MemberComponentTemplate", {
-            "Name": "KoylulerIdentity", "Guid": guid(entity_name + "/Identity"),
-            "InheritanceParent": identity.attrib["Guid"]})
+            "Name": "KoylulerIdentity", "Guid": guid(entity_name + "/Identity")})
 
-
-# Add the nine distinct creature eggs (indices 700-708) to the player-facing templates.
+# Add the nine distinct creature eggs (indices 700-708) to player-facing templates.
 egg_data = {
     "MaleVillager": (163, "184,126,82", 700, "Erkek Köylü Yumurtası"),
     "FemaleVillager": (164, "205,155,130", 701, "Kadın Köylü Yumurtası"),
@@ -84,15 +100,11 @@ for short_name, (texture_slot, color, egg_index, _label) in egg_data.items():
         "ShowEgg": "True",
         "SwapUV": "True",
     }
+    expected_types = {
+        "TextureSlot": "int", "Color": "Color", "EggTypeIndex": "int",
+        "DisplayName": "string", "ShowEgg": "bool", "SwapUV": "bool",
+    }
     for key, value in values.items():
-        expected_types = {
-            "TextureSlot": "int",
-            "Color": "Color",
-            "EggTypeIndex": "int",
-            "DisplayName": "string",
-            "ShowEgg": "bool",
-            "SwapUV": "bool",
-        }
         if key in parameters:
             parameters[key].attrib["Value"] = value
             parameters[key].attrib["Type"] = expected_types[key]
@@ -101,8 +113,8 @@ for short_name, (texture_slot, color, egg_index, _label) in egg_data.items():
                 "Name": key, "Guid": guid("Entity/KoylulerModu_" + short_name + "/CreatureEggData/" + key),
                 "Value": value, "Type": expected_types[key]})
 
-# The door spawner in LivingTowns.dll requests these historical template names.
-# Aliases use the new models and controller, and intentionally do not duplicate eggs.
+# The LivingTowns door spawner requests these historical template names.
+# Aliases reuse the same models, identity and movement configuration; they do not duplicate eggs.
 for name in NAMES:
     alias_name = "LivingTowns_" + name
     if find("EntityTemplate", alias_name) is not None:
@@ -127,8 +139,24 @@ for name in NAMES:
                 param.attrib["Guid"] = guid(alias_name + "/" + set_name + "/" + param.attrib.get("Name", "parameter"))
     root.append(alias)
 
-# Register the door behavior as a project subsystem; the standalone loader does
-# not add random surface spawning.
+# Coordinate movement: LivingTownsVillagerController is the sole destination owner.
+# The inherited vanilla WalkAroundBehavior otherwise picks independent roam targets,
+# which can overwrite a job/home/door/bed destination while the controller is routing.
+all_villagers = [e for e in root.findall("EntityTemplate")
+                 if e.attrib.get("Name", "").startswith(("KoylulerModu_", "LivingTowns_"))]
+expected_names = {prefix + name for prefix in ("KoylulerModu_", "LivingTowns_") for name in NAMES}
+if {e.attrib.get("Name") for e in all_villagers} != expected_names or len(all_villagers) != 18:
+    raise SystemExit("Expected exactly 18 villager templates before movement normalization")
+
+for entity in all_villagers:
+    set_component_parameter(entity, "WalkAroundBehavior", "Class", "Game.ComponentNoEffect", "string")
+    set_component_parameter(entity, "Locomotion", "WalkSpeed", "2.2", "float")
+    set_component_parameter(entity, "Locomotion", "TurnSpeed", "8", "float")
+    set_component_parameter(entity, "Locomotion", "AccelerationFactor", "1.5", "float")
+    set_component_parameter(entity, "Body", "MaxSmoothRiseHeight", "0.5", "float")
+
+# Register the door behavior as a project subsystem; the standalone loader does not
+# add random surface spawning.
 project = find("ProjectTemplate", "Project")
 if project is None:
     project = ET.Element("ProjectTemplate", {
@@ -151,14 +179,24 @@ ET.ElementTree(root).write(DB, encoding="utf-8", xml_declaration=True)
 check = ET.parse(DB).getroot()
 entities = check.findall("EntityTemplate")
 actual = {e.attrib.get("Name") for e in entities}
-expected = {"KoylulerModu_" + n for n in NAMES} | {"LivingTowns_" + n for n in NAMES}
-if len(entities) != 18 or actual != expected:
-    raise SystemExit(f"Unexpected entities: count={len(entities)}, missing={expected-actual}, extra={actual-expected}")
+if len(entities) != 18 or actual != expected_names:
+    raise SystemExit(f"Unexpected entities: count={len(entities)}, missing={expected_names-actual}, extra={actual-expected_names}")
+for entity in entities:
+    name = entity.attrib.get("Name")
+    comps = {c.attrib.get("Name"): c for c in entity.findall("MemberComponentTemplate")}
+    if not {"HumanModel", "Creature", "Locomotion", "LivingTownsVillagerController", "KoylulerIdentity", "WalkAroundBehavior"}.issubset(comps):
+        raise SystemExit("Missing required component in " + name)
+    walk_class = next((p.attrib.get("Value") for p in comps["WalkAroundBehavior"].findall("Parameter")
+                       if p.attrib.get("Name") == "Class"), None)
+    if walk_class != "Game.ComponentNoEffect":
+        raise SystemExit("Conflicting WalkAroundBehavior remains active in " + name)
+    locomotion = {p.attrib.get("Name"): p.attrib.get("Value") for p in comps["Locomotion"].findall("Parameter")}
+    if locomotion.get("WalkSpeed") != "2.2" or locomotion.get("TurnSpeed") != "8" or locomotion.get("AccelerationFactor") != "1.5":
+        raise SystemExit("Movement tuning mismatch in " + name)
+    body = {p.attrib.get("Name"): p.attrib.get("Value") for p in comps["Body"].findall("Parameter")}
+    if body.get("MaxSmoothRiseHeight") != "0.5":
+        raise SystemExit("Step/rise tuning mismatch in " + name)
 project = next((e for e in check if e.tag == "ProjectTemplate" and e.attrib.get("Name") == "Project"), None)
 if project is None or not any(s.attrib.get("Name") == "LivingTownsDoorBehavior" for s in project.findall("MemberSubsystemTemplate")):
     raise SystemExit("Door subsystem was not added")
-for entity in entities:
-    comps = {c.attrib.get("Name") for c in entity.findall("MemberComponentTemplate")}
-    if not {"HumanModel", "Creature", "Locomotion", "LivingTownsVillagerController", "KoylulerIdentity"}.issubset(comps):
-        raise SystemExit("Missing components in " + entity.attrib["Name"])
-print("PASS: 9 player templates + 9 LivingTowns door-spawn aliases; identity/controller on all 18; door subsystem registered.")
+print("PASS: 9 player templates + 9 door-spawn aliases; saved identities; single movement owner; common speed/turn/rise settings; door subsystem.")
