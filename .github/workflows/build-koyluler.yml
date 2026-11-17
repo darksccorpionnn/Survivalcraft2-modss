@@ -30,7 +30,7 @@ jobs:
         run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
       - name: Build
         run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
-      - name: Verify door spawning, villager identity, inventory title, and eggs
+      - name: Verify villager identity, eggs, door spawning, and coordinated movement
         run: |
           python3 - <<'PY'
           import json
@@ -42,19 +42,31 @@ jobs:
           names = ['MaleVillager','FemaleVillager','Farmer','Blacksmith','Merchant','Healer','Guard','Hunter','Shepherd']
           primary = {f'KoylulerModu_{n}' for n in names}
           aliases = {f'LivingTowns_{n}' for n in names}
+          expected = primary | aliases
           actual = {e.attrib.get('Name') for e in entities}
-          if len(entities) != 18 or not primary.issubset(actual) or not aliases.issubset(actual):
-              raise SystemExit(f'Unexpected templates; missing={primary.union(aliases)-actual}, count={len(entities)}')
+          if len(entities) != 18 or actual != expected:
+              raise SystemExit(f'Unexpected templates; missing={expected-actual}, extra={actual-expected}, count={len(entities)}')
           project = next((e for e in db if e.tag == 'ProjectTemplate' and e.attrib.get('Name') == 'Project'), None)
           if project is None or not any(s.attrib.get('Name') == 'LivingTownsDoorBehavior' for s in project.findall('MemberSubsystemTemplate')):
               raise SystemExit('Missing Project/LivingTownsDoorBehavior')
           egg_indices = []
           for e in entities:
               template_name = e.attrib['Name']
-              components = {c.attrib.get('Name') for c in e.findall('MemberComponentTemplate')}
-              if not {'HumanModel','Creature','Locomotion','LivingTownsVillagerController','KoylulerIdentity'}.issubset(components):
-                  raise SystemExit(f'{template_name} is missing required components')
-              model = next(c for c in e.findall('MemberComponentTemplate') if c.attrib.get('Name') == 'HumanModel')
+              components = {c.attrib.get('Name'): c for c in e.findall('MemberComponentTemplate')}
+              required = {'HumanModel','Creature','Locomotion','LivingTownsVillagerController','KoylulerIdentity','WalkAroundBehavior','Body'}
+              if not required.issubset(components):
+                  raise SystemExit(f'{template_name} is missing required components: {required-set(components)}')
+              walk_class = {x.attrib.get('Name'):x.attrib.get('Value') for x in components['WalkAroundBehavior'].findall('Parameter')}.get('Class')
+              if walk_class != 'Game.ComponentNoEffect':
+                  raise SystemExit(f'{template_name} has a competing WalkAroundBehavior: {walk_class}')
+              locomotion = {x.attrib.get('Name'):x.attrib.get('Value') for x in components['Locomotion'].findall('Parameter')}
+              for key, expected_value in {'WalkSpeed':'2.2','TurnSpeed':'8','AccelerationFactor':'1.5'}.items():
+                  if locomotion.get(key) != expected_value:
+                      raise SystemExit(f'{template_name} has wrong {key}: {locomotion.get(key)}')
+              body = {x.attrib.get('Name'):x.attrib.get('Value') for x in components['Body'].findall('Parameter')}
+              if body.get('MaxSmoothRiseHeight') != '0.5':
+                  raise SystemExit(f'{template_name} has wrong MaxSmoothRiseHeight: {body.get("MaxSmoothRiseHeight")}')
+              model = components['HumanModel']
               params = {x.attrib.get('Name'): x.attrib.get('Value') for x in model.findall('Parameter')}
               if not params.get('ModelName','').startswith('Models/') or not params.get('AnimationConfigPath','').startswith('Animations/'):
                   raise SystemExit(f'Invalid model/animation reference in {template_name}')
@@ -66,7 +78,7 @@ jobs:
                   expected_types = {'TextureSlot':'int', 'Color':'Color', 'EggTypeIndex':'int', 'DisplayName':'string', 'ShowEgg':'bool', 'SwapUV':'bool'}
                   for key, expected_type in expected_types.items():
                       if key not in egg_params or egg_params[key].attrib.get('Type') != expected_type:
-                          raise SystemExit(f'{template_name} invalid egg parameter type for {key}: {egg_params.get(key).attrib.get("Type") if key in egg_params else "missing"}')
+                          raise SystemExit(f'{template_name} invalid egg parameter type for {key}')
                   if len(egg_params) != len(expected_types):
                       raise SystemExit(f'{template_name} has unexpected egg parameter count')
                   egg_indices.append(int(egg_params['EggTypeIndex'].attrib['Value']))
@@ -90,7 +102,7 @@ jobs:
           if 'ResolveStockLabel' not in ui_patch or 'm_villagerName' not in bridge:
               raise SystemExit('Villager-name bridge is incomplete')
           if 'Köylü' not in bridge or 'return name' not in bridge:
-              raise SystemExit('Villager name resolver does not return the name as the stock label')
+              raise SystemExit('Villager name resolver is incomplete')
           if 'return m_name' not in identity:
               raise SystemExit('Identity name is not returned independently from the controller')
           if 'm_displayName' in identity or 'DisplayName' in identity:
@@ -100,7 +112,7 @@ jobs:
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
           if not dll.is_file():
               raise SystemExit(f'Missing compiled assembly: {dll}')
-          print('PASS: 9 player templates + 9 door-spawn aliases; door subsystem; saved villager identity; inventory title patch; 9 egg types.')
+          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; direct inventory title; single AI destination owner; shared movement settings.')
           print(f'Compiled assembly: {dll.stat().st_size} bytes')
           PY
       - name: Upload compiled mod files
