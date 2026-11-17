@@ -219,20 +219,8 @@ for entity in entities:
         raise SystemExit("Missing required component in " + name)
     if comps["KoylulerIdentity"].attrib.get("InheritanceParent") != identity.attrib["Guid"]:
         raise SystemExit("KoylulerIdentity has no valid Class template link in " + name)
-    for component_name, expected_class in (
-        ("Pilot", "Game.ComponentPilot"),
-        ("Pathfinding", "Game.ComponentPathfinding"),
-    ):
-        if component_name not in comps:
-            raise SystemExit("Missing " + component_name + " in " + name)
-        component_values = {p.attrib.get("Name"): p.attrib.get("Value")
-                            for p in comps[component_name].findall("Parameter")}
-        if component_values.get("Class") != expected_class:
-            raise SystemExit("Invalid " + component_name + " Class in " + name)
-    component_order = [c.attrib.get("Name") for c in entity.findall("MemberComponentTemplate")]
-    if not (component_order.index("Creature") < component_order.index("Pilot") <
-            component_order.index("Pathfinding") < component_order.index("LivingTownsVillagerController")):
-        raise SystemExit("Pathfinding component load order is invalid in " + name)
+    if 'Pilot' in comps or 'Pathfinding' in comps:
+        raise SystemExit('Duplicate explicit Pilot/Pathfinding members remain in ' + name)
     walk_class = next((p.attrib.get("Value") for p in comps["WalkAroundBehavior"].findall("Parameter")
                        if p.attrib.get("Name") == "Class"), None)
     if walk_class != "Game.ComponentNoEffect":
