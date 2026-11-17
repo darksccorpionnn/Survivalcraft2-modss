@@ -82,9 +82,11 @@ jobs:
           loader = (p / 'KoylulerModuModLoader.cs').read_text(encoding='utf-8')
           identity = (p / 'ComponentKoyluIdentity.cs').read_text(encoding='utf-8')
           ui_patch = (p / 'VillagerInventoryNamePatch.cs').read_text(encoding='utf-8')
-          if 'HarmonyLib' not in loader or 'PatchAll' not in loader:
+          if 'HarmonyLib' not in loader or 'VillagerInventoryNamePatch.Install' not in loader:
               raise SystemExit('Harmony UI patch is not initialized')
-          if 'ChestLabel' not in ui_patch or 'Envanteri' not in ui_patch or 'LivingTownsTradeWidget' not in ui_patch:
+          if 'AssemblyLoad' not in ui_patch or 's_harmony.Patch' not in ui_patch:
+              raise SystemExit('Late-loaded LivingTowns UI patch is incomplete')
+          if 'ChestLabel' not in ui_patch or 'Envanteri' not in ui_patch or 'LivingTownsTradeWidget' not in ui_patch or 'EnsureNameNow' not in ui_patch:
               raise SystemExit('Villager inventory title patch is incomplete')
           if 'm_displayName' in identity or 'DisplayName' in identity:
               raise SystemExit('World creature display name must remain untouched')
