@@ -2,7 +2,7 @@ name: Living Towns build
 
 on:
   push:
-    branches: [ livingtowns-0.4.0-dev, livingtowns-0.4.33-villager-ai, livingtowns-0.4.33-sleep-stability, livingtowns-0.4.44-development, livingtowns-0.4.58-trading-ui ]
+    branches: [ livingtowns-0.4.0-dev, livingtowns-0.4.33-villager-ai, livingtowns-0.4.33-sleep-stability, livingtowns-0.4.44-development, livingtowns-0.4.58-trading-ui, livingtowns-0.4.61-navigation-fix ]
     paths:
       - 'LivingTowns/**'
       - '.github/workflows/livingtowns-build.yml'
@@ -43,6 +43,23 @@ jobs:
         run: dotnet restore LivingTowns/LivingTowns.csproj --configfile LivingTowns/nuget.org.config
       - name: Build
         run: dotnet build LivingTowns/LivingTowns.csproj --configuration Release --no-restore
+      - name: Verify navigation regression fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("LivingTowns/Source/ComponentLivingTownsVillager.cs").read_text(encoding="utf-8")
+          checks = {
+              "null native destination keeps managed target": "Vector3 target = nativeTarget.HasValue ? nativeTarget.Value : m_managedDestination;" in source,
+              "connected obstacle waypoint search": "bool[,,] visited" in source and "Cardinal links avoid diagonal corner-cutting" in source,
+              "home door never falls back to unchecked ideal": "return found ? best : ideal;" not in source,
+              "blocked bed does not teleport": "settled at its assigned bed after a blocked final approach" not in source,
+              "blacksmith chooses a safe approach": "TryGetWorkApproach(m_workTarget.X, m_workTarget.Y + 1" in source,
+          }
+          for name, passed in checks.items():
+              print(("PASS" if passed else "FAIL") + ": " + name)
+          if not all(checks.values()):
+              raise SystemExit("Navigation regression checks failed")
+          PY
       - name: Verify compiled assembly
         run: |
           set -euo pipefail
@@ -53,7 +70,7 @@ jobs:
       - name: Upload compiled assembly
         uses: actions/upload-artifact@v4
         with:
-          name: LivingTowns-0.4.58-assembly
+          name: LivingTowns-navigation-fix-assembly
           path: |
             LivingTowns/bin/Release/net10.0/LivingTowns.dll
           if-no-files-found: error
