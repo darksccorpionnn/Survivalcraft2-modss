@@ -50,13 +50,16 @@ public sealed class ComponentKoyluIdentity : Component, IUpdateable
         ApplyNameWhenComponentsAreReady();
     }
 
-    private void ApplyNameWhenComponentsAreReady()
+    /// <summary>
+    /// Ensures a persistent Köylü### identity immediately, even if the
+    /// villager inventory is opened before the first scheduled component update.
+    /// </summary>
+    public string EnsureNameNow()
     {
         object controller = FindComponentByTypeName("Game.ComponentLivingTownsVillager");
         if (controller == null)
-            return;
+            return m_name;
 
-        // Preserve an existing saved Köylü### name; otherwise allocate the next number.
         if (string.IsNullOrEmpty(m_name))
         {
             string storedName = ReadControllerName(controller);
@@ -78,8 +81,16 @@ public sealed class ComponentKoyluIdentity : Component, IUpdateable
         {
             m_applied = true;
             Log.Information("[KoylulerModu] Villager identity assigned: " + m_name +
-                " (saved on villager; displayed in inventory title only).");
+                " (persisted; shown in inventory panel only).");
+            return m_name;
         }
+
+        return ReadControllerName(controller);
+    }
+
+    private void ApplyNameWhenComponentsAreReady()
+    {
+        EnsureNameNow();
     }
 
     private static string FormatName(int number)

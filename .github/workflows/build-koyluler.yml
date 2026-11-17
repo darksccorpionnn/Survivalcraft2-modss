@@ -62,7 +62,14 @@ jobs:
               if template_name in primary:
                   if len(eggs) != 1:
                       raise SystemExit(f'{template_name} must have one spawn egg')
-                  egg_indices.append(int(next(x for x in eggs[0].findall('Parameter') if x.attrib.get('Name') == 'EggTypeIndex').attrib['Value']))
+                  egg_params = {x.attrib.get('Name'): x for x in eggs[0].findall('Parameter')}
+                  expected_types = {'TextureSlot':'int', 'Color':'Color', 'EggTypeIndex':'int', 'DisplayName':'string', 'ShowEgg':'bool', 'SwapUV':'bool'}
+                  for key, expected_type in expected_types.items():
+                      if key not in egg_params or egg_params[key].attrib.get('Type') != expected_type:
+                          raise SystemExit(f'{template_name} invalid egg parameter type for {key}: {egg_params.get(key).attrib.get("Type") if key in egg_params else "missing"}')
+                  if len(egg_params) != len(expected_types):
+                      raise SystemExit(f'{template_name} has unexpected egg parameter count')
+                  egg_indices.append(int(egg_params['EggTypeIndex'].attrib['Value']))
               elif eggs:
                   raise SystemExit(f'Door alias must not add a duplicate egg: {template_name}')
           if sorted(egg_indices) != list(range(700,709)):

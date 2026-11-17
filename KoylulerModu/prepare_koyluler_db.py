@@ -85,12 +85,21 @@ for short_name, (texture_slot, color, egg_index, _label) in egg_data.items():
         "SwapUV": "True",
     }
     for key, value in values.items():
+        expected_types = {
+            "TextureSlot": "int",
+            "Color": "Color",
+            "EggTypeIndex": "int",
+            "DisplayName": "string",
+            "ShowEgg": "bool",
+            "SwapUV": "bool",
+        }
         if key in parameters:
             parameters[key].attrib["Value"] = value
+            parameters[key].attrib["Type"] = expected_types[key]
         else:
             ET.SubElement(egg, "Parameter", {
                 "Name": key, "Guid": guid("Entity/KoylulerModu_" + short_name + "/CreatureEggData/" + key),
-                "Value": value, "Type": "string" if key in ("Color", "DisplayName") else "int" if key in ("TextureSlot", "EggTypeIndex") else "bool"})
+                "Value": value, "Type": expected_types[key]})
 
 # The door spawner in LivingTowns.dll requests these historical template names.
 # Aliases use the new models and controller, and intentionally do not duplicate eggs.

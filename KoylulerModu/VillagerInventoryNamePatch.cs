@@ -8,34 +8,86 @@ using HarmonyLib;
 namespace Game;
 
 /// <summary>
-/// Changes only the villager stock label in LivingTownsTradeWidget.
-/// It does not create or enable a name label over the villager in the world.
+/// Patches the actual LivingTowns trade-inventory constructor when its assembly
+/// loads. Only the inventory's ChestLabel is renamed; no world nameplate is created.
 /// </summary>
-[HarmonyPatch]
 internal static class VillagerInventoryNamePatch
 {
     private const BindingFlags InstanceFlags =
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    private static IEnumerable<MethodBase> TargetMethods()
+    private static Harmony s_harmony;
+    private static bool s_listening;
+    private static readonly HashSet<MethodBase> s_patched = new HashSet<MethodBase>();
+
+    public static void Install(Harmony harmony)
     {
-        Type widgetType = FindLoadedType("Game.LivingTownsTradeWidget");
-        if (widgetType == null)
+        if (harmony == null)
+            return;
+
+        s_harmony = harmony;
+        if (!s_listening)
         {
-            Log.Information("[KoylulerModu] LivingTownsTradeWidget was not loaded yet; no inventory-title constructor was found.");
-            yield break;
+            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+            s_listening = true;
         }
 
+        TryPatchLoadedAssemblies();
+    }
+
+    private static void OnAssemblyLoad(object sender, AssemblyLoadEventArgs args)
+    {
+        try
+        {
+            TryPatchAssembly(args.LoadedAssembly);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("[KoylulerModu] Inventory-title assembly-load hook failed: " + ex);
+        }
+    }
+
+    private static void TryPatchLoadedAssemblies()
+    {
+        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            TryPatchAssembly(assembly);
+    }
+
+    private static void TryPatchAssembly(Assembly assembly)
+    {
+        if (assembly == null || s_harmony == null)
+            return;
+
+        Type widgetType = assembly.GetType("Game.LivingTownsTradeWidget", false);
+        if (widgetType == null)
+            return;
+
+        MethodInfo postfixMethod = typeof(VillagerInventoryNamePatch).GetMethod(
+            nameof(Postfix), BindingFlags.Static | BindingFlags.NonPublic);
+        if (postfixMethod == null)
+            throw new MissingMethodException("Villager inventory title postfix was not found.");
+
+        int patchedNow = 0;
         foreach (ConstructorInfo constructor in widgetType.GetConstructors(InstanceFlags))
         {
             ParameterInfo[] parameters = constructor.GetParameters();
-            if (parameters.Length == 4 &&
-                parameters[0].ParameterType.FullName == "Game.ComponentPlayer" &&
-                parameters[1].ParameterType.FullName == "Game.ComponentLivingTownsVillager")
-            {
-                yield return constructor;
-            }
+            if (parameters.Length != 4 ||
+                parameters[0].ParameterType.FullName != "Game.ComponentPlayer" ||
+                parameters[1].ParameterType.FullName != "Game.ComponentLivingTownsVillager")
+                continue;
+
+            if (s_patched.Contains(constructor))
+                continue;
+
+            s_harmony.Patch(constructor, postfix: new HarmonyMethod(postfixMethod));
+            s_patched.Add(constructor);
+            patchedNow++;
         }
+
+        if (patchedNow > 0)
+            Log.Information("[KoylulerModu] Villager inventory title patch attached to " + patchedNow + " constructor(s).");
+        else if (s_patched.Count == 0)
+            Log.Warning("[KoylulerModu] LivingTownsTradeWidget loaded, but its expected constructor signature was not found.");
     }
 
     private static void Postfix(object __instance)
@@ -49,7 +101,10 @@ internal static class VillagerInventoryNamePatch
             object villager = villagerField != null ? villagerField.GetValue(__instance) : null;
             string name = ReadVillagerName(villager);
             if (string.IsNullOrWhiteSpace(name))
+            {
+                Log.Warning("[KoylulerModu] Inventory opened but villager identity was empty; title was not changed.");
                 return;
+            }
 
             object children = GetMemberValue(__instance, "Children");
             if (children == null)
@@ -67,22 +122,32 @@ internal static class VillagerInventoryNamePatch
                 }
             }
             if (findMethod == null)
+            {
+                Log.Warning("[KoylulerModu] ChestLabel lookup method was not found.");
                 return;
+            }
 
             object label = findMethod.MakeGenericMethod(typeof(LabelWidget))
                 .Invoke(children, new object[] { "ChestLabel" });
             if (label == null)
+            {
+                Log.Warning("[KoylulerModu] ChestLabel was not found in villager inventory.");
                 return;
+            }
 
             PropertyInfo textProperty = label.GetType().GetProperty("Text", InstanceFlags);
             if (textProperty == null || textProperty.PropertyType != typeof(string) || !textProperty.CanWrite)
+            {
+                Log.Warning("[KoylulerModu] ChestLabel.Text is not writable.");
                 return;
+            }
 
             textProperty.SetValue(label, name + " – Envanteri", null);
+            Log.Information("[KoylulerModu] Villager inventory title set: " + name);
         }
         catch (Exception ex)
         {
-            Log.Error("[KoylulerModu] Could not set the villager inventory title: " + ex);
+            Log.Error("[KoylulerModu] Could not set villager inventory title: " + ex);
         }
     }
 
@@ -91,35 +156,23 @@ internal static class VillagerInventoryNamePatch
         if (villager == null)
             return null;
 
-        FieldInfo field = FindField(villager.GetType(), "m_villagerName");
-        if (field != null)
-        {
-            string value = field.GetValue(villager) as string;
-            if (!string.IsNullOrWhiteSpace(value))
-                return value;
-        }
-
         object entity = GetMemberValue(villager, "Entity");
         object components = GetMemberValue(entity, "Components");
         if (components is IEnumerable enumerable)
         {
             foreach (object component in enumerable)
-                if (component is ComponentKoyluIdentity identity &&
-                    !string.IsNullOrWhiteSpace(identity.Name))
-                    return identity.Name;
+            {
+                if (component is ComponentKoyluIdentity identity)
+                {
+                    string ensured = identity.EnsureNameNow();
+                    if (!string.IsNullOrWhiteSpace(ensured))
+                        return ensured;
+                }
+            }
         }
-        return null;
-    }
 
-    private static Type FindLoadedType(string fullName)
-    {
-        foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            Type type = assembly.GetType(fullName, throwOnError: false);
-            if (type != null)
-                return type;
-        }
-        return null;
+        FieldInfo field = FindField(villager.GetType(), "m_villagerName");
+        return field != null ? field.GetValue(villager) as string : null;
     }
 
     private static FieldInfo FindField(Type type, string name)
