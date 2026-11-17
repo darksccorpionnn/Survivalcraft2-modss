@@ -333,8 +333,10 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         int salt = SafeBlockIndex<KoyluSaltBlock>();
 
         int rakeSlot = FindInventorySlot(SafeBlockIndex<IronRakeBlock>());
+        int saltSlot = FindInventorySlot(salt);
+        MethodInfo damageRake = FindMethod(m_controller, "DamageRake", new[] { typeof(int) });
         if (grass <= 0 || dirt <= 0 || soil <= 0 || fence <= 0 ||
-            water <= 0 || salt <= 0 || rakeSlot < 0)
+            water <= 0 || salt <= 0 || rakeSlot < 0 || saltSlot < 0 || damageRake == null)
             return false;
 
         // Re-check every column immediately before changing the terrain.
@@ -362,7 +364,10 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
             if (surfaceY < candidate.GroundY)
             {
                 int fillValue = m_terrain.Terrain.GetCellValue(x, candidate.GroundY, z);
-                if (Terrain.ExtractContents(fillValue) != 0)
+                int fillContents = Terrain.ExtractContents(fillValue);
+                if (fillContents == tallGrass)
+                    m_terrain.ChangeCell(x, candidate.GroundY, z, 0);
+                else if (fillContents != 0)
                     return false;
                 m_terrain.ChangeCell(x, candidate.GroundY, z, Terrain.MakeBlockValue(dirt));
             }
@@ -391,10 +396,6 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
             m_terrain.ChangeCell(waterColumnA, candidate.GroundY, z, Terrain.MakeBlockValue(water));
             m_terrain.ChangeCell(waterColumnB, candidate.GroundY, z, Terrain.MakeBlockValue(water));
         }
-
-        MethodInfo damageRake = FindMethod(m_controller, "DamageRake", new[] { typeof(int) });
-        if (damageRake == null)
-            return false;
 
         for (int x = candidate.X + 1; x < candidate.X + candidate.Width - 1; x++)
         for (int z = candidate.Z + 1; z < candidate.Z + candidate.Depth - 1; z++)
