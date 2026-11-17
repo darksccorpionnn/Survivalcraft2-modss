@@ -298,7 +298,7 @@ if (modsManagerType != null)
 
 var aiTypesToInspect = new HashSet<string>(StringComparer.Ordinal)
 {
-    "Game.ComponentChaseBehavior", "Game.ComponentCreature", "Game.ComponentPathfinding", "Game.ComponentBody", "Game.ComponentLocomotion",
+    "Game.ComponentChaseBehavior", "Game.ComponentCreature", "Game.ComponentPathfinding", "Game.ComponentPilot", "Game.ComponentBody", "Game.ComponentLocomotion",
     "Game.ComponentHerdBehavior", "Game.ComponentFlyAwayBehavior",
     "Game.ComponentFindPlayerBehavior", "Game.ComponentBehaviorSelector",
     "Game.ComponentCreatureSounds", "Game.ComponentMiner"
@@ -358,7 +358,7 @@ File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), 
 Console.WriteLine(result);
 
 // Focused pathfinding diagnostics: expose whether this game API provides a terrain-aware route API.
-foreach (string typeName in new[] { "Game.ComponentPathfinding", "Game.ComponentBody", "Game.ComponentLocomotion" })
+foreach (string typeName in new[] { "Game.ComponentPathfinding", "Game.ComponentPilot", "Game.ComponentBody", "Game.ComponentLocomotion" })
 {
     Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
     if (type == null) { output.AppendLine("PATHFINDING API TYPE MISSING " + typeName); continue; }
