@@ -81,58 +81,9 @@ for name in NAMES:
         # fails with "Required value Class not found in values dictionary".
         identity_member.attrib["InheritanceParent"] = identity.attrib["Guid"]
 
-    # The LivingTowns controller uses the engine's terrain-aware pathfinding.
-    # ComponentPilot.Load requires ComponentCreature; ComponentPathfinding.Load
-    # requires both ComponentCreature and ComponentPilot. Insert in dependency
-    # order before the LivingTowns controller is loaded.
-    path_components = []
-    for component_name, class_name in (
-        ("Pilot", "Game.ComponentPilot"),
-        ("Pathfinding", "Game.ComponentPathfinding"),
-    ):
-        member = next((c for c in entity.findall("MemberComponentTemplate")
-                       if c.attrib.get("Name") == component_name), None)
-        if member is not None:
-            entity.remove(member)
-        else:
-            member = ET.Element("MemberComponentTemplate", {
-                "Name": component_name,
-                "Guid": guid(entity_name + "/" + component_name),
-            })
-
-        class_parameter = next((p for p in member.findall("Parameter")
-                                if p.attrib.get("Name") == "Class"), None)
-        if class_parameter is None:
-            ET.SubElement(member, "Parameter", {
-                "Name": "Class",
-                "Guid": guid(entity_name + "/" + component_name + "/Class"),
-                "Value": class_name,
-                "Type": "string",
-            })
-        else:
-            class_parameter.attrib["Value"] = class_name
-            class_parameter.attrib["Type"] = "string"
-
-        optional_parameter = next((p for p in member.findall("Parameter")
-                                   if p.attrib.get("Name") == "IsOptional"), None)
-        if optional_parameter is None:
-            ET.SubElement(member, "Parameter", {
-                "Name": "IsOptional",
-                "Guid": guid(entity_name + "/" + component_name + "/IsOptional"),
-                "Value": "False",
-                "Type": "bool",
-            })
-        else:
-            optional_parameter.attrib["Value"] = "False"
-            optional_parameter.attrib["Type"] = "bool"
-        path_components.append(member)
-
-    creature_index = next((i for i, c in enumerate(list(entity))
-                           if c.tag == "MemberComponentTemplate" and c.attrib.get("Name") == "Creature"), None)
-    if creature_index is None:
-        raise SystemExit(entity_name + ": missing Creature component for pathfinding")
-    for offset, member in enumerate(path_components, start=1):
-        entity.insert(creature_index + offset, member)
+    # Preserve the original LivingTowns entity component composition.
+    # Its controller already uses the native pathfinding components inherited
+    # from the base creature template; do not inject duplicate Pilot/Pathfinding.
 
 # Add the nine distinct creature eggs (indices 700-708) to player-facing templates.
 egg_data = {
