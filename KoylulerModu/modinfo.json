@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.2.8",
+  "Version": "0.2.9",
   "ApiVersion": "1.9.5.1",
-  "Description": "Nine villager characters with persistent Turkish identities, door-linked birth and named beds. Villager movement now uses one coordinated destination owner for work, home, doors and beds, with shared walking and step settings; inventory title shows the villager name.",
+  "Description": "Nine villager characters with persistent Turkish identities, door-linked birth and named beds. Idle patrol now stays within 25 blocks of each villager's own assigned bed; job, home, door and sleep routing remain controlled by the LivingTowns controller. Inventory title shows the villager name.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
