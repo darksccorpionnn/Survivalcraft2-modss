@@ -16,7 +16,7 @@ var wanted = new[]
     "ComponentMiner", "SubsystemSeasons", "WorldSettings", "SubsystemGameInfo",
     "ComponentCow", "Cow", "Cattle", "Milk", "Bucket", "Wheat", "WheatSeeds", "Seeds", "Grain", "Crop",
     "SubsystemCreatureSpawn", "CreatureType", "Attackment", "SubsystemBucketBlockBehavior", "BlocksManager", "Block", "ComponentUdder", "BodyRaycastResult", "RyeBlock", "SubsystemTime", "ModLoader", "ValuesDictionary",
-    "ComponentCreature", "ComponentPlayer", "PlayerInput", "ViewWidget", "CameraWidget", "ComponentAimingSights", "Component", "Entity"
+    "ComponentCreature", "ComponentPlayer", "ComponentPathfinding", "PathfindingResult", "ComponentBody", "ComponentLocomotion", "PlayerInput", "ViewWidget", "CameraWidget", "ComponentAimingSights", "Component", "Entity"
 };
 var types = new List<Type>();
 foreach (Assembly assembly in loaded)
@@ -298,7 +298,7 @@ if (modsManagerType != null)
 
 var aiTypesToInspect = new HashSet<string>(StringComparer.Ordinal)
 {
-    "Game.ComponentChaseBehavior", "Game.ComponentCreature",
+    "Game.ComponentChaseBehavior", "Game.ComponentCreature", "Game.ComponentPathfinding", "Game.ComponentBody", "Game.ComponentLocomotion",
     "Game.ComponentHerdBehavior", "Game.ComponentFlyAwayBehavior",
     "Game.ComponentFindPlayerBehavior", "Game.ComponentBehaviorSelector",
     "Game.ComponentCreatureSounds", "Game.ComponentMiner"
@@ -356,3 +356,16 @@ DumpIl("Game.Attackment", "ProcessAttackmentToCreature");
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
+
+// Focused pathfinding diagnostics: expose whether this game API provides a terrain-aware route API.
+foreach (string typeName in new[] { "Game.ComponentPathfinding", "Game.ComponentBody", "Game.ComponentLocomotion" })
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) { output.AppendLine("PATHFINDING API TYPE MISSING " + typeName); continue; }
+    output.AppendLine("\\n===== PATHFINDING API DETAIL " + type.FullName + " =====");
+    const BindingFlags pf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(pf)) output.AppendLine("CTOR " + ctor);
+    foreach (var p in type.GetProperties(pf).OrderBy(p => p.Name)) output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name);
+    foreach (var f in type.GetFields(pf).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name);
+    foreach (var m in type.GetMethods(pf).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+}
