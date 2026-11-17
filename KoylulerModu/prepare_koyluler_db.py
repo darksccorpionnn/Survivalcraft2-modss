@@ -85,6 +85,32 @@ for name in NAMES:
     # Its controller already uses the native pathfinding components inherited
     # from the base creature template; do not inject duplicate Pilot/Pathfinding.
 
+# Attach the autonomous plot builder only to the Farmer template. The door-spawn
+# alias is cloned afterward, so it receives the same component automatically.
+farmer_plot = find("ComponentTemplate", "KoyluFarmerPlot")
+if farmer_plot is None:
+    farmer_plot = ET.Element("ComponentTemplate", {
+        "Name": "KoyluFarmerPlot",
+        "Guid": guid("Component/KoyluFarmerPlot"),
+        "InheritanceParent": "b05700ed-7e4e-4679-98f5-b597f421496b"})
+    ET.SubElement(farmer_plot, "Parameter", {
+        "Name": "Class",
+        "Guid": guid("Component/KoyluFarmerPlot/Class"),
+        "Value": "Game.ComponentKoyluFarmerPlot",
+        "Type": "string"})
+    root.insert(2, farmer_plot)
+
+farmer_entity = primary["KoylulerModu_Farmer"]
+farmer_plot_member = next((c for c in farmer_entity.findall("MemberComponentTemplate")
+                           if c.attrib.get("Name") == "KoyluFarmerPlot"), None)
+if farmer_plot_member is None:
+    farmer_plot_member = ET.SubElement(farmer_entity, "MemberComponentTemplate", {
+        "Name": "KoyluFarmerPlot",
+        "Guid": guid("KoylulerModu_Farmer/KoyluFarmerPlot"),
+        "InheritanceParent": farmer_plot.attrib["Guid"]})
+else:
+    farmer_plot_member.attrib["InheritanceParent"] = farmer_plot.attrib["Guid"]
+
 # Add the nine distinct creature eggs (indices 700-708) to player-facing templates.
 egg_data = {
     "MaleVillager": (163, "184,126,82", 700, "Erkek Köylü Yumurtası"),
@@ -231,6 +257,24 @@ for entity in entities:
     body = {p.attrib.get("Name"): p.attrib.get("Value") for p in comps["Body"].findall("Parameter")}
     if body.get("MaxSmoothRiseHeight") != "0.5":
         raise SystemExit("Step/rise tuning mismatch in " + name)
+farmer_templates = [e for e in entities if e.attrib.get("Name") in
+                    ("KoylulerModu_Farmer", "LivingTowns_Farmer")]
+if len(farmer_templates) != 2:
+    raise SystemExit("Expected both player and LivingTowns Farmer templates")
+for farmer_template in farmer_templates:
+    farmer_member = next((c for c in farmer_template.findall("MemberComponentTemplate")
+                          if c.attrib.get("Name") == "KoyluFarmerPlot"), None)
+    if farmer_member is None or farmer_member.attrib.get("InheritanceParent") != farmer_plot.attrib["Guid"]:
+        raise SystemExit("Farmer plot builder component is missing or incorrectly inherited in " + farmer_template.attrib["Name"])
+    farmer_optional = next((p for p in farmer_member.findall("Parameter")
+                            if p.attrib.get("Name") == "IsOptional"), None)
+    if farmer_optional is None or farmer_optional.attrib.get("Value") != "False":
+        raise SystemExit("Farmer plot builder component must be required in " + farmer_template.attrib["Name"])
+for entity in entities:
+    if entity.attrib.get("Name") not in ("KoylulerModu_Farmer", "LivingTowns_Farmer") and any(
+        c.attrib.get("Name") == "KoyluFarmerPlot" for c in entity.findall("MemberComponentTemplate")):
+        raise SystemExit("Farmer plot builder was attached to a non-farmer template: " + entity.attrib["Name"])
+
 project = next((e for e in check if e.tag == "ProjectTemplate" and e.attrib.get("Name") == "Project"), None)
 if project is None or not any(s.attrib.get("Name") == "LivingTownsDoorBehavior" for s in project.findall("MemberSubsystemTemplate")):
     raise SystemExit("Door subsystem was not added")
