@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.2.13",
+  "Version": "0.2.14.4",
   "ApiVersion": "1.9.5.1",
-  "Description": "Restores the original LivingTowns villager component composition and native door/bed routing; preserves villager identities, eggs, inventory names, wooden-sign jobs and sunset home routines.",
+  "Description": "Preserves native LivingTowns villager movement and animal combat while adding an autonomous 12x10 fenced rye farm builder for Farmer villagers.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
