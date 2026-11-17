@@ -30,7 +30,7 @@ jobs:
         run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
       - name: Build
         run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
-      - name: Verify villager identity, eggs, door spawning, and bed-centred roaming
+      - name: Verify villager identity, eggs, door spawning, and preserved sign/work/home routing
         run: |
           python3 - <<'PY'
           import json
@@ -56,6 +56,10 @@ jobs:
               required = {'HumanModel','Creature','Locomotion','LivingTownsVillagerController','KoylulerIdentity','WalkAroundBehavior','Body'}
               if not required.issubset(components):
                   raise SystemExit(f'{template_name} is missing required components: {required-set(components)}')
+              for component_name, component in components.items():
+                  optional = {x.attrib.get('Name'): x for x in component.findall('Parameter')}.get('IsOptional')
+                  if optional is None or optional.attrib.get('Value') != 'False' or optional.attrib.get('Type') != 'bool':
+                      raise SystemExit(f'{template_name}/{component_name} has no valid IsOptional=False parameter')
               walk_class = {x.attrib.get('Name'):x.attrib.get('Value') for x in components['WalkAroundBehavior'].findall('Parameter')}.get('Class')
               if walk_class != 'Game.ComponentNoEffect':
                   raise SystemExit(f'{template_name} has a competing WalkAroundBehavior: {walk_class}')
@@ -95,17 +99,12 @@ jobs:
           identity = (p / 'ComponentKoyluIdentity.cs').read_text(encoding='utf-8')
           ui_patch = (p / 'VillagerInventoryNamePatch.cs').read_text(encoding='utf-8')
           bridge = (p / 'VillagerInventoryNameBridge.cs').read_text(encoding='utf-8')
-          roam_patch = (p / 'VillagerBedRoamingPatch.cs').read_text(encoding='utf-8')
           if 'HarmonyLib' not in loader or 'VillagerInventoryNamePatch.Install' not in loader:
               raise SystemExit('Dynamic Harmony installation is missing')
-          if 'VillagerBedRoamingPatch.Install' not in loader:
-              raise SystemExit('Bed-roaming patch is not installed by the mod loader')
-          if 'TickPatrol' not in roam_patch or 'GetWorkCenterCell' not in roam_patch:
-              raise SystemExit('Idle patrol and patrol-centre hooks are missing')
-          if 'MaximumRoamRadius = 25.0f' not in roam_patch or 'MinimumRoamRadius = 2.5f' not in roam_patch:
-              raise SystemExit('Bed-roaming radius is not set to 2.5-25 blocks')
-          if 'm_hasBedCell' not in roam_patch or 'm_bedCell' not in roam_patch or 'Point3' not in roam_patch:
-              raise SystemExit('The patrol centre is not bound to each villager’s assigned bed cell')
+          if 'VillagerBedRoamingPatch.Install' in loader or 'TickPatrol' in loader or 'GetWorkCenterCell' in loader:
+              raise SystemExit('A second movement controller could override wooden-sign work/home routing')
+          if 'LivingTowns sign/work/home/door/bed navigation is left untouched' not in loader:
+              raise SystemExit('The native LivingTowns movement ownership guard is missing')
           if 'LivingTownsTradeWidget' not in ui_patch or 'OpCodes.Ldarg_2' not in ui_patch or 'Takas Stoğu' not in ui_patch:
               raise SystemExit('Direct trade-stock caption replacement is incomplete')
           if 'ResolveStockLabel' not in ui_patch or 'm_villagerName' not in bridge:
@@ -121,7 +120,7 @@ jobs:
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
           if not dll.is_file():
               raise SystemExit(f'Missing compiled assembly: {dll}')
-          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; inventory name; idle patrol bound to each assigned bed (2.5-25 blocks); work/home/door/sleep paths remain under LivingTowns control.')
+          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; inventory name; IsOptional values; wooden-sign work and sunset home routing remain under the unchanged LivingTowns controller; no second movement patch is installed.')
           print(f'Compiled assembly: {dll.stat().st_size} bytes')
           PY
       - name: Upload compiled mod files
