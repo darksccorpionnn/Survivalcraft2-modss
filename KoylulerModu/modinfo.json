@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.2.14.4",
+  "Version": "0.2.14.5",
   "ApiVersion": "1.9.5.1",
-  "Description": "Preserves native LivingTowns villager movement and animal combat while adding an autonomous 12x10 fenced rye farm builder for Farmer villagers.",
+  "Description": "Sets Farmer villagers to the native Farmer job and adds an autonomous 12x10 fenced rye farm builder; preserves native villager movement and animal combat.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
