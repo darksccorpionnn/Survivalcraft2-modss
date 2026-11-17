@@ -1,0 +1,54 @@
+name: Build Farmer Plot Feature
+
+on:
+  push:
+    branches: [ farmer-plot-build ]
+    paths:
+      - "KoylulerModu/**"
+      - "tests/farmer_plot_tests.py"
+      - ".github/workflows/farmer-feature-build.yml"
+      - "nuget.config"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore compressed villager database
+        run: |
+          base64 -d KoylulerModu/Assets/KoylulerDatabase.xdb.gz.b64 | gzip -d > KoylulerModu/Assets/KoylulerDatabase.xdb
+          python3 KoylulerModu/prepare_koyluler_db.py KoylulerModu/Assets/KoylulerDatabase.xdb
+
+      - name: Restore packages
+        run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
+
+      - name: Build
+        run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
+
+      - name: Validate farmer component and database
+        run: python3 tests/farmer_plot_tests.py
+
+      - name: Package addon output
+        run: |
+          cd KoylulerModu/bin/Release/net10.0
+          zip -qr "$GITHUB_WORKSPACE/KoylulerModu-Farmer-Plot-0.2.14.4.scmod" .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KoylulerModu-Farmer-Plot-0.2.14.4
+          path: |
+            KoylulerModu-Farmer-Plot-0.2.14.4.scmod
+            KoylulerModu/bin/Release/net10.0/KoylulerModu.dll
+          if-no-files-found: error
+          retention-days: 14
