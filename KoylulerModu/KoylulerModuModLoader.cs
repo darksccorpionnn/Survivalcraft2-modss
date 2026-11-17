@@ -1,31 +1,37 @@
 using System.Collections.Generic;
+using System.Reflection;
 using Engine;
 using HarmonyLib;
 
 namespace Game;
 
 /// <summary>
-/// The embedded LivingTownsDoorBehavior subsystem owns villager births.
-/// This loader deliberately does not register any random surface-spawn types.
-/// Inventory-title patch waits for the LivingTowns UI assembly and patches its
-/// real constructor once it becomes available.
+/// Registers a postfix on the base-game hit method. This postfix runs after
+/// LivingTowns opens its villager inventory from its own prefix.
 /// </summary>
 public sealed class KoylulerModuModLoader : ModLoader
 {
     private const string LogPrefix = "[KoylulerModu] ";
-    private static Harmony s_harmony;
 
     public override void __ModInitialize()
     {
-        s_harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
-        VillagerInventoryNamePatch.Install(s_harmony);
+        try
+        {
+            Harmony harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
+            harmony.PatchAll(Assembly.GetExecutingAssembly());
+            Log.Information(LogPrefix + "Villager inventory title postfix registered on ComponentMiner.Hit.");
+        }
+        catch (System.Exception ex)
+        {
+            Log.Error(LogPrefix + "Could not register inventory title postfix: " + ex);
+        }
+
         ModsManager.RegisterHook("OnLoadingFinished", this);
-        Log.Information(LogPrefix + "Initialized; random surface spawning is disabled; inventory-title hook is listening for LivingTowns.");
+        Log.Information(LogPrefix + "Initialized; random surface spawning is disabled.");
     }
 
     public override void OnLoadingFinished(List<System.Action> actions)
     {
-        VillagerInventoryNamePatch.Install(s_harmony);
-        Log.Information(LogPrefix + "World loaded. Door-linked villager births and inventory-only villager names are enabled.");
+        Log.Information(LogPrefix + "World loaded. Door-linked villager birth subsystem is registered; names will be assigned when the inventory opens.");
     }
 }

@@ -57,12 +57,12 @@ public sealed class ComponentKoyluIdentity : Component, IUpdateable
     public string EnsureNameNow()
     {
         object controller = FindComponentByTypeName("Game.ComponentLivingTownsVillager");
-        if (controller == null)
-            return m_name;
 
+        // Always create the identity independently of controller readiness.
+        // This makes the inventory title available even if LivingTowns attaches late.
         if (string.IsNullOrEmpty(m_name))
         {
-            string storedName = ReadControllerName(controller);
+            string storedName = controller != null ? ReadControllerName(controller) : null;
             if (ParseNumber(storedName) > 0)
                 m_name = storedName;
             else
@@ -76,16 +76,18 @@ public sealed class ComponentKoyluIdentity : Component, IUpdateable
         if (number > s_highestAssignedNumber)
             s_highestAssignedNumber = number;
 
-        bool controllerUpdated = SetStringMember(controller, "m_villagerName", "Name", m_name);
-        if (controllerUpdated)
+        if (controller != null)
         {
-            m_applied = true;
-            Log.Information("[KoylulerModu] Villager identity assigned: " + m_name +
-                " (persisted; shown in inventory panel only).");
-            return m_name;
+            bool controllerUpdated = SetStringMember(controller, "m_villagerName", "Name", m_name);
+            if (controllerUpdated && !m_applied)
+            {
+                m_applied = true;
+                Log.Information("[KoylulerModu] Villager identity assigned: " + m_name +
+                    " (saved on villager; displayed in inventory title only).");
+            }
         }
 
-        return ReadControllerName(controller);
+        return m_name;
     }
 
     private void ApplyNameWhenComponentsAreReady()
