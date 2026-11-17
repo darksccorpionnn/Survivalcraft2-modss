@@ -22,7 +22,8 @@ public sealed class KoylulerModuModLoader : ModLoader
         {
             s_harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
             VillagerInventoryNamePatch.Install(s_harmony);
-            Log.Information(LogPrefix + "Inventory-name patch initialized. LivingTowns sign/work/home/door/bed navigation is left untouched.");
+            VillagerNavigationPatch.Install(s_harmony);
+            Log.Information(LogPrefix + "Inventory-name and villager wall-navigation recovery patches initialized.");
         }
         catch (Exception ex)
         {
@@ -37,7 +38,8 @@ public sealed class KoylulerModuModLoader : ModLoader
         try
         {
             VillagerInventoryNamePatch.Install(s_harmony);
-            Log.Information(LogPrefix + "World loaded. No secondary villager movement patch was installed; native LivingTowns navigation remains in control.");
+            VillagerNavigationPatch.Install(s_harmony);
+            Log.Information(LogPrefix + "World loaded. Native LivingTowns movement remains in control with blocked-route recovery enabled.");
         }
         catch (Exception ex)
         {
