@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.2.14.6",
+  "Version": "0.2.14.7",
   "ApiVersion": "1.9.5.1",
-  "Description": "Activates Farmer villagers and builds an accessible 12x10 fenced rye plot on nearby natural ground, levelling mild slopes; preserves native villager movement and animal combat.",
+  "Description": "Activates Farmer villagers, searches a wider area for a 12x10 fenced rye plot, levels mild slopes, clears natural vegetation and leaves an entrance; preserves native movement and animal combat.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
