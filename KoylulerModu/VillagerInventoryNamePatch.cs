@@ -39,7 +39,6 @@ internal static class VillagerInventoryNamePatch
             object entity = GetMemberValue(villager, "Entity");
             if (entity != null)
             {
-                MethodInfo findIdentity = typeof(Entity).GetMethod("FindComponent", InstanceFlags);
                 // Prefer the strongly typed generic component lookup via reflection.
                 foreach (MethodInfo method in entity.GetType().GetMethods(InstanceFlags))
                 {
