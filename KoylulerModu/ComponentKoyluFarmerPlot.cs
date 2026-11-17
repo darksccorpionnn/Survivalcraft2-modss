@@ -428,7 +428,6 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         int salt = SafeBlockIndex<KoyluSaltBlock>();
 
         int rakeSlot = FindInventorySlot(SafeBlockIndex<IronRakeBlock>());
-        int saltSlot = FindInventorySlot(salt);
         MethodInfo damageRake = FindMethod(m_controller, "DamageRake", new[] { typeof(int) });
         if (grass <= 0 || dirt <= 0 || soil <= 0 || fence <= 0 ||
             water <= 0 || rakeSlot < 0 || damageRake == null)
