@@ -4,7 +4,7 @@
   "DisplayName:KoylulerModu_FemaleVillager": "Female Villager",
   "Description:KoylulerModu_FemaleVillager": "Female villager character.",
   "DisplayName:KoylulerModu_Farmer": "Farmer",
-  "Description:KoylulerModu_Farmer": "Farmer character. Job behavior will be added later.",
+  "Description:KoylulerModu_Farmer": "Builds a fenced 12x10 plot beside its own work sign, prepares the soil, applies salt, creates water channels and plants rye.",
   "DisplayName:KoylulerModu_Blacksmith": "Blacksmith",
   "Description:KoylulerModu_Blacksmith": "Blacksmith character. Job behavior will be added later.",
   "DisplayName:KoylulerModu_Merchant": "Merchant",
@@ -25,5 +25,7 @@
   "DisplayName:KoylulerModu_HealerEgg": "Healer Spawn Egg",
   "DisplayName:KoylulerModu_GuardEgg": "Guard Spawn Egg",
   "DisplayName:KoylulerModu_HunterEgg": "Hunter Spawn Egg",
-  "DisplayName:KoylulerModu_ShepherdEgg": "Shepherd Spawn Egg"
+  "DisplayName:KoylulerModu_ShepherdEgg": "Shepherd Spawn Egg",
+  "DisplayName:KoyluSaltBlock": "Salt",
+  "Description:KoyluSaltBlock": "Salt used by the farmer to treat its new field."
 }
