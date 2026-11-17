@@ -8,9 +8,9 @@ using HarmonyLib;
 namespace Game;
 
 /// <summary>
-/// Hooks the exact LivingTownsTradeWidget.TryOpen method.
-/// Its postfix runs after the NPC inventory panel is created and assigned
-/// to ComponentGui.ModalPanelWidget, then changes the villager stock title.
+/// Late-binds to LivingTownsTradeWidget after its assembly loads.
+/// The constructor postfix changes the actual ChestLabel after the native
+/// inventory layout has been created. TryOpen postfix is a second safety net.
 /// </summary>
 internal static class VillagerInventoryNamePatch
 {
@@ -60,36 +60,67 @@ internal static class VillagerInventoryNamePatch
         if (widgetType == null)
             return;
 
-        MethodInfo tryOpen = null;
+        MethodInfo constructorPostfix = typeof(VillagerInventoryNamePatch).GetMethod(
+            nameof(ConstructorPostfix), StaticFlags);
+        MethodInfo tryOpenPostfix = typeof(VillagerInventoryNamePatch).GetMethod(
+            nameof(TryOpenPostfix), StaticFlags);
+
+        int constructorCount = 0;
+        foreach (ConstructorInfo constructor in widgetType.GetConstructors(InstanceFlags))
+        {
+            ParameterInfo[] parameters = constructor.GetParameters();
+            if (parameters.Length != 4 ||
+                parameters[0].ParameterType.FullName != "Game.ComponentPlayer" ||
+                parameters[1].ParameterType.FullName != "Game.ComponentLivingTownsVillager")
+                continue;
+
+            if (s_patched.Contains(constructor))
+                continue;
+
+            s_harmony.Patch(constructor, postfix: new HarmonyMethod(constructorPostfix));
+            s_patched.Add(constructor);
+            constructorCount++;
+        }
+
+        int tryOpenCount = 0;
         foreach (MethodInfo method in widgetType.GetMethods(StaticFlags))
         {
             if (method.Name != "TryOpen" || method.ReturnType != typeof(bool))
                 continue;
 
             ParameterInfo[] parameters = method.GetParameters();
-            if (parameters.Length == 2 &&
-                parameters[0].ParameterType.FullName == "Game.ComponentPlayer" &&
-                parameters[1].ParameterType.FullName == "Game.ComponentLivingTownsVillager")
-            {
-                tryOpen = method;
-                break;
-            }
+            if (parameters.Length != 2 ||
+                parameters[0].ParameterType.FullName != "Game.ComponentPlayer" ||
+                parameters[1].ParameterType.FullName != "Game.ComponentLivingTownsVillager")
+                continue;
+
+            if (s_patched.Contains(method))
+                continue;
+
+            s_harmony.Patch(method, postfix: new HarmonyMethod(tryOpenPostfix));
+            s_patched.Add(method);
+            tryOpenCount++;
         }
 
-        if (tryOpen == null)
+        if (constructorCount + tryOpenCount > 0)
+            Log.Information("[KoylulerModu] Inventory name hook attached: constructors=" +
+                constructorCount + ", TryOpen=" + tryOpenCount + ".");
+    }
+
+    private static void ConstructorPostfix(object __instance)
+    {
+        try
         {
-            Log.Warning("[KoylulerModu] LivingTownsTradeWidget loaded, but exact TryOpen(player, villager) method was not found.");
-            return;
+            if (__instance == null)
+                return;
+
+            object villager = GetMemberValue(__instance, "m_villager");
+            ApplyNameToInventoryPanel(__instance, villager);
         }
-
-        if (s_patched.Contains(tryOpen))
-            return;
-
-        MethodInfo postfix = typeof(VillagerInventoryNamePatch).GetMethod(
-            nameof(TryOpenPostfix), StaticFlags);
-        s_harmony.Patch(tryOpen, postfix: new HarmonyMethod(postfix));
-        s_patched.Add(tryOpen);
-        Log.Information("[KoylulerModu] Attached inventory-name postfix to LivingTownsTradeWidget.TryOpen.");
+        catch (Exception ex)
+        {
+            Log.Error("[KoylulerModu] Inventory constructor name update failed: " + ex);
+        }
     }
 
     private static void TryOpenPostfix(object[] __args, bool __result)
@@ -101,46 +132,46 @@ internal static class VillagerInventoryNamePatch
 
             object player = __args[0];
             object villager = __args[1];
-            if (player == null || villager == null)
-                return;
-
             object gui = GetMemberValue(player, "ComponentGui");
             object panel = GetMemberValue(gui, "ModalPanelWidget");
-            if (panel == null)
-            {
-                Log.Warning("[KoylulerModu] TryOpen succeeded but ModalPanelWidget was empty.");
-                return;
-            }
-
-            string name = GetOrCreateVillagerName(villager);
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                Log.Warning("[KoylulerModu] Trade panel opened, but villager identity was empty.");
-                return;
-            }
-
-            object children = GetMemberValue(panel, "Children");
-            object label = FindChildLabel(children, "ChestLabel");
-            if (label == null)
-            {
-                Log.Warning("[KoylulerModu] Trade panel opened, but ChestLabel could not be found.");
-                return;
-            }
-
-            PropertyInfo text = label.GetType().GetProperty("Text", InstanceFlags);
-            if (text == null || text.PropertyType != typeof(string) || !text.CanWrite)
-            {
-                Log.Warning("[KoylulerModu] ChestLabel.Text was not writable.");
-                return;
-            }
-
-            text.SetValue(label, name + " – Envanteri", null);
-            Log.Information("[KoylulerModu] Villager stock label changed to: " + name + " – Envanteri");
+            ApplyNameToInventoryPanel(panel, villager);
         }
         catch (Exception ex)
         {
-            Log.Error("[KoylulerModu] Inventory title update failed: " + ex);
+            Log.Error("[KoylulerModu] TryOpen name update failed: " + ex);
         }
+    }
+
+    private static void ApplyNameToInventoryPanel(object panel, object villager)
+    {
+        if (panel == null || villager == null)
+            return;
+
+        string name = GetOrCreateVillagerName(villager);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Log.Warning("[KoylulerModu] Inventory panel has no readable villager identity.");
+            return;
+        }
+
+        object children = GetMemberValue(panel, "Children");
+        object label = FindChildLabel(children, "ChestLabel");
+        if (label == null)
+        {
+            Log.Warning("[KoylulerModu] Inventory panel ChestLabel was not found.");
+            return;
+        }
+
+        PropertyInfo text = label.GetType().GetProperty("Text", InstanceFlags);
+        if (text == null || text.PropertyType != typeof(string) || !text.CanWrite)
+        {
+            Log.Warning("[KoylulerModu] Inventory ChestLabel.Text is not writable.");
+            return;
+        }
+
+        string title = name + " – Envanteri";
+        text.SetValue(label, title, null);
+        Log.Information("[KoylulerModu] Villager inventory title set: " + title);
     }
 
     private static string GetOrCreateVillagerName(object villager)

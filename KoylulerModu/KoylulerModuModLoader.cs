@@ -5,8 +5,9 @@ using HarmonyLib;
 namespace Game;
 
 /// <summary>
-/// Installs a late-bound postfix on LivingTownsTradeWidget.TryOpen, the exact
-/// method that creates the villager inventory panel.
+/// Installs the name hook for the actual LivingTowns inventory panel.
+/// The hook attaches to its constructor and TryOpen method as soon as
+/// the LivingTowns assembly is available.
 /// </summary>
 public sealed class KoylulerModuModLoader : ModLoader
 {
@@ -19,7 +20,7 @@ public sealed class KoylulerModuModLoader : ModLoader
         {
             s_harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
             VillagerInventoryNamePatch.Install(s_harmony);
-            Log.Information(LogPrefix + "Listening for LivingTownsTradeWidget.TryOpen.");
+            Log.Information(LogPrefix + "Listening for the LivingTowns villager inventory panel.");
         }
         catch (System.Exception ex)
         {
@@ -33,6 +34,6 @@ public sealed class KoylulerModuModLoader : ModLoader
     public override void OnLoadingFinished(List<System.Action> actions)
     {
         VillagerInventoryNamePatch.Install(s_harmony);
-        Log.Information(LogPrefix + "World loaded. Villager identity will be written into the villager inventory title.");
+        Log.Information(LogPrefix + "World loaded. Villager names are assigned when their inventory is opened.");
     }
 }
