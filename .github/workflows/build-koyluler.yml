@@ -114,8 +114,15 @@ jobs:
               raise SystemExit('Dynamic Harmony installation is missing')
           if 'VillagerBedRoamingPatch.Install' in loader or 'TickPatrol' in loader or 'GetWorkCenterCell' in loader:
               raise SystemExit('A second movement controller could override wooden-sign work/home routing')
-          if 'LivingTowns sign/work/home/door/bed navigation is left untouched' not in loader:
-              raise SystemExit('The native LivingTowns movement ownership guard is missing')
+          navigation = (p / 'VillagerNavigationPatch.cs').read_text(encoding='utf-8')
+          if 'VillagerNavigationPatch.Install' not in loader:
+              raise SystemExit('Villager navigation recovery patch is not installed by the mod loader')
+          if 'UpdateManagedPathProgress' not in navigation or 'm_destinationRetryCooldown' not in navigation:
+              raise SystemExit('Missing-destination obstacle-route recovery is incomplete')
+          if 'DisableBlockedBedSnap' not in navigation or 'm_homeReturnNoProgressTime' not in navigation:
+              raise SystemExit('Unsafe blocked-bed snap prevention is missing')
+          if 'LivingTowns.dll' in loader or 'TickPatrol' in loader or 'GetWorkCenterCell' in loader:
+              raise SystemExit('The patch must not replace the native LivingTowns job/home movement controller')
           if 'LivingTownsTradeWidget' not in ui_patch or 'OpCodes.Ldarg_2' not in ui_patch or 'Takas Stoğu' not in ui_patch:
               raise SystemExit('Direct trade-stock caption replacement is incomplete')
           if 'ResolveStockLabel' not in ui_patch or 'm_villagerName' not in bridge:
