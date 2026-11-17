@@ -19,6 +19,10 @@ assert "DamageRake" in source
 assert "TryGetWorkSign" in source and "GetWorkCenterCell" in source
 assert "TryValidateCandidate" in source
 assert "ConsumeOneItem(salt)" in source
+assert "EnsureFarmerJob()" in source and 'ReadField(m_controller, "m_job")' not in source
+assert 'FindField(m_controller, "m_job")' in source
+assert "requiredData ?? 0" in source
+assert "EnsureInventoryCount(seedsIndex, RequiredSeedCount, 5)" in source
 assert "Textures/KoyluSalt" in salt_source
 
 block_rows = list(csv.DictReader((project / "Assets" / "BlocksData.csv").open(encoding="utf-8"), delimiter=";"))
@@ -36,6 +40,11 @@ assert any(p.attrib.get("Name") == "Class" and
            p.attrib.get("Value") == "Game.ComponentKoyluFarmerPlot"
            for p in farm_template.findall("Parameter"))
 for entity in farmers:
+    controller = next((c for c in entity.findall("MemberComponentTemplate")
+                       if c.attrib.get("Name") == "LivingTownsVillagerController"), None)
+    assert controller is not None, entity.attrib.get("Name")
+    job = next((p for p in controller.findall("Parameter") if p.attrib.get("Name") == "Job"), None)
+    assert job is not None and job.attrib.get("Type") == "int" and job.attrib.get("Value") == "1", entity.attrib.get("Name")
     member = next((c for c in entity.findall("MemberComponentTemplate")
                    if c.attrib.get("Name") == "KoyluFarmerPlot"), None)
     assert member is not None, entity.attrib.get("Name")
@@ -54,4 +63,4 @@ for lang in ("tr-TR", "en-US"):
     assert "DisplayName:KoyluSaltBlock" in data
     assert "Description:KoyluSaltBlock" in data
 
-print("PASS: 12x10 plot component, farmer-only database attachment, wooden fence, water channels, two rake passes, 64 rye seeds, dedicated salt item and translations.")
+print("PASS: Farmer Job=1 on both farmer templates; runtime promotion from Unemployed; 12x10 plot, farmer-only attachment, wooden fence, water channels, two rake passes, 64 rye seeds with data=5, dedicated salt item and translations.")
