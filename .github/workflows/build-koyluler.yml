@@ -46,6 +46,12 @@ jobs:
           actual = {e.attrib.get('Name') for e in entities}
           if len(entities) != 18 or actual != expected:
               raise SystemExit(f'Unexpected templates; missing={expected-actual}, extra={actual-expected}, count={len(entities)}')
+          identity_template = next((c for c in db.findall('ComponentTemplate') if c.attrib.get('Name') == 'KoylulerIdentity'), None)
+          if identity_template is None:
+              raise SystemExit('Missing ComponentTemplate/KoylulerIdentity')
+          identity_class = {x.attrib.get('Name'):x.attrib.get('Value') for x in identity_template.findall('Parameter')}.get('Class')
+          if identity_class != 'Game.ComponentKoyluIdentity':
+              raise SystemExit(f'KoylulerIdentity Class is missing or invalid: {identity_class}')
           project = next((e for e in db if e.tag == 'ProjectTemplate' and e.attrib.get('Name') == 'Project'), None)
           if project is None or not any(s.attrib.get('Name') == 'LivingTownsDoorBehavior' for s in project.findall('MemberSubsystemTemplate')):
               raise SystemExit('Missing Project/LivingTownsDoorBehavior')
@@ -60,6 +66,9 @@ jobs:
                   optional = {x.attrib.get('Name'): x for x in component.findall('Parameter')}.get('IsOptional')
                   if optional is None or optional.attrib.get('Value') != 'False' or optional.attrib.get('Type') != 'bool':
                       raise SystemExit(f'{template_name}/{component_name} has no valid IsOptional=False parameter')
+              identity_member = components['KoylulerIdentity']
+              if identity_member.attrib.get('InheritanceParent') != identity_template.attrib.get('Guid'):
+                  raise SystemExit(f'{template_name}/KoylulerIdentity is not linked to its Class template')
               walk_class = {x.attrib.get('Name'):x.attrib.get('Value') for x in components['WalkAroundBehavior'].findall('Parameter')}.get('Class')
               if walk_class != 'Game.ComponentNoEffect':
                   raise SystemExit(f'{template_name} has a competing WalkAroundBehavior: {walk_class}')

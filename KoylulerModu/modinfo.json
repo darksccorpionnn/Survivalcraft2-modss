@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.2.10",
+  "Version": "0.2.11",
   "ApiVersion": "1.9.5.1",
-  "Description": "Nine villager characters with persistent Turkish identities, door-linked spawning and named beds. Preserves the existing LivingTowns wooden-sign work destination and sunset return-home routine by leaving its movement controller untouched. Inventory title shows the villager name.",
+  "Description": "Nine villager characters with persistent Turkish identities, door-linked spawning and named beds. Preserves the existing LivingTowns wooden-sign work destination and sunset return-home routine. Corrects the KoylulerIdentity component template link required for world loading.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,

@@ -68,9 +68,18 @@ for name in NAMES:
         ET.SubElement(member, "Parameter", {
             "Name": "IsOptional", "Guid": guid(entity_name + "/Controller/IsOptional"),
             "Value": "False", "Type": "bool"})
-    if not any(c.tag == "MemberComponentTemplate" and c.attrib.get("Name") == "KoylulerIdentity" for c in entity):
-        ET.SubElement(entity, "MemberComponentTemplate", {
-            "Name": "KoylulerIdentity", "Guid": guid(entity_name + "/Identity")})
+    identity_member = next((c for c in entity.findall("MemberComponentTemplate")
+                            if c.attrib.get("Name") == "KoylulerIdentity"), None)
+    if identity_member is None:
+        identity_member = ET.SubElement(entity, "MemberComponentTemplate", {
+            "Name": "KoylulerIdentity",
+            "Guid": guid(entity_name + "/Identity"),
+            "InheritanceParent": identity.attrib["Guid"]})
+    else:
+        # Custom component members must inherit the ComponentTemplate that
+        # declares their runtime Class. Without this link Entity construction
+        # fails with "Required value Class not found in values dictionary".
+        identity_member.attrib["InheritanceParent"] = identity.attrib["Guid"]
 
 # Add the nine distinct creature eggs (indices 700-708) to player-facing templates.
 egg_data = {
@@ -204,6 +213,8 @@ for entity in entities:
     comps = {c.attrib.get("Name"): c for c in entity.findall("MemberComponentTemplate")}
     if not {"HumanModel", "Creature", "Locomotion", "LivingTownsVillagerController", "KoylulerIdentity", "WalkAroundBehavior"}.issubset(comps):
         raise SystemExit("Missing required component in " + name)
+    if comps["KoylulerIdentity"].attrib.get("InheritanceParent") != identity.attrib["Guid"]:
+        raise SystemExit("KoylulerIdentity has no valid Class template link in " + name)
     walk_class = next((p.attrib.get("Value") for p in comps["WalkAroundBehavior"].findall("Parameter")
                        if p.attrib.get("Name") == "Class"), None)
     if walk_class != "Game.ComponentNoEffect":
