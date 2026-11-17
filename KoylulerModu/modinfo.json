@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Köylüler Modu",
-  "Version": "0.2.7",
+  "Version": "0.2.8",
   "ApiVersion": "1.9.5.1",
-  "Description": "Nine villager characters with persistent Turkish identities, door-linked birth, individual spawn eggs, named wooden-sign bed routines, with the original hard-coded trade-stock title replaced directly by the villager name.",
+  "Description": "Nine villager characters with persistent Turkish identities, door-linked birth and named beds. Villager movement now uses one coordinated destination owner for work, home, doors and beds, with shared walking and step settings; inventory title shows the villager name.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 10000,
   "NonPersistentMod": false,
