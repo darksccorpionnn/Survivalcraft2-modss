@@ -7,8 +7,7 @@ using HarmonyLib;
 namespace Game;
 
 /// <summary>
-/// Installs a transpiler that replaces the literal "Köylünün Takas Stoğu"
-/// inside LivingTownsTradeWidget's constructor with the current villager name.
+/// Installs patches for the villager inventory heading and bed-centred idle roaming.
 /// </summary>
 public sealed class KoylulerModuModLoader : ModLoader
 {
@@ -21,11 +20,12 @@ public sealed class KoylulerModuModLoader : ModLoader
         {
             s_harmony = new Harmony("darksccorpionnn.KoylulerModu.InventoryTitle");
             VillagerInventoryNamePatch.Install(s_harmony);
-            Log.Information(LogPrefix + "Direct villager stock-label replacement initialized.");
+            VillagerBedRoamingPatch.Install(s_harmony);
+            Log.Information(LogPrefix + "Villager name and bed-centred idle-roaming patches initialized.");
         }
         catch (Exception ex)
         {
-            Log.Error(LogPrefix + "Could not initialize direct stock-label replacement: " + ex);
+            Log.Error(LogPrefix + "Could not initialize villager patches: " + ex);
         }
 
         ModsManager.RegisterHook("OnLoadingFinished", this);
@@ -36,11 +36,12 @@ public sealed class KoylulerModuModLoader : ModLoader
         try
         {
             VillagerInventoryNamePatch.Install(s_harmony);
-            Log.Information(LogPrefix + "World loaded. The hard-coded trade-stock caption will be replaced by each villager's name.");
+            VillagerBedRoamingPatch.Install(s_harmony);
+            Log.Information(LogPrefix + "World loaded. Villager name and 25-block bed-roaming patches are active when the LivingTowns controller is available.");
         }
         catch (Exception ex)
         {
-            Log.Error(LogPrefix + "Inventory title hook retry failed: " + ex);
+            Log.Error(LogPrefix + "World-load villager patch retry failed: " + ex);
         }
     }
 }
