@@ -59,7 +59,7 @@ jobs:
           for e in entities:
               template_name = e.attrib['Name']
               components = {c.attrib.get('Name'): c for c in e.findall('MemberComponentTemplate')}
-              required = {'HumanModel','Creature','Locomotion','Pilot','Pathfinding','LivingTownsVillagerController','KoylulerIdentity','WalkAroundBehavior','Body'}
+              required = {'HumanModel','Creature','Locomotion','LivingTownsVillagerController','KoylulerIdentity','WalkAroundBehavior','Body'}
               if not required.issubset(components):
                   raise SystemExit(f'{template_name} is missing required components: {required-set(components)}')
               for component_name, component in components.items():
@@ -69,14 +69,8 @@ jobs:
               identity_member = components['KoylulerIdentity']
               if identity_member.attrib.get('InheritanceParent') != identity_template.attrib.get('Guid'):
                   raise SystemExit(f'{template_name}/KoylulerIdentity is not linked to its Class template')
-              component_order = [c.attrib.get('Name') for c in e.findall('MemberComponentTemplate')]
-              if not (component_order.index('Creature') < component_order.index('Pilot') <
-                      component_order.index('Pathfinding') < component_order.index('LivingTownsVillagerController')):
-                  raise SystemExit(f'{template_name} pathfinding component load order is invalid')
-              for component_name, expected_class in {'Pilot':'Game.ComponentPilot','Pathfinding':'Game.ComponentPathfinding'}.items():
-                  values = {x.attrib.get('Name'):x.attrib.get('Value') for x in components[component_name].findall('Parameter')}
-                  if values.get('Class') != expected_class:
-                      raise SystemExit(f'{template_name}/{component_name} Class mismatch: {values.get("Class")}')
+              if 'Pilot' in components or 'Pathfinding' in components:
+                  raise SystemExit(f'{template_name} must preserve base LivingTowns inherited pathfinding; duplicate explicit members found')
               walk_class = {x.attrib.get('Name'):x.attrib.get('Value') for x in components['WalkAroundBehavior'].findall('Parameter')}.get('Class')
               if walk_class != 'Game.ComponentNoEffect':
                   raise SystemExit(f'{template_name} has a competing WalkAroundBehavior: {walk_class}')
@@ -137,7 +131,7 @@ jobs:
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
           if not dll.is_file():
               raise SystemExit(f'Missing compiled assembly: {dll}')
-          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; inventory name; IsOptional values; ComponentPilot and ComponentPathfinding are loaded after Creature and before the LivingTowns controller; wooden-sign work and sunset home routing remain under the unchanged LivingTowns controller.')
+          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; inventory name; IsOptional values; original LivingTowns component composition preserved; wooden-sign work and sunset home routing remain under the unchanged LivingTowns controller.')
           print(f'Compiled assembly: {dll.stat().st_size} bytes')
           PY
       - name: Upload compiled mod files
