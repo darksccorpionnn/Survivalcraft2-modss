@@ -2,7 +2,7 @@ name: Build Koyluler Mod
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, koyluler-wall-navigation-recovery ]
     paths:
       - "KoylulerModu/**"
       - "nuget.config"
