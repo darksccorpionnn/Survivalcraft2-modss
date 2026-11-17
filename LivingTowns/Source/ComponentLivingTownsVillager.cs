@@ -1571,37 +1571,15 @@ namespace Game
             RestAtPosition(GetBedSleepPosition(), sleepOnArrival, dt);
         }
 
-        private void RestAtPosition(Vector3 target, bool sleepOnArrival, float dt)
+                private void RestAtPosition(Vector3 target, bool sleepOnArrival, float dt)
         {
             float dx = m_body.Position.X - target.X;
             float dz = m_body.Position.Z - target.Z;
-            // Different villager models can have slightly different body origins.
-            // Judge bed arrival in the horizontal plane while keeping a vertical safety bound.
-            // The four profession GLBs have a slightly larger visual/approach footprint
-            // than the original villagers. Their pathfinder can stop just outside the
-            // old 0.90-block threshold beside the assigned bed and keep turning forever.
-            // Accept a safe, nearby final position for these models, then settle them
-            // onto the already-validated personal sleep cell.
-            bool expandedSleepArrival = m_job == LivingTownsJob.Blacksmith
-                || m_job == LivingTownsJob.Merchant
-                || m_job == LivingTownsJob.Healer
-                || m_job == LivingTownsJob.Guard;
-            float sleepArrivalRadius = expandedSleepArrival ? 1.45f : 0.90f;
-            bool reached = dx * dx + dz * dz <= sleepArrivalRadius * sleepArrivalRadius
+            // Do not use a proximity timeout to place the body at a bed through a wall.
+            // Arrival is only accepted when the villager has actually reached the assigned
+            // standing position; obstacle detours and doorway routing must finish first.
+            bool reached = dx * dx + dz * dz <= 0.90f * 0.90f
                 && Math.Abs(m_body.Position.Y - target.Y) <= 1.75f;
-
-            // If one of the new models is already indoors but cannot close the final
-            // few steps because of bed/furniture collision, stop the endless approach
-            // after a short no-progress period. Never bypass an active doorway crossing.
-            if (!reached && expandedSleepArrival && !m_homeDoorRouteActive
-                && m_homeReturnNoProgressTime >= 2.0
-                && dx * dx + dz * dz <= 1.90f * 1.90f
-                && Math.Abs(m_body.Position.Y - target.Y) <= 1.75f)
-            {
-                reached = true;
-                Log.Warning("[LivingTowns] " + m_villagerName
-                    + " settled at its assigned bed after a blocked final approach.");
-            }
             if (reached)
             {
                 ReleaseHomeDoorPassage();
@@ -1652,17 +1630,12 @@ namespace Game
             {
                 SetSleepingAnimation(false);
                 Vector3 routeTarget = target;
-                // Measure progress against the active waypoint (outside door, threshold,
-                // inside door or final bed), not always against the bed. A doorway route
-                // can initially move sideways or away from the bed and must not be
-                // misclassified as stuck while it is following a valid waypoint.
                 if (!m_sleepDoorRouteBypassed)
                     TryGetHomeDoorRouteDestination(target, true, out routeTarget);
                 UpdateHomeReturnProgress(routeTarget, dt);
 
-                // Never bypass the doorway when the villager is stuck outside:
-                // doing so sends it directly to the bed through the house wall.
-                // Retry the current waypoint and vary the outside approach instead.
+                // Never bypass the doorway when the villager is stuck outside.
+                // Keep retrying the same verified side/crossing waypoint.
                 bool homePathSearchPending = m_pathfinding?.m_pathfindingResult?.IsInProgress == true;
                 double homeRetryThreshold = homePathSearchPending ? 30.0 : 14.0;
                 if (m_homeReturnNoProgressTime >= homeRetryThreshold)
@@ -1678,8 +1651,6 @@ namespace Game
                         }
                         else
                         {
-                            // The villager is already at the threshold. Re-open the door
-                            // and retry the same crossing stage rather than routing through a wall.
                             OpenHomeDoorForRoute();
                             Log.Warning("[LivingTowns] " + m_villagerName
                                 + " is retrying home-door crossing stage " + m_homeDoorRouteStage + ".");
@@ -1902,40 +1873,50 @@ namespace Game
             return found;
         }
 
-        private Vector3 FindHomeDoorApproachPoint(Vector3 doorCenter, Vector3 inward, bool inside)
+                private Vector3 FindHomeDoorApproachPoint(Vector3 doorCenter, Vector3 inward, bool inside)
         {
             Vector3 direction = inside ? inward : -inward;
             float idealDistance = m_homeDoorApproachVariant == 0 ? 1.10f
                 : m_homeDoorApproachVariant == 1 ? 2.10f : 3.10f;
             Vector3 ideal = doorCenter + direction * idealDistance;
             Vector3 tangent = new Vector3(-direction.Z, 0f, direction.X);
-            Vector3 best = ideal;
+            Vector3 best = m_body != null ? m_body.Position : ideal;
             float bestScore = float.MaxValue;
             bool found = false;
-            for (int along = 1; along <= 4; along++)
-            for (int lateral = -2; lateral <= 2; lateral++)
+
+            // Search farther from the threshold and wider along the wall. If there is
+            // no verified standing cell, never fall back to an unchecked point inside
+            // the wall/building footprint.
+            for (int along = 1; along <= 8; along++)
+            for (int lateral = -3; lateral <= 3; lateral++)
+            for (int floorY = Math.Max(1, m_homeDoor.Y - 2); floorY <= Math.Min(250, m_homeDoor.Y + 1); floorY++)
             {
                 int x = Terrain.ToCell(doorCenter.X + direction.X * along + tangent.X * lateral);
                 int z = Terrain.ToCell(doorCenter.Z + direction.Z * along + tangent.Z * lateral);
-                for (int floorY = Math.Max(1, m_homeDoor.Y - 2); floorY <= Math.Min(250, m_homeDoor.Y + 1); floorY++)
+                if (!IsValidStandingCell(x, floorY, z))
+                    continue;
+
+                Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                float side = Vector3.Dot(candidate - doorCenter, direction);
+                if (side < 0.55f || Math.Abs(candidate.Y - doorCenter.Y) > 1.75f)
+                    continue;
+                float score = Vector3.DistanceSquared(candidate, ideal)
+                    + Math.Abs(candidate.Y - doorCenter.Y) * 2f
+                    + Math.Abs(lateral) * 0.15f;
+                if (!found || score < bestScore)
                 {
-                    if (!IsValidStandingCell(x, floorY, z))
-                        continue;
-                    Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
-                    float side = Vector3.Dot(candidate - doorCenter, direction);
-                    if (side < 0.55f || Math.Abs(candidate.Y - doorCenter.Y) > 1.75f)
-                        continue;
-                    float score = Vector3.DistanceSquared(candidate, ideal)
-                        + Math.Abs(candidate.Y - doorCenter.Y) * 2f + Math.Abs(lateral) * 0.15f;
-                    if (!found || score < bestScore)
-                    {
-                        found = true;
-                        bestScore = score;
-                        best = candidate;
-                    }
+                    found = true;
+                    bestScore = score;
+                    best = candidate;
                 }
             }
-            return found ? best : ideal;
+
+            if (!found)
+                Log.Warning("[LivingTowns] " + m_villagerName
+                    + " found no verified standing cell on the "
+                    + (inside ? "inside" : "outside")
+                    + " side of its home door; holding position instead of entering a wall.");
+            return best;
         }
 
         private bool TryFindDoorSearchApproach(out Vector3 approach)
@@ -3025,9 +3006,12 @@ namespace Game
             m_hasHomeReturnSample = false;
         }
 
-        private void UpdateManagedPathProgress(float dt)
+                private void UpdateManagedPathProgress(float dt)
         {
-            if (m_pathfinding?.Destination.HasValue != true || m_body == null)
+            // ComponentPathfinding may clear Destination when a route search fails.
+            // Do not interpret a missing native destination as successful progress:
+            // retain the last managed waypoint and let obstacle routing choose a new one.
+            if (m_body == null || !m_hasManagedDestination)
             {
                 m_managedNoProgressTime = 0.0;
                 m_managedProgressDistance = 0f;
@@ -3035,7 +3019,8 @@ namespace Game
                 return;
             }
 
-            Vector3 target = m_pathfinding.Destination.Value;
+            Vector3? nativeTarget = m_pathfinding?.Destination;
+            Vector3 target = nativeTarget.HasValue ? nativeTarget.Value : m_managedDestination;
             float distanceToTarget = Vector3.Distance(m_body.Position, target);
             if (!m_hasManagedProgressSample
                 || Vector3.DistanceSquared(target, m_managedProgressTarget) > 0.25f)
@@ -3047,10 +3032,9 @@ namespace Game
                 return;
             }
 
-            // Track actual progress toward the requested destination, not raw movement.
-            // A villager circling a tree can move every frame without getting any closer;
-            // the old position-delta watchdog incorrectly treated that as progress.
-            float arrivalDistance = Math.Max(0.9f, m_pathfinding.Range + 0.25f);
+            float arrivalDistance = nativeTarget.HasValue && m_pathfinding != null
+                ? Math.Max(0.9f, m_pathfinding.Range + 0.25f)
+                : 0.90f;
             if (distanceToTarget <= arrivalDistance)
             {
                 m_managedProgressDistance = distanceToTarget;
@@ -3058,8 +3042,6 @@ namespace Game
                 return;
             }
 
-            // Keep the best distance reached during this attempt. Small oscillations and
-            // sideways movement do not reset the watchdog; meaningful approach does.
             if (distanceToTarget < m_managedProgressDistance - 0.15f)
             {
                 m_managedProgressDistance = distanceToTarget;
@@ -3067,6 +3049,8 @@ namespace Game
             }
             else
             {
+                // This also runs when Destination is null and no search is pending.
+                // A failed route now reaches the same watchdog as a visible stuck path.
                 m_managedNoProgressTime += dt;
             }
         }
@@ -3112,8 +3096,9 @@ namespace Game
             }
 
             if (!m_obstacleDetourActive
+                && !detourPathSearchPending
                 && m_nextObstacleDetourTime <= 0.0
-                && (m_managedNoProgressTime >= 0.20 || forceNewObstacleDetour))
+                && (m_managedNoProgressTime >= 0.65 || forceNewObstacleDetour))
             {
                 if (TryChooseObstacleDetour(destination, out Vector3 detour))
                 {
@@ -3145,7 +3130,7 @@ namespace Game
             if (sameCurrentTarget && !stuck && !stalled)
                 return;
             if (!current.HasValue && sameRequestedTarget && m_destinationRetryCooldown > 0.0
-                && !stuck && !stalled)
+                && !stuck && !stalled && m_managedNoProgressTime < 0.65)
                 return;
 
             if ((stuck || stalled) && !allowRandomRecoveryOnFailure && sameCurrentTarget)
@@ -3175,7 +3160,7 @@ namespace Game
             m_hasManagedProgressSample = true;
         }
 
-        private bool TryChooseObstacleDetour(Vector3 goal, out Vector3 detour)
+                private bool TryChooseObstacleDetour(Vector3 goal, out Vector3 detour)
         {
             detour = Vector3.Zero;
             if (m_terrain == null || m_body == null || m_pathfinding == null)
@@ -3183,70 +3168,137 @@ namespace Game
 
             Vector3 toGoal = goal - m_body.Position;
             toGoal.Y = 0f;
-            if (toGoal.LengthSquared() < 1.0f)
+            if (toGoal.LengthSquared() < 0.25f)
                 return false;
             toGoal = Vector3.Normalize(toGoal);
 
-            bool found = false;
-            float bestScore = float.MaxValue;
+            // Build a small connected walkable region around the villager first.
+            // A merely clear cell on the far side of a wall is not a valid detour.
+            const int searchRadius = 8;
             int cx = Terrain.ToCell(m_body.Position.X);
             int cz = Terrain.ToCell(m_body.Position.Z);
             int currentFloor = Terrain.ToCell(m_body.Position.Y) - 1;
+            int minFloor = Math.Max(1, currentFloor - 2);
+            int maxFloor = Math.Min(250, currentFloor + 2);
+            int floorCount = maxFloor - minFloor + 1;
+            int width = searchRadius * 2 + 1;
+            bool[,,] visited = new bool[width, floorCount, width];
+            int[,,] pathSteps = new int[width, floorCount, width];
+            Queue<Point3> queue = new Queue<Point3>();
 
-            // Search a much wider six-block radius and allow two-block elevation
-            // changes. This helps with long walls, fences, house corners and uneven ground.
-            for (int radius = 1; radius <= 6; radius++)
-            for (int dx = -radius; dx <= radius; dx++)
-            for (int dz = -radius; dz <= radius; dz++)
+            Point3 start = new Point3(cx, currentFloor, cz);
+            bool startFound = false;
+            float startBestScore = float.MaxValue;
+            for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+            for (int floorY = minFloor; floorY <= maxFloor; floorY++)
             {
-                if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != radius)
-                    continue;
                 int x = cx + dx;
                 int z = cz + dz;
-                for (int floorY = Math.Max(1, currentFloor - 2); floorY <= Math.Min(250, currentFloor + 2); floorY++)
+                if (!IsValidStandingCell(x, floorY, z))
+                    continue;
+                Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                float score = Vector3.DistanceSquared(candidate, m_body.Position);
+                if (score < startBestScore)
                 {
-                    if (!IsValidStandingCell(x, floorY, z))
+                    startBestScore = score;
+                    start = new Point3(x, floorY, z);
+                    startFound = true;
+                }
+            }
+            if (!startFound)
+                return false;
+
+            int startX = start.X - (cx - searchRadius);
+            int startZ = start.Z - (cz - searchRadius);
+            int startY = start.Y - minFloor;
+            visited[startX, startY, startZ] = true;
+            queue.Enqueue(start);
+
+            int[] stepX = { 1, 0, -1, 0 };
+            int[] stepZ = { 0, 1, 0, -1 };
+            while (queue.Count > 0)
+            {
+                Point3 current = queue.Dequeue();
+                int ix = current.X - (cx - searchRadius);
+                int iz = current.Z - (cz - searchRadius);
+                int iy = current.Y - minFloor;
+                int nextStep = pathSteps[ix, iy, iz] + 1;
+
+                // Cardinal links avoid diagonal corner-cutting through wall corners.
+                for (int direction = 0; direction < 4; direction++)
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int nx = current.X + stepX[direction];
+                    int nz = current.Z + stepZ[direction];
+                    int ny = current.Y + dy;
+                    int nix = nx - (cx - searchRadius);
+                    int niz = nz - (cz - searchRadius);
+                    int niy = ny - minFloor;
+                    if (nix < 0 || nix >= width || niz < 0 || niz >= width
+                        || niy < 0 || niy >= floorCount || visited[nix, niy, niz])
+                        continue;
+                    if (!IsValidStandingCell(nx, ny, nz))
                         continue;
 
-                    Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
-                    if (Vector3.DistanceSquared(candidate, m_body.Position) < 1.45f * 1.45f
-                        || Vector3.DistanceSquared(candidate, goal) < 1.0f
-                        || IsFailedObstacleDetour(x, floorY + 1, z))
+                    visited[nix, niy, niz] = true;
+                    pathSteps[nix, niy, niz] = nextStep;
+                    queue.Enqueue(new Point3(nx, ny, nz));
+                }
+            }
+
+            bool found = false;
+            float bestScore = float.MaxValue;
+            for (int ix = 0; ix < width; ix++)
+            for (int iy = 0; iy < floorCount; iy++)
+            for (int iz = 0; iz < width; iz++)
+            {
+                if (!visited[ix, iy, iz])
+                    continue;
+                int x = cx - searchRadius + ix;
+                int floorY = minFloor + iy;
+                int z = cz - searchRadius + iz;
+                Vector3 candidate = new Vector3(x + 0.5f, floorY + 1f, z + 0.5f);
+                float bodyDistanceSquared = Vector3.DistanceSquared(candidate, m_body.Position);
+                float goalDistanceSquared = Vector3.DistanceSquared(candidate, goal);
+                if (bodyDistanceSquared < 1.45f * 1.45f
+                    || goalDistanceSquared < 1.0f
+                    || IsFailedObstacleDetour(x, floorY + 1, z))
+                    continue;
+
+                int openNeighbors = 0;
+                for (int nx = -1; nx <= 1; nx++)
+                for (int nz = -1; nz <= 1; nz++)
+                {
+                    if (nx == 0 && nz == 0)
                         continue;
+                    if (IsValidStandingCell(x + nx, floorY, z + nz))
+                        openNeighbors++;
+                }
 
-                    int openNeighbors = 0;
-                    for (int nx = -1; nx <= 1; nx++)
-                    for (int nz = -1; nz <= 1; nz++)
-                    {
-                        if (nx == 0 && nz == 0)
-                            continue;
-                        if (IsValidStandingCell(x + nx, floorY, z + nz))
-                            openNeighbors++;
-                    }
+                Vector3 candidateDirection = candidate - m_body.Position;
+                candidateDirection.Y = 0f;
+                float sideStep = Math.Abs(candidateDirection.X * toGoal.Z
+                    - candidateDirection.Z * toGoal.X);
+                float forwardProgress = candidateDirection.X * toGoal.X
+                    + candidateDirection.Z * toGoal.Z;
 
-                    Vector3 candidateDirection = candidate - m_body.Position;
-                    candidateDirection.Y = 0f;
-                    float sideStep = Math.Abs(candidateDirection.X * toGoal.Z - candidateDirection.Z * toGoal.X);
-                    float forwardProgress = candidateDirection.X * toGoal.X + candidateDirection.Z * toGoal.Z;
-                    if (forwardProgress < -2.0f)
-                        continue;
+                // Prefer a connected, open waypoint that moves around the obstacle.
+                // The path-step cost prevents choosing a distant cell just because it is
+                // geometrically close to the final destination.
+                float travelPenalty = pathSteps[ix, iy, iz] * 0.85f
+                    + bodyDistanceSquared * 0.10f;
+                float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 2.8f;
+                float score = goalDistanceSquared + travelPenalty + verticalPenalty
+                    + (8 - openNeighbors) * 0.60f
+                    - sideStep * 1.40f
+                    - Math.Max(0f, forwardProgress) * 0.25f;
 
-                    float progressPenalty = Vector3.DistanceSquared(candidate, goal);
-                    float travelPenalty = Vector3.DistanceSquared(candidate, m_body.Position) * 0.22f;
-                    float verticalPenalty = Math.Abs(candidate.Y - m_body.Position.Y) * 2.8f;
-                    // Prefer open cells with a meaningful lateral offset, so the next
-                    // waypoint actually takes the villager around the wall instead of
-                    // sending it straight back into the blocked face.
-                    float score = progressPenalty + travelPenalty + verticalPenalty
-                        + (8 - openNeighbors) * 0.65f - sideStep * 0.75f
-                        - Math.Max(0f, forwardProgress) * 0.20f;
-
-                    if (!found || score < bestScore)
-                    {
-                        found = true;
-                        bestScore = score;
-                        detour = candidate;
-                    }
+                if (!found || score < bestScore)
+                {
+                    found = true;
+                    bestScore = score;
+                    detour = candidate;
                 }
             }
             return found;
@@ -3445,7 +3497,7 @@ namespace Game
             {
                 int approachY = m_job == LivingTownsJob.Farmer
                     ? (m_workTask == 4 ? m_workTarget.Y : m_workTarget.Y + 1)
-                    : m_workTarget.Y;
+                    : (m_job == LivingTownsJob.Blacksmith ? m_workTarget.Y + 1 : m_workTarget.Y);
                 found = TryGetWorkApproach(m_workTarget.X, approachY, m_workTarget.Z, out nextApproach);
             }
 
@@ -4307,7 +4359,7 @@ namespace Game
             m_patrolPause = 0.25 + s_random.NextDouble() * 0.65;
         }
 
-        private void TickBlacksmith()
+                private void TickBlacksmith()
         {
             if (m_terrain == null || m_pathfinding == null)
                 return;
@@ -4320,6 +4372,9 @@ namespace Game
                 {
                     m_nextWorkSearchTime = 4.0;
                     m_hasWorkTarget = TryFindNamedBlock("Furnace", out m_workTarget);
+                    m_hasWorkApproach = false;
+                    m_workApproachRetryCount = 0;
+                    ResetWorkRouteProgress();
                 }
             }
             if (!m_hasWorkTarget)
@@ -4327,9 +4382,39 @@ namespace Game
                 TickPatrol(2f, 4f);
                 return;
             }
-            Vector3 target = new Vector3(m_workTarget.X + 1.5f, m_workTarget.Y, m_workTarget.Z + 0.5f);
-            if (Vector3.Distance(m_body.Position, target) > 1.45f)
-                SetManagedDestination(target, WorkMoveSpeed, 1.0f, 180, false, false, false, null);
+
+            // Do not hard-code the furnace's east side: it may be blocked by a wall.
+            // Select a two-block-clear standing cell from the available sides instead.
+            if (!m_hasWorkApproach)
+            {
+                if (!TryGetWorkApproach(m_workTarget.X, m_workTarget.Y + 1,
+                    m_workTarget.Z, out m_workApproachPosition))
+                {
+                    RejectWorkPosition(m_workTarget, 35.0);
+                    m_hasWorkTarget = false;
+                    m_nextWorkSearchTime = 0.8;
+                    StopManagedPath();
+                    return;
+                }
+                m_hasWorkApproach = true;
+                m_workApproachRetryCount = 0;
+                ResetWorkRouteProgress();
+            }
+
+            if (WorkRouteHasFailed(1.45f))
+            {
+                if (TryRetryWorkApproach("Blacksmith"))
+                {
+                    ResetWorkRouteProgress();
+                    return;
+                }
+                AbandonCurrentWorkTarget("Blacksmith");
+                return;
+            }
+
+            if (Vector3.Distance(m_body.Position, m_workApproachPosition) > 1.45f)
+                SetManagedDestination(m_workApproachPosition, WorkMoveSpeed, 1.0f,
+                    1800, false, false, false, null, false);
             else
             {
                 StopManagedPath();
