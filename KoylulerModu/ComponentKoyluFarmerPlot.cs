@@ -192,15 +192,23 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         int waterBucketIndex = SafeBlockIndex<WaterBucketBlock>();
         int seedsIndex = SafeBlockIndex<SeedsBlock>();
 
-        if (saltIndex <= 0 || waterBucketIndex <= 0 || seedsIndex <= 0)
+        // Salt is a custom optional item. A block-registration problem must
+        // never prevent the farmer from building the actual field.
+        if (seedsIndex <= 0)
             return false;
 
-        bool saltReady = EnsureInventoryCount(saltIndex, 1, null);
-        bool bucketReady = EnsureInventoryCount(waterBucketIndex, 1, null);
+        bool saltReady = saltIndex <= 0 || EnsureInventoryCount(saltIndex, 1, null);
+        bool bucketReady = waterBucketIndex <= 0 || EnsureInventoryCount(waterBucketIndex, 1, null);
         // LivingTowns searches specifically for SeedsBlock data=5 (rye).
         bool seedsReady = EnsureInventoryCount(seedsIndex, RequiredSeedCount, 5);
 
-        return saltReady && bucketReady && seedsReady;
+        if (saltIndex <= 0 && !m_loggedKitIssue)
+        {
+            Log.Error("[KoylulerModu] Custom salt item is not registered. Continuing farm construction without salt until its block registration is fixed.");
+            m_loggedKitIssue = true;
+        }
+
+        return seedsReady && bucketReady && saltReady;
     }
 
     private bool EnsureInventoryCount(int contents, int requiredCount, int? requiredData)
@@ -423,7 +431,7 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         int saltSlot = FindInventorySlot(salt);
         MethodInfo damageRake = FindMethod(m_controller, "DamageRake", new[] { typeof(int) });
         if (grass <= 0 || dirt <= 0 || soil <= 0 || fence <= 0 ||
-            water <= 0 || salt <= 0 || rakeSlot < 0 || saltSlot < 0 || damageRake == null)
+            water <= 0 || rakeSlot < 0 || damageRake == null)
             return false;
 
         // Re-check every column immediately before changing the terrain.
@@ -524,8 +532,13 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
         // Salt has no native Survivalcraft block. The custom salt item is
         // therefore consumed as a one-time whole-plot soil treatment and its
         // completion is saved with this component.
-        if (!ConsumeOneItem(salt))
-            return false;
+        // Consume salt when the custom item registered correctly. The plot
+        // itself is not blocked by an optional cosmetic/consumable item.
+        if (salt > 0)
+        {
+            if (!ConsumeOneItem(salt))
+                Log.Information("[KoylulerModu] Farmer plot completed without salt: salt was not found in inventory.");
+        }
 
         return true;
     }
