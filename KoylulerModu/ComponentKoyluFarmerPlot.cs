@@ -286,22 +286,27 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
 
     private bool TryFindPlot(Point3 signCell, out PlotCandidate selected)
     {
-        // Four candidate sites keep the sign outside the fence and leave the
-        // native work/home routing controller in charge of the villager.
-        PlotCandidate[] candidates =
+        // Search progressively farther from the assigned work sign. Four
+        // orientations at ten distances avoid requiring one perfect rectangle
+        // directly beside the sign.
+        int[] distances = { 3, 6, 9, 12, 15, 18, 21, 24, 27, 30 };
+        foreach (int distance in distances)
         {
-            new PlotCandidate(signCell.X - 6, signCell.Z - 13, PlotWidth, PlotDepth),
-            new PlotCandidate(signCell.X - 6, signCell.Z + 4, PlotWidth, PlotDepth),
-            new PlotCandidate(signCell.X - 13, signCell.Z - 5, PlotDepth, PlotWidth),
-            new PlotCandidate(signCell.X + 4, signCell.Z - 5, PlotDepth, PlotWidth)
-        };
-
-        foreach (PlotCandidate candidate in candidates)
-        {
-            if (TryValidateCandidate(candidate, signCell.Y, out int groundY))
+            PlotCandidate[] candidates =
             {
-                selected = candidate.WithGroundY(groundY);
-                return true;
+                new PlotCandidate(signCell.X - 6, signCell.Z - PlotDepth - distance, PlotWidth, PlotDepth),
+                new PlotCandidate(signCell.X - 6, signCell.Z + distance + 1, PlotWidth, PlotDepth),
+                new PlotCandidate(signCell.X - PlotWidth - distance, signCell.Z - 5, PlotWidth, PlotDepth),
+                new PlotCandidate(signCell.X + distance + 1, signCell.Z - 5, PlotWidth, PlotDepth)
+            };
+
+            foreach (PlotCandidate candidate in candidates)
+            {
+                if (TryValidateCandidate(candidate, signCell.Y, out int groundY))
+                {
+                    selected = candidate.WithGroundY(groundY);
+                    return true;
+                }
             }
         }
 
@@ -325,7 +330,10 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
 
             minY = Math.Min(minY, surfaceY);
             maxY = Math.Max(maxY, surfaceY);
-            if (maxY - minY > 1)
+            // A natural slope of up to three blocks can be levelled by
+            // filling low cells. Steeper sites are rejected instead of
+            // producing a huge artificial wall.
+            if (maxY - minY > 3)
             {
                 groundY = 0;
                 return false;
@@ -340,27 +348,31 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
     {
         int grass = SafeBlockIndex<GrassBlock>();
         int dirt = SafeBlockIndex<DirtBlock>();
-        int tallGrass = SafeBlockIndex<TallGrassBlock>();
 
-        for (int y = centerY + 4; y >= Math.Max(1, centerY - 7); y--)
+        for (int y = centerY + 8; y >= Math.Max(1, centerY - 12); y--)
         {
             int value = m_terrain.Terrain.GetCellValue(x, y, z);
             int contents = Terrain.ExtractContents(value);
             if (contents != grass && contents != dirt)
                 continue;
 
-            // Only clear ordinary tall grass. Trees, buildings, signs, rocks,
-            // water and other structures are treated as obstacles, never bulldozed.
-            for (int above = y + 1; above <= y + 2; above++)
+            // Natural ground is acceptable when only non-structural vegetation
+            // occupies the air above it. Buildings, signs, rocks and doors are
+            // never selected as a clearing site.
+            bool clearable = true;
+            for (int above = y + 1; above <= y + 4; above++)
             {
                 int aboveContents = Terrain.ExtractContents(
                     m_terrain.Terrain.GetCellValue(x, above, z));
-                if (aboveContents != 0 && aboveContents != tallGrass)
+                if (aboveContents != 0 && !IsClearableVegetation(aboveContents))
                 {
-                    surfaceY = 0;
-                    return false;
+                    clearable = false;
+                    break;
                 }
             }
+
+            if (!clearable)
+                continue;
 
             surfaceY = y;
             return true;
@@ -368,6 +380,33 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
 
         surfaceY = 0;
         return false;
+    }
+
+    private static bool IsClearableVegetation(int contents)
+    {
+        if (contents <= 0 || contents >= BlocksManager.Blocks.Length)
+            return false;
+
+        string name = BlocksManager.Blocks[contents].GetType().Name;
+        return name == "TallGrassBlock" ||
+            name == "FlowerBlock" ||
+            name == "PurpleFlowerBlock" ||
+            name == "RedFlowerBlock" ||
+            name == "WhiteFlowerBlock" ||
+            name == "SaplingBlock" ||
+            name == "DryBushBlock" ||
+            name == "LargeDryBushBlock" ||
+            name == "LeavesBlock" ||
+            name == "OakLeavesBlock" ||
+            name == "BirchLeavesBlock" ||
+            name == "SpruceLeavesBlock" ||
+            name == "DeciduousLeavesBlock" ||
+            name == "EvergreenLeavesBlock" ||
+            name == "MimosaLeavesBlock" ||
+            name == "PoplarLeavesBlock" ||
+            name == "FallenLeavesBlock" ||
+            name == "TallSpruceLeavesBlock" ||
+            name == "WaterPlantBlock";
     }
 
     private bool BuildPlot(PlotCandidate candidate)
@@ -392,36 +431,42 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
             checkedY != candidate.GroundY)
             return false;
 
-        // Level low ground by one block and remove only tall grass.
+        // Clear only recognised natural vegetation and level up to three
+        // blocks of height variation by filling low columns with dirt.
         for (int x = candidate.X; x < candidate.X + candidate.Width; x++)
         for (int z = candidate.Z; z < candidate.Z + candidate.Depth; z++)
         {
             int surfaceY = FindSurfaceAtKnownHeight(x, z, candidate.GroundY);
-            if (surfaceY < 0 || candidate.GroundY - surfaceY > 1)
+            if (surfaceY < 0 || candidate.GroundY - surfaceY > 3)
                 return false;
 
-            for (int above = candidate.GroundY + 1; above <= candidate.GroundY + 2; above++)
+            for (int above = surfaceY + 1; above <= candidate.GroundY + 4; above++)
             {
                 int aboveValue = m_terrain.Terrain.GetCellValue(x, above, z);
-                if (Terrain.ExtractContents(aboveValue) == tallGrass)
+                int aboveContents = Terrain.ExtractContents(aboveValue);
+                if (aboveContents == 0)
+                    continue;
+                if (IsClearableVegetation(aboveContents))
                     m_terrain.ChangeCell(x, above, z, 0);
-                else if (Terrain.ExtractContents(aboveValue) != 0)
+                else
                     return false;
             }
 
-            if (surfaceY < candidate.GroundY)
+            // Build a solid dirt foundation under low columns, without
+            // touching neighbouring buildings or removing their blocks.
+            for (int fillY = surfaceY + 1; fillY <= candidate.GroundY; fillY++)
             {
-                int fillValue = m_terrain.Terrain.GetCellValue(x, candidate.GroundY, z);
+                int fillValue = m_terrain.Terrain.GetCellValue(x, fillY, z);
                 int fillContents = Terrain.ExtractContents(fillValue);
-                if (fillContents == tallGrass)
-                    m_terrain.ChangeCell(x, candidate.GroundY, z, 0);
-                else if (fillContents != 0)
+                if (fillContents != 0 && !IsClearableVegetation(fillContents))
                     return false;
-                m_terrain.ChangeCell(x, candidate.GroundY, z, Terrain.MakeBlockValue(dirt));
+                m_terrain.ChangeCell(x, fillY, z, Terrain.MakeBlockValue(dirt));
             }
         }
 
-        // Enclose all four sides with wooden fence (40 blocks for 12x10).
+        // Fence the rectangle but leave a one-cell entrance on the west wall
+        // so native LivingTowns pathfinding can walk into the field.
+        int entranceZ = candidate.Z + candidate.Depth / 2;
         for (int x = candidate.X; x < candidate.X + candidate.Width; x++)
         {
             if (!PlaceFence(x, candidate.GroundY + 1, candidate.Z, fence) ||
@@ -431,8 +476,10 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
 
         for (int z = candidate.Z + 1; z < candidate.Z + candidate.Depth - 1; z++)
         {
-            if (!PlaceFence(candidate.X, candidate.GroundY + 1, z, fence) ||
-                !PlaceFence(candidate.X + candidate.Width - 1, candidate.GroundY + 1, z, fence))
+            if (z != entranceZ &&
+                !PlaceFence(candidate.X, candidate.GroundY + 1, z, fence))
+                return false;
+            if (!PlaceFence(candidate.X + candidate.Width - 1, candidate.GroundY + 1, z, fence))
                 return false;
         }
 
@@ -487,7 +534,7 @@ public sealed class ComponentKoyluFarmerPlot : Component, IUpdateable
     {
         int grass = SafeBlockIndex<GrassBlock>();
         int dirt = SafeBlockIndex<DirtBlock>();
-        for (int y = targetY; y >= targetY - 1; y--)
+        for (int y = targetY; y >= targetY - 3; y--)
         {
             int contents = Terrain.ExtractContents(m_terrain.Terrain.GetCellValue(x, y, z));
             if (contents == grass || contents == dirt)
