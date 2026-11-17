@@ -30,7 +30,7 @@ jobs:
         run: dotnet restore KoylulerModu/KoylulerModu.csproj --configfile nuget.config
       - name: Build
         run: dotnet build KoylulerModu/KoylulerModu.csproj --configuration Release --no-restore
-      - name: Verify villager identity, eggs, door spawning, and coordinated movement
+      - name: Verify villager identity, eggs, door spawning, and bed-centred roaming
         run: |
           python3 - <<'PY'
           import json
@@ -95,8 +95,17 @@ jobs:
           identity = (p / 'ComponentKoyluIdentity.cs').read_text(encoding='utf-8')
           ui_patch = (p / 'VillagerInventoryNamePatch.cs').read_text(encoding='utf-8')
           bridge = (p / 'VillagerInventoryNameBridge.cs').read_text(encoding='utf-8')
+          roam_patch = (p / 'VillagerBedRoamingPatch.cs').read_text(encoding='utf-8')
           if 'HarmonyLib' not in loader or 'VillagerInventoryNamePatch.Install' not in loader:
               raise SystemExit('Dynamic Harmony installation is missing')
+          if 'VillagerBedRoamingPatch.Install' not in loader:
+              raise SystemExit('Bed-roaming patch is not installed by the mod loader')
+          if 'TickPatrol' not in roam_patch or 'GetWorkCenterCell' not in roam_patch:
+              raise SystemExit('Idle patrol and patrol-centre hooks are missing')
+          if 'MaximumRoamRadius = 25.0f' not in roam_patch or 'MinimumRoamRadius = 2.5f' not in roam_patch:
+              raise SystemExit('Bed-roaming radius is not set to 2.5-25 blocks')
+          if 'm_hasBedCell' not in roam_patch or 'm_bedCell' not in roam_patch or 'Point3' not in roam_patch:
+              raise SystemExit('The patrol centre is not bound to each villager’s assigned bed cell')
           if 'LivingTownsTradeWidget' not in ui_patch or 'OpCodes.Ldarg_2' not in ui_patch or 'Takas Stoğu' not in ui_patch:
               raise SystemExit('Direct trade-stock caption replacement is incomplete')
           if 'ResolveStockLabel' not in ui_patch or 'm_villagerName' not in bridge:
@@ -112,7 +121,7 @@ jobs:
           dll = Path('KoylulerModu/bin/Release/net10.0/KoylulerModu.dll')
           if not dll.is_file():
               raise SystemExit(f'Missing compiled assembly: {dll}')
-          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; direct inventory title; single AI destination owner; shared movement settings.')
+          print('PASS: 9 player templates + 9 door aliases; persistent names; individual eggs; inventory name; idle patrol bound to each assigned bed (2.5-25 blocks); work/home/door/sleep paths remain under LivingTowns control.')
           print(f'Compiled assembly: {dll.stat().st_size} bytes')
           PY
       - name: Upload compiled mod files
