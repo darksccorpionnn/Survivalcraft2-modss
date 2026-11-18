@@ -1,0 +1,34 @@
+name: Inspect Flat Nature world generation API
+
+on:
+  push:
+    branches: [ flat-nature-api-scan ]
+    paths:
+      - "ApiInspector/**"
+      - ".github/workflows/flat-nature-inspect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-world-generation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore API inspector
+        run: dotnet restore ApiInspector/ApiInspector.csproj --configfile nuget.config
+      - name: Build API inspector
+        run: dotnet build ApiInspector/ApiInspector.csproj -c Release --no-restore
+      - name: Run world generation API scan
+        run: dotnet run --project ApiInspector/ApiInspector.csproj -c Release --no-build > ApiInspector/flat-nature-api-inspection.txt
+      - name: Upload API inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: Flat-Nature-World-Generation-API
+          path: ApiInspector/bin/Release/net10.0/api-inspection.txt
+          if-no-files-found: error
+          retention-days: 14
