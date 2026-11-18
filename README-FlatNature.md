@@ -13,10 +13,12 @@ Independent Survivalcraft 2 API mod for newly created Flat worlds only.
 ## Wood stove
 - Adds a placeable **Odun Sobası** block.
 - Reuses the native furnace inventory and interface.
-- Consumes wood fuel even when no smelting recipe is selected.
+- Has a fuel-only slot: input, output and by-product slots are disabled.
+- Does not smelt ores or run crafting recipes.
+- Consumes one fuel item at a time and keeps it burning for its normal fuel duration, even with no smelting recipe.
 - Shows the game's native fire particles and an added rising smoke trail.
 - Sets block heat and emitted light while burning; both return to zero when fuel runs out.
-- Can be refuelled through the normal furnace fuel slot.
+- Can be refuelled through the fuel slot.
 
 The stove uses the static GLB model at `Assets/Models/WoodStove/WoodStove.glb`. If the model is not present, the block temporarily falls back to the vanilla furnace mesh while the code build remains testable.
 
