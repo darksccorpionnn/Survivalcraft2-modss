@@ -308,7 +308,7 @@ internal static class FlatNatureGenerator
         TerrainChunk chunk, int[,] surface, bool[,] land,
         FlatNatureWorldContext context, ref bool changed)
     {
-        if (context.WoodIndex <= 0 || context.LeavesIndex <= 0)
+        if (context.TallSpruceSaplingIndex <= 0)
             return;
 
         int minTreeCellX = FloorDiv(chunk.Origin.X, TreeGrid) - 1;
@@ -343,7 +343,7 @@ internal static class FlatNatureGenerator
                     continue;
 
                 int treeHeight = 14 + (int)((h >> 20) % 7u);
-                BuildSpruceTree(chunk, localX, groundY, localZ, treeHeight, context, ref changed);
+                SetCell(chunk, localX, groundY + 1, localZ, Terrain.MakeBlockValue(context.TallSpruceSaplingIndex), ref changed);
             }
         }
     }
