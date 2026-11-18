@@ -268,13 +268,13 @@ internal static class FlatNatureGenerator
         for (int ore = 0; ore < context.OreIndices.Count; ore++)
         {
             uint h = Hash(context.Seed, chunk.Origin.X, chunk.Origin.Y, 700 + ore * 37);
-            if (h % 100u >= 58u)
+            if (h % 100u >= 92u)
                 continue;
 
             int centerX = 2 + (int)((h >> 8) % 12u);
             int centerZ = 2 + (int)((h >> 16) % 12u);
             int centerY = 4 + (int)((h >> 24) % (uint)Math.Max(1, maxY - 3));
-            int length = 10 + (int)((h >> 4) % 9u);
+            int length = 16 + (int)((h >> 4) % 11u);
             int direction = (int)((h >> 12) % 3u);
             int oreValue = Terrain.MakeBlockValue(context.OreIndices[ore]);
 
@@ -342,46 +342,38 @@ internal static class FlatNatureGenerator
                 if (groundY < 2 || groundY > ChunkHeight - 10)
                     continue;
 
-                int treeHeight = 5 + (int)((h >> 20) % 5u);
-                int forestStyle = (int)((h >> 27) % 4u);
-                int species = (int)((h >> 21) % (uint)context.TreeWoodIndices.Count);
-                BuildTree(chunk, localX, groundY, localZ, treeHeight, forestStyle, species, context, ref changed);
+                int treeHeight = 13 + (int)((h >> 20) % 8u);
+                BuildSpruceTree(chunk, localX, groundY, localZ, treeHeight, context, ref changed);
             }
         }
     }
 
-    private static void BuildTree(
-        TerrainChunk chunk, int x, int groundY, int z, int height, int forestStyle, int species,
+    // Use one consistent tall spruce silhouette across Survivalcraft block registries.
+    private static void BuildSpruceTree(
+        TerrainChunk chunk, int x, int groundY, int z, int height,
         FlatNatureWorldContext context, ref bool changed)
     {
-        int woodValue = Terrain.MakeBlockValue(context.TreeWoodIndices[species]);
-        int leavesValue = Terrain.MakeBlockValue(context.TreeLeavesIndices[species]);
+        int woodValue = Terrain.MakeBlockValue(context.WoodIndex);
+        int leavesValue = Terrain.MakeBlockValue(context.LeavesIndex);
 
         for (int y = groundY + 1; y <= groundY + height; y++)
             SetCell(chunk, x, y, z, woodValue, ref changed);
 
-        for (int layer = -2; layer <= 3; layer++)
+        // Broad lower boughs taper into a pointed crown, like a tall spruce.
+        for (int layer = -5; layer <= 4; layer++)
         {
             int centerY = groundY + height + layer;
-            int radius = forestStyle == 0
-                ? (layer >= 2 ? 1 : 2)
-                : forestStyle == 1
-                    ? (layer <= 0 ? 3 : layer == 1 ? 2 : 1)
-                    : forestStyle == 2
-                        ? (layer <= 1 ? 2 : 1)
-                        : (layer == 0 ? 3 : layer == 1 ? 2 : 1);
+            int radius = layer <= -3 ? 3 : layer <= 0 ? 2 : 1;
             for (int dx = -radius; dx <= radius; dx++)
             for (int dz = -radius; dz <= radius; dz++)
             {
                 if (dx * dx + dz * dz > radius * radius + 1)
                     continue;
-
                 int lx = x + dx;
                 int lz = z + dz;
                 if (lx < 0 || lx >= ChunkSize || lz < 0 || lz >= ChunkSize ||
                     centerY < 1 || centerY >= ChunkHeight)
                     continue;
-
                 if (Terrain.ExtractContents(chunk.GetCellValueFast(lx, centerY, lz)) == 0)
                     SetCell(chunk, lx, centerY, lz, leavesValue, ref changed);
             }
