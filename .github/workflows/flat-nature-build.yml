@@ -24,6 +24,10 @@ jobs:
         run: dotnet restore FlatNature/FlatNature.csproj --configfile nuget.config
       - name: Build
         run: dotnet build FlatNature/FlatNature.csproj -c Release --no-restore
+      - name: Generate iron kettle GLB
+        run: |
+          python -m pip install --disable-pip-version-check trimesh pillow numpy
+          python FlatNature/tools/generate_iron_kettle.py
       - name: Package SCMod
         run: |
           mkdir -p package
