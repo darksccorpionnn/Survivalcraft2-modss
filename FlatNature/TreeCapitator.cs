@@ -53,7 +53,9 @@ internal static class TreeCapitator
             // Collect foliage attached to this trunk before removing the remaining logs.
             List<Point3> leaves = FindTreeLeaves(terrain.Terrain, logs);
 
-            // DestroyCell handles normal drop values and particles for both logs and leaves.
+            // The player-mined origin cell already gets its normal drop from the game.
+            // Suppress extra pickable drops for the automatically removed blocks; otherwise
+            // large trees spawn dozens of block-shaped items that scatter across the scene.
             foreach (Point3 p in logs)
             {
                 if (p == origin)
@@ -64,10 +66,10 @@ internal static class TreeCapitator
                     continue;
 
                 terrain.DestroyCell(0, p.X, p.Y, p.Z, 0,
-                    noDrop: false, noParticleSystem: true, movingBlock: null);
+                    noDrop: true, noParticleSystem: true, movingBlock: null);
             }
 
-            // Leaves are removed as well, using the game's normal leaf drop behavior.
+            // Remove the attached canopy without spawning hundreds of separate leaf pickables.
             foreach (Point3 p in leaves)
             {
                 int value = terrain.Terrain.GetCellValue(p.X, p.Y, p.Z);
