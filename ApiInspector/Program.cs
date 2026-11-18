@@ -891,3 +891,10 @@ if (fireNestedParticle != null)
 DumpIl("Game.SubsystemTorchBlockBehavior", "AddTorch");
 DumpIl("Game.SubsystemTorchBlockBehavior", "RemoveTorch");
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+DumpIl("Game.SubsystemTorchBlockBehavior", "AddTorch");
+DumpIl("Game.SubsystemTorchBlockBehavior", "RemoveTorch");
+DumpIl("Game.TorchBlock", "GetPlacementValue");
+DumpIl("Game.TorchBlock", "Initialize");
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
