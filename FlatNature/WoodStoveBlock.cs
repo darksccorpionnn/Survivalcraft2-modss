@@ -64,7 +64,11 @@ public sealed class WoodStoveBlock : FurnaceBlock
 
         // Block data low two bits represent horizontal facing. Bit 2 remains
         // reserved for the lit state used by GetHeat/GetEmittedLightAmount.
-        m_blockMeshesByData = new BlockMesh[4];
+        // Data bit 2 (value 4) is the stove's lit state. The renderer indexes
+        // m_blockMeshesByData using the complete block data value, not only
+        // the horizontal rotation. Populate all eight valid combinations so
+        // the mesh remains visible while the stove is burning.
+        BlockMesh[] rotationMeshes = new BlockMesh[4];
         for (int rotation = 0; rotation < 4; rotation++)
         {
             BlockMesh blockMesh = new BlockMesh();
@@ -77,8 +81,12 @@ public sealed class WoodStoveBlock : FurnaceBlock
             foreach (ModelMeshPart part in mesh.MeshParts)
                 blockMesh.AppendModelMeshPart(part, transform, false, false, false, false, Color.White);
 
-            m_blockMeshesByData[rotation] = blockMesh;
+            rotationMeshes[rotation] = blockMesh;
         }
+
+        m_blockMeshesByData = new BlockMesh[8];
+        for (int data = 0; data < m_blockMeshesByData.Length; data++)
+            m_blockMeshesByData[data] = rotationMeshes[data & 3];
 
         m_standaloneBlockMesh = new BlockMesh();
         Matrix standaloneTransform = boneTransform * scale;
