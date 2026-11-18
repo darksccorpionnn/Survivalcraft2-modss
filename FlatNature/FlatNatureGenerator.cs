@@ -9,7 +9,7 @@ internal static class FlatNatureGenerator
     private const int MountainGrid = 190;
     private const int LakeGrid = 230;
     private const int ForestGrid = 150;
-    private const int TreeGrid = 14;
+    private const int TreeGrid = 8;
 
     internal static void GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -308,7 +308,7 @@ internal static class FlatNatureGenerator
         TerrainChunk chunk, int[,] surface, bool[,] land,
         FlatNatureWorldContext context, ref bool changed)
     {
-        if (context.TerrainSubsystem == null || context.TallSpruceSaplingIndex != 119)
+        if (context.WoodIndex <= 0 || context.LeavesIndex <= 0)
             return;
 
         int minTreeCellX = FloorDiv(chunk.Origin.X, TreeGrid) - 1;
@@ -321,7 +321,7 @@ internal static class FlatNatureGenerator
             for (int gz = minTreeCellZ; gz <= maxTreeCellZ; gz++)
             {
                 uint h = Hash(context.Seed, gx, gz, 901);
-                if (h % 100u >= 82u)
+                if (h % 100u >= 72u)
                     continue;
 
                 int worldX = gx * TreeGrid + 2 + (int)((h >> 8) % 7u);
@@ -348,12 +348,7 @@ internal static class FlatNatureGenerator
                 int aboveContents = Terrain.ExtractContents(chunk.GetCellValueFast(localX, saplingY, localZ));
                 if ((groundContents == context.GrassIndex || groundContents == context.DirtIndex) && aboveContents == 0)
                 {
-                    // Use native SaplingBlock 119, data 3 = Tall Spruce.
-                    // ChangeCell fires OnBlockAdded so vanilla sapling behavior registers it.
-                    context.TerrainSubsystem.ChangeCell(
-                        worldX, saplingY, worldZ,
-                        Terrain.MakeBlockValue(119, 0, 3), true);
-                    changed = true;
+                    BuildSpruceTree(chunk, localX, groundY, localZ, treeHeight, context, ref changed);
                 }
             }
         }
