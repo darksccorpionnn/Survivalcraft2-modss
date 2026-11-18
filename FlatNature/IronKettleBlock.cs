@@ -5,15 +5,14 @@ using Engine.Graphics;
 namespace Game;
 
 /// <summary>
-/// Decorative iron lantern designed to sit on top of the wood stove.
-/// It is a separate placeable block and does not alter furnace fuel or heat logic.
+/// Wall-mounted iron lantern. Placement/orientation follows the native TorchBlock
+/// wall-face convention, while rendering uses the supplied IronLantern GLB.
 /// </summary>
-public sealed class IronLanternBlock : FurnaceBlock
+public sealed class IronLanternBlock : TorchBlock
 {
     public new static int Index = -1;
 
     private const float ModelScale = 1.0f;
-    private const float ModelOffsetY = 0.477f;
     private Texture2D m_texture;
 
     public override BlockPlacementData GetPlacementValue(
@@ -22,25 +21,39 @@ public sealed class IronLanternBlock : FurnaceBlock
         int value,
         TerrainRaycastResult raycastResult)
     {
+        // TorchBlock encodes the four horizontal support faces as variants 0..3.
+        // Reject floor and ceiling faces: this lantern is a wall fixture only.
+        int face = raycastResult.CellFace.Face;
+        if (face < 0 || face > 3)
+        {
+            BlockPlacementData rejected = default;
+            rejected.CellFace = raycastResult.CellFace;
+            return rejected;
+        }
+
         BlockPlacementData placement = base.GetPlacementValue(
             subsystemTerrain, componentMiner, value, raycastResult);
-        int kettleIndex = BlocksManager.GetBlockIndex<IronLanternBlock>();
-        if (kettleIndex <= 0)
+
+        int lanternIndex = BlocksManager.GetBlockIndex<IronLanternBlock>();
+        if (lanternIndex <= 0)
             throw new InvalidOperationException("[FlatNature] IronLantern block ID was not allocated.");
-        placement.Value = Terrain.ReplaceContents(placement.Value, kettleIndex);
+
+        placement.Value = Terrain.ReplaceContents(placement.Value, lanternIndex);
         return placement;
     }
 
     public override float GetHeat(int value) => 0f;
+
     public override int GetEmittedLightAmount(int value) => 12;
 
-    public override bool IsFaceTransparent(SubsystemTerrain subsystemTerrain, int face, int value)
-    {
-        return true;
-    }
+    public override bool IsFaceTransparent(
+        SubsystemTerrain subsystemTerrain,
+        int face,
+        int value) => true;
 
     public override void Initialize()
     {
+        // Initializes TorchBlock's native variant/collision arrays and the base Block.
         base.Initialize();
 
         Model model = ContentManager.Get<Model>("Models/IronLantern/IronLantern");
@@ -58,26 +71,112 @@ public sealed class IronLanternBlock : FurnaceBlock
         Matrix boneTransform = mesh.ParentBone != null
             ? BlockMesh.GetBoneAbsoluteTransform(mesh.ParentBone)
             : Matrix.Identity;
-        Matrix transform =
-            boneTransform *
-            Matrix.CreateScale(ModelScale) *
-            Matrix.CreateTranslation(0.5f, ModelOffsetY, 0.5f);
 
-        m_blockMeshesByData = new BlockMesh[16];
-        for (int data = 0; data < m_blockMeshesByData.Length; data++)
+        // The packaged GLB already has its bottom aligned at Y ~= 0.024.
+        // Keep it vertical and move its rear edge exactly to the wall plane.
+        // CellFace 0/1/2/3 follows Survivalcraft's native +Z/+X/-Z/-X order.
+        float[] yaw =
+        {
+            0f,
+            (float)Math.PI / 2f,
+            (float)Math.PI,
+            3f * (float)Math.PI / 2f
+        };
+
+        Vector3[] offsets =
+        {
+            new Vector3(0.5f, 0f, 0.27075f), // wall at local z = 0
+            new Vector3(0.27075f, 0f, 0.5f), // wall at local x = 0
+            new Vector3(0.5f, 0f, 0.72925f), // wall at local z = 1
+            new Vector3(0.72925f, 0f, 0.5f)  // wall at local x = 1
+        };
+
+        m_blockMeshesByVariant = new BlockMesh[5];
+        m_collisionBoxes = new BoundingBox[5][];
+
+        for (int variant = 0; variant < 4; variant++)
         {
             BlockMesh blockMesh = new BlockMesh();
+            Matrix transform =
+                boneTransform *
+                Matrix.CreateScale(ModelScale) *
+                Matrix.CreateRotationY(yaw[variant]) *
+                Matrix.CreateTranslation(offsets[variant]);
+
             foreach (ModelMeshPart part in mesh.MeshParts)
-                blockMesh.AppendModelMeshPart(part, transform, false, false, false, false, Color.White);
-            m_blockMeshesByData[data] = blockMesh;
+            {
+                blockMesh.AppendModelMeshPart(
+                    part, transform, false, false, false, false, Color.White);
+            }
+
+            m_blockMeshesByVariant[variant] = blockMesh;
+            m_collisionBoxes[variant] = new[] { blockMesh.CalculateBoundingBox() };
         }
 
-        m_standaloneBlockMesh = new BlockMesh();
-        foreach (ModelMeshPart part in mesh.MeshParts)
-            m_standaloneBlockMesh.AppendModelMeshPart(
-                part, boneTransform * Matrix.CreateScale(ModelScale), false, false, false, false, Color.White);
+        // Variant 4 is intentionally empty: floor placement is not supported.
+        m_blockMeshesByVariant[4] = new BlockMesh();
+        m_collisionBoxes[4] = Array.Empty<BoundingBox>();
 
-        Log.Information("[FlatNature] Iron lantern GLB mesh assigned: " + mesh.Name);
+        // Inventory/hand preview only; actual world placement uses the four wall meshes.
+        m_standaloneBlockMesh = new BlockMesh();
+        Matrix standaloneTransform =
+            boneTransform *
+            Matrix.CreateScale(ModelScale) *
+            Matrix.CreateTranslation(0.5f, 0f, 0.5f);
+
+        foreach (ModelMeshPart part in mesh.MeshParts)
+        {
+            m_standaloneBlockMesh.AppendModelMeshPart(
+                part, standaloneTransform, false, false, false, false, Color.White);
+        }
+
+        Log.Information("[FlatNature] Wall-mounted IronLantern GLB initialized.");
+    }
+
+    public override void GenerateTerrainVertices(
+        BlockGeometryGenerator generator,
+        TerrainGeometry geometry,
+        int value,
+        int x,
+        int y,
+        int z)
+    {
+        int variant = Terrain.ExtractData(value);
+        if (variant >= 0 && variant < 4)
+        {
+            generator.GenerateMeshVertices(
+                this,
+                x,
+                y,
+                z,
+                m_blockMeshesByVariant[variant],
+                Color.White,
+                null,
+                geometry.SubsetOpaque);
+        }
+    }
+
+    public override BoundingBox[] GetCustomCollisionBoxes(SubsystemTerrain terrain, int value)
+    {
+        int variant = Terrain.ExtractData(value);
+        return variant >= 0 && variant < 4 ? m_collisionBoxes[variant] : null;
+    }
+
+    public override void DrawBlock(
+        PrimitivesRenderer3D primitivesRenderer,
+        int value,
+        Color color,
+        float size,
+        ref Matrix matrix,
+        DrawBlockEnvironmentData environmentData)
+    {
+        BlocksManager.DrawMeshBlock(
+            primitivesRenderer,
+            m_standaloneBlockMesh,
+            color,
+            2f * size,
+            ref matrix,
+            environmentData);
     }
 
     public override Texture2D GetDefaultTexture(int value) => m_texture;

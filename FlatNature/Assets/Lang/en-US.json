@@ -2,5 +2,5 @@
   "DisplayName:WoodStove": "Wood Stove",
   "Description:WoodStove": "A working wood-burning stove that heats its surroundings.",
   "DisplayName:IronLantern": "Iron Lantern",
-  "Description:IronLantern": "A metal lantern that emits steady light without flame or torch particles."
+  "Description:IronLantern": "A wall-mounted metal lantern that emits steady light without flame or torch particles."
 }
