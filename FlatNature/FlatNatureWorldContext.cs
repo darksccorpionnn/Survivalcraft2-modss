@@ -18,6 +18,8 @@ internal sealed class FlatNatureWorldContext
     internal int PineLeavesIndex { get; private set; }
     internal int TallSpruceWoodIndex { get; private set; }
     internal int TallSpruceLeavesIndex { get; private set; }
+    internal int TallSpruceWoodIndex { get; private set; }
+    internal int TallSpruceLeavesIndex { get; private set; }
     internal int LeavesIndex { get; private set; }
     internal List<int> TreeWoodIndices { get; } = new();
     internal List<int> TreeLeavesIndices { get; } = new();
@@ -67,8 +69,18 @@ internal sealed class FlatNatureWorldContext
 
         context.TallSpruceWoodIndex = FindBlockContaining("TallSpruce", "Wood");
         context.TallSpruceLeavesIndex = FindBlockContaining("TallSpruce", "Leaves");
-        context.PineWoodIndex = FindBlockContaining("Pine", "Wood");
-        context.PineLeavesIndex = FindBlockContaining("Pine", "Leaves");
+        // Prefer the game's exact Tall Spruce blocks, not generic Pine/Oak blocks.
+        context.TallSpruceWoodIndex = FindBlockContaining("TallSpruce", "Wood");
+        if (context.TallSpruceWoodIndex == 0)
+            context.TallSpruceWoodIndex = FindBlockTypeContaining("TallSpruce", "Wood");
+        context.TallSpruceLeavesIndex = FindBlockContaining("TallSpruce", "Leaves");
+        if (context.TallSpruceLeavesIndex == 0)
+            context.TallSpruceLeavesIndex = FindBlockTypeContaining("TallSpruce", "Leaves");
+
+        context.PineWoodIndex = context.TallSpruceWoodIndex > 0
+            ? context.TallSpruceWoodIndex : FindBlockContaining("Pine", "Wood");
+        context.PineLeavesIndex = context.TallSpruceLeavesIndex > 0
+            ? context.TallSpruceLeavesIndex : FindBlockContaining("Pine", "Leaves");
 
         context.WoodIndex = context.TallSpruceWoodIndex > 0 ? context.TallSpruceWoodIndex : (context.PineWoodIndex > 0 ? context.PineWoodIndex : FindBlockByType("WoodBlock"));
         if (context.WoodIndex == 0)
@@ -103,7 +115,8 @@ internal sealed class FlatNatureWorldContext
             ", dirt=" + context.DirtIndex + ", grass=" + context.GrassIndex +
             ", snow=" + context.SnowIndex + ", water=" + context.WaterIndex +
             ", wood=" + context.WoodIndex + ", leaves=" + context.LeavesIndex +
-            ", pineWood=" + context.PineWoodIndex + ", pineLeaves=" + context.PineLeavesIndex +
+             ", pineWood=" + context.PineWoodIndex + ", pineLeaves=" + context.PineLeavesIndex +
+            ", tallSpruceWood=" + context.TallSpruceWoodIndex + ", tallSpruceLeaves=" + context.TallSpruceLeavesIndex +
             ", tallSpruceWood=" + context.TallSpruceWoodIndex + ", tallSpruceLeaves=" + context.TallSpruceLeavesIndex +
             ", ores=" + context.OreIndices.Count);
 
