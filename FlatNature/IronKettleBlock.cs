@@ -5,10 +5,10 @@ using Engine.Graphics;
 namespace Game;
 
 /// <summary>
-/// Decorative iron kettle designed to sit on top of the wood stove.
+/// Decorative iron lantern designed to sit on top of the wood stove.
 /// It is a separate placeable block and does not alter furnace fuel or heat logic.
 /// </summary>
-public sealed class IronKettleBlock : FurnaceBlock
+public sealed class IronLanternBlock : FurnaceBlock
 {
     public new static int Index = -1;
 
@@ -24,15 +24,15 @@ public sealed class IronKettleBlock : FurnaceBlock
     {
         BlockPlacementData placement = base.GetPlacementValue(
             subsystemTerrain, componentMiner, value, raycastResult);
-        int kettleIndex = BlocksManager.GetBlockIndex<IronKettleBlock>();
+        int kettleIndex = BlocksManager.GetBlockIndex<IronLanternBlock>();
         if (kettleIndex <= 0)
-            throw new InvalidOperationException("[FlatNature] IronKettle block ID was not allocated.");
+            throw new InvalidOperationException("[FlatNature] IronLantern block ID was not allocated.");
         placement.Value = Terrain.ReplaceContents(placement.Value, kettleIndex);
         return placement;
     }
 
     public override float GetHeat(int value) => 0f;
-    public override int GetEmittedLightAmount(int value) => 0;
+    public override int GetEmittedLightAmount(int value) => 12;
 
     public override bool IsFaceTransparent(SubsystemTerrain subsystemTerrain, int face, int value)
     {
@@ -43,17 +43,17 @@ public sealed class IronKettleBlock : FurnaceBlock
     {
         base.Initialize();
 
-        Model model = ContentManager.Get<Model>("Models/IronKettle/IronKettle");
+        Model model = ContentManager.Get<Model>("Models/IronLantern/IronLantern");
         if (model == null || model.Meshes.Count == 0)
-            throw new InvalidOperationException("[FlatNature] IronKettle GLB loaded without meshes.");
+            throw new InvalidOperationException("[FlatNature] IronLantern GLB loaded without meshes.");
 
         ModelMesh mesh = model.Meshes[0];
         if (mesh.MeshParts.Count == 0)
-            throw new InvalidOperationException("[FlatNature] IronKettle GLB mesh has no mesh parts.");
+            throw new InvalidOperationException("[FlatNature] IronLantern GLB mesh has no mesh parts.");
 
         m_texture = model.GetDefaultBaseColorTexture();
         if (m_texture == null)
-            throw new InvalidOperationException("[FlatNature] IronKettle GLB has no base-color texture.");
+            throw new InvalidOperationException("[FlatNature] IronLantern GLB has no base-color texture.");
 
         Matrix boneTransform = mesh.ParentBone != null
             ? BlockMesh.GetBoneAbsoluteTransform(mesh.ParentBone)
@@ -77,7 +77,7 @@ public sealed class IronKettleBlock : FurnaceBlock
             m_standaloneBlockMesh.AppendModelMeshPart(
                 part, boneTransform * Matrix.CreateScale(ModelScale), false, false, false, false, Color.White);
 
-        Log.Information("[FlatNature] Iron kettle GLB mesh assigned: " + mesh.Name);
+        Log.Information("[FlatNature] Iron lantern GLB mesh assigned: " + mesh.Name);
     }
 
     public override Texture2D GetDefaultTexture(int value) => m_texture;
