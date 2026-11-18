@@ -66,23 +66,14 @@ internal sealed class FlatNatureWorldContext
         if (context.SandIndex == 0)
             context.SandIndex = context.DirtIndex;
 
-        context.TallSpruceWoodIndex = FindBlockContaining("TallSpruce", "Wood");
-        context.TallSpruceLeavesIndex = FindBlockContaining("TallSpruce", "Leaves");
-        // Prefer the game's exact Tall Spruce blocks, not generic Pine/Oak blocks.
-        context.TallSpruceWoodIndex = FindBlockContaining("TallSpruce", "Wood");
-        if (context.TallSpruceWoodIndex == 0)
-            context.TallSpruceWoodIndex = FindBlockTypeContaining("TallSpruce", "Wood");
-        context.TallSpruceLeavesIndex = FindBlockContaining("TallSpruce", "Leaves");
-        if (context.TallSpruceLeavesIndex == 0)
-            context.TallSpruceLeavesIndex = FindBlockTypeContaining("TallSpruce", "Leaves");
-        // Some game builds register the Tall Spruce sapling without the "Tall" prefix.
-        context.TallSpruceSaplingIndex = FindBlockContaining("TallSpruce", "Sapling");
-        if (context.TallSpruceSaplingIndex == 0)
-            context.TallSpruceSaplingIndex = FindBlockTypeContaining("TallSpruce", "Sapling");
-        if (context.TallSpruceSaplingIndex == 0)
-            context.TallSpruceSaplingIndex = FindBlockContaining("Spruce", "Sapling");
-        if (context.TallSpruceSaplingIndex == 0)
-            context.TallSpruceSaplingIndex = FindBlockTypeContaining("Spruce", "Sapling");
+        // Match "Tall Spruce Sapling" regardless of spaces or suffixes.
+        context.TallSpruceWoodIndex = FindBlockNameNormalized("TallSpruceWood");
+        if (context.TallSpruceWoodIndex == 0) context.TallSpruceWoodIndex = FindBlockTypeNormalized("TallSpruceWood");
+        context.TallSpruceLeavesIndex = FindBlockNameNormalized("TallSpruceLeaves");
+        if (context.TallSpruceLeavesIndex == 0) context.TallSpruceLeavesIndex = FindBlockTypeNormalized("TallSpruceLeaves");
+        context.TallSpruceSaplingIndex = FindBlockNameNormalized("TallSpruceSapling");
+        if (context.TallSpruceSaplingIndex == 0) context.TallSpruceSaplingIndex = FindBlockTypeNormalized("TallSpruceSapling");
+        Console.WriteLine("[FlatNature] Tall Spruce sapling resolved index=" + context.TallSpruceSaplingIndex);
 
         context.PineWoodIndex = context.TallSpruceWoodIndex > 0
             ? context.TallSpruceWoodIndex : FindBlockContaining("Pine", "Wood");
@@ -191,6 +182,30 @@ internal sealed class FlatNatureWorldContext
                 item.Key.Name.IndexOf("sapling", StringComparison.OrdinalIgnoreCase) >= 0)
                 Console.WriteLine("[FlatNature] Type candidate: " + item.Key.FullName + " = " + item.Value);
         }
+    }
+
+    private static string NormalizeBlockToken(string value)
+    {
+        var chars = new List<char>();
+        foreach (char ch in value)
+            if (char.IsLetterOrDigit(ch)) chars.Add(char.ToLowerInvariant(ch));
+        return new string(chars.ToArray());
+    }
+
+    private static int FindBlockNameNormalized(string token)
+    {
+        string wanted = NormalizeBlockToken(token);
+        foreach (KeyValuePair<string, int> item in BlocksManager.BlockNameToIndex)
+            if (NormalizeBlockToken(item.Key).Contains(wanted) && item.Value > 0) return item.Value;
+        return 0;
+    }
+
+    private static int FindBlockTypeNormalized(string token)
+    {
+        string wanted = NormalizeBlockToken(token);
+        foreach (KeyValuePair<Type, int> item in BlocksManager.BlockTypeToIndex)
+            if (NormalizeBlockToken(item.Key.Name).Contains(wanted) && item.Value > 0) return item.Value;
+        return 0;
     }
 
     private static int FindBlockByName(IEnumerable<string> names)
