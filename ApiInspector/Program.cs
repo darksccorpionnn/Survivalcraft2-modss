@@ -797,3 +797,20 @@ if (smokeType != null)
 }
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+Type colorType = allTypes.FirstOrDefault(t => t.FullName == "Engine.Color");
+if (colorType != null)
+{
+    output.AppendLine();
+    output.AppendLine("===== ENGINE COLOR API =====");
+    const BindingFlags cf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in colorType.GetConstructors(cf))
+        output.AppendLine("COLOR CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var f in colorType.GetFields(cf).OrderBy(f => f.Name))
+        output.AppendLine("COLOR FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic + " static=" + f.IsStatic);
+    foreach (var p in colorType.GetProperties(cf).OrderBy(p => p.Name))
+        output.AppendLine("COLOR PROP " + p.PropertyType.FullName + " " + p.Name);
+}
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
