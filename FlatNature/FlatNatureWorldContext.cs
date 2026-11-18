@@ -15,6 +15,8 @@ internal sealed class FlatNatureWorldContext
     internal int SandIndex { get; private set; }
     internal int WoodIndex { get; private set; }
     internal int LeavesIndex { get; private set; }
+    internal List<int> TreeWoodIndices { get; } = new();
+    internal List<int> TreeLeavesIndices { get; } = new();
     internal List<int> OreIndices { get; } = new();
 
     internal static FlatNatureWorldContext Create(SubsystemGameInfo gameInfo)
@@ -67,6 +69,18 @@ internal sealed class FlatNatureWorldContext
         if (context.LeavesIndex == 0)
             context.LeavesIndex = FindBlockByName(new[] { "OakLeaves", "Leaves" });
 
+        // Register actual tree species when the game exposes them as separate blocks.
+        AddTreeSpecies(context, "Oak");
+        AddTreeSpecies(context, "Pine");
+        AddTreeSpecies(context, "Birch");
+        AddTreeSpecies(context, "Acacia");
+        AddTreeSpecies(context, "Spruce");
+        if (context.TreeWoodIndices.Count == 0 && context.WoodIndex > 0)
+        {
+            context.TreeWoodIndices.Add(context.WoodIndex);
+            context.TreeLeavesIndices.Add(context.LeavesIndex);
+        }
+
         AddOre(context, "Coal");
         AddOre(context, "Copper");
         AddOre(context, "Iron");
@@ -83,6 +97,19 @@ internal sealed class FlatNatureWorldContext
             ", ores=" + context.OreIndices.Count);
 
         return context;
+    }
+
+    private static void AddTreeSpecies(FlatNatureWorldContext context, string species)
+    {
+        int wood = FindBlockContaining(species, "wood");
+        int leaves = FindBlockContaining(species, "leaves");
+        if (wood > 0 && leaves > 0 &&
+            !context.TreeWoodIndices.Contains(wood))
+        {
+            context.TreeWoodIndices.Add(wood);
+            context.TreeLeavesIndices.Add(leaves);
+            Console.WriteLine("[FlatNature] Tree species registered: " + species);
+        }
     }
 
     private static void AddOre(FlatNatureWorldContext context, string mineral)
