@@ -18,9 +18,9 @@ internal static class TreeCapitator
         new Point3(0, 0, 1), new Point3(0, 0, -1)
     };
 
-    internal static void TryChop(ComponentMiner miner, int dugCellValue)
+    internal static void TryChop(ComponentMiner miner, BlockPlacementData digValue, int dugCellValue)
     {
-        if (miner == null || miner.DigCellFace == null)
+        if (miner == null)
             return;
 
         try
@@ -34,7 +34,9 @@ internal static class TreeCapitator
             if (!IsWood(dugContents))
                 return;
 
-            Point3 origin = miner.DigCellFace.Value.Point;
+            // ComponentMiner.Dig clears DigCellFace before firing OnBlockDug.
+            // The hook's BlockPlacementData retains the exact cell coordinates.
+            Point3 origin = new Point3(digValue.CellFace.X, digValue.CellFace.Y, digValue.CellFace.Z);
             Project project = GameManager.Project;
             if (project == null)
                 return;
