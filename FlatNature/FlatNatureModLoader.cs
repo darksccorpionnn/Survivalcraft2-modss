@@ -22,6 +22,7 @@ public sealed class FlatNatureModLoader : ModLoader
             ModsManager.RegisterHook("OnLoadingFinished", this);
             ModsManager.RegisterHook("OnProjectDisposed", this);
             ModsManager.RegisterHook("OnTerrainContentsGenerated", this);
+            ModsManager.RegisterHook("OnBlockDug", this);
 
             Console.WriteLine("[FlatNature] Initialized. Only newly created Flat worlds with the marker are affected.");
         }
@@ -52,6 +53,18 @@ public sealed class FlatNatureModLoader : ModLoader
     {
         Interlocked.Exchange(ref s_context, null);
         Console.WriteLine("[FlatNature] World context cleared.");
+    }
+
+
+    public override void OnBlockDug(
+        ComponentMiner componentMiner,
+        BlockPlacementData digValue,
+        int cellValue,
+        ref int durabilityReduction,
+        ref bool mute,
+        ref int playerDataDugAdd)
+    {
+        TreeCapitator.TryChop(componentMiner, cellValue);
     }
 
     public override void OnTerrainContentsGenerated(TerrainChunk chunk)
