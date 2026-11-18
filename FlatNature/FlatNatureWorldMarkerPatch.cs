@@ -8,58 +8,55 @@ namespace Game;
 internal static class FlatNatureWorldMarkerPatch
 {
     internal const string MarkerFileName = "FlatNature.created";
-    private const string MarkerContents = "FlatNature world marker v1";
-    [ThreadStatic]
-    private static string s_pendingDirectoryName;
+    private const string MarkerContents = "FlatNature world marker v2";
 
     internal static void Install(Harmony harmony)
     {
-        MethodInfo getUnusedDirectory = AccessTools.Method(
-            typeof(WorldsManager), nameof(WorldsManager.GetUnusedWorldDirectoryName));
+        // CreateWorld returns WorldInfo. Use its DirectoryName directly instead
+        // of relying on a thread-static value captured from another method.
         MethodInfo createWorld = AccessTools.Method(
-            typeof(WorldsManager), nameof(WorldsManager.CreateWorld),
+            typeof(WorldsManager),
+            nameof(WorldsManager.CreateWorld),
             new[] { typeof(WorldSettings) });
 
-        MethodInfo capturePostfix = AccessTools.Method(
-            typeof(FlatNatureWorldMarkerPatch), nameof(CaptureDirectoryPostfix));
         MethodInfo markPostfix = AccessTools.Method(
-            typeof(FlatNatureWorldMarkerPatch), nameof(CreateWorldPostfix));
+            typeof(FlatNatureWorldMarkerPatch),
+            nameof(CreateWorldPostfix));
 
-        if (getUnusedDirectory == null || createWorld == null ||
-            capturePostfix == null || markPostfix == null)
-            throw new InvalidOperationException("Could not locate Survivalcraft world creation methods.");
+        if (createWorld == null || markPostfix == null)
+            throw new InvalidOperationException("Could not locate WorldsManager.CreateWorld(WorldSettings).");
 
-        harmony.Patch(getUnusedDirectory, postfix: new HarmonyMethod(capturePostfix));
         harmony.Patch(createWorld, postfix: new HarmonyMethod(markPostfix));
+        Console.WriteLine("[FlatNature] World creation marker patch installed: " + createWorld);
     }
 
-    private static void CaptureDirectoryPostfix(ref string __result)
+    private static void CreateWorldPostfix(WorldSettings __0, WorldInfo __result)
     {
-        s_pendingDirectoryName = __result;
-    }
-
-    private static void CreateWorldPostfix(WorldSettings worldSettings)
-    {
-        string directoryName = s_pendingDirectoryName;
-        s_pendingDirectoryName = null;
-
-        if (string.IsNullOrEmpty(directoryName) || worldSettings == null)
+        if (__0 == null || __result == null || string.IsNullOrEmpty(__result.DirectoryName))
+        {
+            Console.WriteLine("[FlatNature] CreateWorld returned no world info; marker not written.");
             return;
+        }
 
-        bool isFlat = worldSettings.TerrainGenerationMode == TerrainGenerationMode.FlatContinent ||
-                      worldSettings.TerrainGenerationMode == TerrainGenerationMode.FlatIsland;
+        bool isFlat = __0.TerrainGenerationMode == TerrainGenerationMode.FlatContinent ||
+                      __0.TerrainGenerationMode == TerrainGenerationMode.FlatIsland;
+        Console.WriteLine("[FlatNature] CreateWorld postfix: mode=" + __0.TerrainGenerationMode +
+            ", directory=" + __result.DirectoryName + ", flat=" + isFlat);
+
         if (!isFlat)
             return;
 
         try
         {
-            string markerPath = Storage.CombinePaths(new[] { directoryName, MarkerFileName });
+            string markerPath = Storage.CombinePaths(new[] { __result.DirectoryName, MarkerFileName });
             Storage.WriteAllText(markerPath, MarkerContents);
-            Console.WriteLine("[FlatNature] Marked newly created Flat world: " + directoryName);
+            bool exists = Storage.FileExists(markerPath);
+            Console.WriteLine("[FlatNature] Marker write " + (exists ? "verified" : "FAILED") +
+                ": " + markerPath);
         }
         catch (Exception ex)
         {
-            Console.WriteLine("[FlatNature] Could not mark the newly created Flat world: " + ex);
+            Console.WriteLine("[FlatNature] Could not mark newly created Flat world: " + ex);
         }
     }
 }
