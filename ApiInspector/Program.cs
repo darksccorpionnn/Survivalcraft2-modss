@@ -814,3 +814,36 @@ if (colorType != null)
 }
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+// Focused inspection for colored torch fire particle APIs.
+var particleTypeNames = new HashSet<string>(StringComparer.Ordinal)
+{
+    "FireParticleSystem",
+    "ParticleSystemBase",
+    "SubsystemParticles",
+    "SubsystemTorchBlockBehavior",
+    "TorchBlock"
+};
+foreach (Type type in allTypes.Where(t => particleTypeNames.Contains(t.Name)).OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== PARTICLE/TORCH API " + type.FullName + " | BASE=" + type.BaseType?.FullName + " | SEALED=" + type.IsSealed + " =====");
+    const BindingFlags particleFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(particleFlags))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(particleFlags).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(particleFlags).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var m in type.GetMethods(particleFlags).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
+            string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) +
+            ") public=" + m.IsPublic + " virtual=" + m.IsVirtual + " final=" + m.IsFinal);
+}
+DumpIl("Game.SubsystemTorchBlockBehavior", "OnBlockAdded");
+DumpIl("Game.SubsystemTorchBlockBehavior", "OnBlockGenerated");
+DumpIl("Game.SubsystemTorchBlockBehavior", "OnBlockModified");
+DumpIl("Game.SubsystemTorchBlockBehavior", "OnBlockRemoved");
+DumpIl("Game.SubsystemTorchBlockBehavior", "OnNeighborBlockChanged");
+DumpIl("Game.FireParticleSystem", ".ctor");
