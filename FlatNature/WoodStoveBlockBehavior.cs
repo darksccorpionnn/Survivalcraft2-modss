@@ -18,7 +18,6 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
     private const int LitDataFlag = WoodStoveBlock.LitDataFlag;
 
     private readonly HashSet<Point3> m_stoveCells = new();
-    private readonly HashSet<Point3> m_fuelStartRequested = new();
     private readonly Dictionary<Point3, SmokeTrailParticleSystem> m_smokeByCell = new();
 
     private SubsystemTerrain m_terrain;
@@ -79,7 +78,6 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
         Point3 cell = new Point3(x, y, z);
         RemoveEffects(cell);
         m_stoveCells.Remove(cell);
-        m_fuelStartRequested.Remove(cell);
         base.OnBlockRemoved(value, newValue, x, y, z);
     }
 
@@ -102,7 +100,6 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
         {
             RemoveEffects(cell);
             m_stoveCells.Remove(cell);
-            m_fuelStartRequested.Remove(cell);
         }
     }
 
@@ -112,6 +109,7 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
         if (m_updateAccumulator < UpdateInterval)
             return;
 
+        float elapsed = m_updateAccumulator;
         m_updateAccumulator = 0f;
         int stoveIndex = BlocksManager.GetBlockIndex<WoodStoveBlock>();
         if (stoveIndex <= 0 || m_terrain == null || m_blockEntities == null || m_particles == null)
@@ -141,24 +139,41 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
             if (furnace == null)
                 continue;
 
-            // Vanilla furnaces stop their fire when no smelting recipe exists.
-            // This stove must keep burning fuel to heat the room, with no recipe.
-            furnace.StopFuelWhenNoRecipeIsActive = false;
-
-            // Request fuel only once per burn cycle. Calling UseFuel every
-            // update while the furnace component is transitioning can drain
-            // the entire stack before its timer becomes visible.
-            bool activeBurn = furnace.FireTimeRemaining > 0f || furnace.HeatLevel > 0f;
-            if (activeBurn)
+            // The native ComponentFurnace.Update is bypassed for this block:
+            // it clears heat/time whenever no smelting recipe exists. Advance
+            // the burn timer ourselves and consume exactly one fuel item only
+            // when the previous item has completely burned.
+            if (furnace.m_fireTimeRemaining > 0f)
             {
-                m_fuelStartRequested.Remove(cell);
-            }
-            else if (m_fuelStartRequested.Add(cell))
-            {
-                furnace.UseFuel();
+                furnace.m_fireTimeRemaining = MathUtils.Max(
+                    0f, furnace.m_fireTimeRemaining - elapsed);
+                if (furnace.m_fireTimeRemaining <= 0f)
+                    furnace.m_heatLevel = 0f;
             }
 
-            bool burning = furnace.HeatLevel > 0f && furnace.FireTimeRemaining > 0f;
+            if (furnace.m_fireTimeRemaining <= 0f && furnace.m_heatLevel <= 0f)
+            {
+                int fuelSlot = furnace.FuelSlotIndex;
+                if (furnace.GetSlotCount(fuelSlot) > 0)
+                {
+                    int fuelValue = furnace.GetSlotValue(fuelSlot);
+                    int fuelContents = Terrain.ExtractContents(fuelValue);
+                    if (fuelContents > 0 && fuelContents < BlocksManager.Blocks.Length)
+                    {
+                        Block fuelBlock = BlocksManager.Blocks[fuelContents];
+                        if (fuelBlock.FuelHeatLevel > 0f &&
+                            fuelBlock.FuelFireDuration > 0f &&
+                            fuelBlock.GetExplosionPressure(fuelValue) <= 0f)
+                        {
+                            furnace.RemoveSlotItems(fuelSlot, 1);
+                            furnace.m_heatLevel = fuelBlock.FuelHeatLevel;
+                            furnace.m_fireTimeRemaining = fuelBlock.FuelFireDuration;
+                        }
+                    }
+                }
+            }
+
+            bool burning = furnace.m_heatLevel > 0f && furnace.m_fireTimeRemaining > 0f;
             UpdateLitBlock(cell, value, burning);
             UpdateFire(furnace, blockEntity, burning);
             UpdateSmoke(cell, blockEntity, burning);
