@@ -496,6 +496,35 @@ if (modsType != null)
         DumpIl(modsType.FullName, name);
 }
 
+
+output.AppendLine();
+output.AppendLine("===== FLAT NATURE STORAGE AND TERRAIN MUTATION API =====");
+foreach (Type type in allTypes.Where(t =>
+    t.FullName == "Engine.Storage" ||
+    t.FullName == "Game.Terrain" ||
+    t.FullName == "Game.TerrainChunk" ||
+    t.FullName == "Game.SubsystemTerrain" ||
+    t.FullName == "Game.ModLoader" ||
+    t.FullName == "Game.PlantsManager" ||
+    t.FullName == "Game.BlocksManager" ||
+    t.FullName == "Game.Block" ||
+    t.FullName == "Game.TerrainBrush" ||
+    t.FullName == "Game.TerrainBrushCell" ||
+    t.FullName == "Game.WorldsManager").OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== MUTATION TYPE " + type.FullName + " =====");
+    const BindingFlags mf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(mf))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(mf).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var field in type.GetFields(mf).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + field.FieldType.FullName + " " + field.Name + " public=" + field.IsPublic + " static=" + field.IsStatic);
+    foreach (var m in type.GetMethods(mf).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " static=" + m.IsStatic + " virtual=" + m.IsVirtual);
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
