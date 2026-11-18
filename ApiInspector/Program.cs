@@ -778,3 +778,22 @@ foreach (Type type in allTypes.Where(t =>
 }
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+// SmokeTrailParticleSystem constructor behavior and native call sites.
+Type smokeType = allTypes.FirstOrDefault(t => t.FullName == "Game.SmokeTrailParticleSystem");
+if (smokeType != null)
+{
+    output.AppendLine();
+    output.AppendLine("===== SMOKE TRAIL CONSTRUCTOR IL =====");
+    foreach (var ctor in smokeType.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+    {
+        output.AppendLine("CTOR " + ctor + " params=" + string.Join(", ", ctor.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)));
+        var bytes = ctor.GetMethodBody()?.GetILAsByteArray();
+        if (bytes != null) output.AppendLine("ILBYTES " + Convert.ToHexString(bytes));
+    }
+    foreach (var method in smokeType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        output.AppendLine("SMOKE METHOD " + method + " IL=" + (method.GetMethodBody()?.GetILAsByteArray() == null ? "" : Convert.ToHexString(method.GetMethodBody().GetILAsByteArray())));
+}
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
