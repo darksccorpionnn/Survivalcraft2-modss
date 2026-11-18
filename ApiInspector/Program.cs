@@ -849,3 +849,22 @@ DumpIl("Game.SubsystemTorchBlockBehavior", "OnNeighborBlockChanged");
 DumpIl("Game.FireParticleSystem", ".ctor");
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+foreach (Type type in allTypes.Where(t => t.FullName == "Game.FireParticleSystem" || t.FullName.StartsWith("Game.ParticleSystem", StringComparison.Ordinal)))
+{
+    output.AppendLine();
+    output.AppendLine("===== PARTICLE BASE DETAIL " + type.FullName + " | BASE=" + type.BaseType?.FullName + " =====");
+    const BindingFlags detailFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(detailFlags))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var f in type.GetFields(detailFlags).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var p in type.GetProperties(detailFlags).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var m in type.GetMethods(detailFlags).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
+}
+DumpIl("Game.FireParticleSystem", "Draw");
+DumpIl("Game.FireParticleSystem", "Simulate");
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
