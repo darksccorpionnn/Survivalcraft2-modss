@@ -48,3 +48,5 @@ jobs:
           retention-days: 7
 
 # Rebuild after adding TreeCapitator behavior.
+
+# Rebuild trigger: include connected leaf felling.
