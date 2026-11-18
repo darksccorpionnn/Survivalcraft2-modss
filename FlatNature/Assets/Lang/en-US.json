@@ -1,4 +1,6 @@
 {
   "DisplayName:WoodStove": "Wood Stove",
-  "Description:WoodStove": "A working wood-burning stove that heats its surroundings."
+  "Description:WoodStove": "A working wood-burning stove that heats its surroundings.",
+  "DisplayName:IronKettle": "Iron Kettle",
+  "Description:IronKettle": "A decorative iron kettle designed to sit on the wood stove."
 }
