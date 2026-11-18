@@ -9,7 +9,7 @@ internal static class FlatNatureGenerator
     private const int MountainGrid = 190;
     private const int LakeGrid = 230;
     private const int ForestGrid = 150;
-    private const int TreeGrid = 10;
+    private const int TreeGrid = 14;
 
     internal static void GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -308,11 +308,8 @@ internal static class FlatNatureGenerator
         TerrainChunk chunk, int[,] surface, bool[,] land,
         FlatNatureWorldContext context, ref bool changed)
     {
-        if (context.TallSpruceSaplingIndex <= 0)
-        {
-            Console.WriteLine("[FlatNature] Tall Spruce sapling block was not resolved; tree planting skipped.");
+        if (context.TerrainSubsystem == null || context.TallSpruceSaplingIndex != 119)
             return;
-        }
 
         int minTreeCellX = FloorDiv(chunk.Origin.X, TreeGrid) - 1;
         int maxTreeCellX = FloorDiv(chunk.Origin.X + ChunkSize - 1, TreeGrid) + 1;
@@ -324,7 +321,7 @@ internal static class FlatNatureGenerator
             for (int gz = minTreeCellZ; gz <= maxTreeCellZ; gz++)
             {
                 uint h = Hash(context.Seed, gx, gz, 901);
-                if (h % 100u >= 96u)
+                if (h % 100u >= 82u)
                     continue;
 
                 int worldX = gx * TreeGrid + 2 + (int)((h >> 8) % 7u);
@@ -351,8 +348,12 @@ internal static class FlatNatureGenerator
                 int aboveContents = Terrain.ExtractContents(chunk.GetCellValueFast(localX, saplingY, localZ));
                 if ((groundContents == context.GrassIndex || groundContents == context.DirtIndex) && aboveContents == 0)
                 {
-                    SetCell(chunk, localX, saplingY, localZ,
-                        Terrain.MakeBlockValue(context.TallSpruceSaplingIndex), ref changed);
+                    // Use native SaplingBlock 119, data 3 = Tall Spruce.
+                    // ChangeCell fires OnBlockAdded so vanilla sapling behavior registers it.
+                    context.TerrainSubsystem.ChangeCell(
+                        worldX, saplingY, worldZ,
+                        Terrain.MakeBlockValue(119, 0, 3), true);
+                    changed = true;
                 }
             }
         }
