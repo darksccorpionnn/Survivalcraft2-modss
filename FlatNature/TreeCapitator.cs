@@ -64,7 +64,7 @@ internal static class TreeCapitator
                     continue;
 
                 terrain.DestroyCell(0, p.X, p.Y, p.Z, 0,
-                    noDrop: false, noParticleSystem: false, movingBlock: null);
+                    noDrop: false, noParticleSystem: true, movingBlock: null);
             }
 
             // Leaves are removed as well, using the game's normal leaf drop behavior.
@@ -75,7 +75,7 @@ internal static class TreeCapitator
                     continue;
 
                 terrain.DestroyCell(0, p.X, p.Y, p.Z, 0,
-                    noDrop: false, noParticleSystem: false, movingBlock: null);
+                    noDrop: false, noParticleSystem: true, movingBlock: null);
             }
         }
         catch (Exception ex)
