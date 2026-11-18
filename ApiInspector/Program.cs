@@ -581,6 +581,32 @@ foreach (string typeName in new[] { "Game.ComponentMiner", "Game.AxeBlock", "Gam
         DumpIl(type.FullName, method.Name);
 }
 
+
+output.AppendLine();
+output.AppendLine("===== TREE CAPITATOR FOLLOW-UP =====");
+foreach (string typeName in new[] { "Game.TerrainRaycastResult", "Game.CellFace", "Game.BlockDropValue", "Game.SubsystemPickables", "Game.Pickable", "Game.IInventory", "Game.ComponentMiner" })
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) { output.AppendLine("TYPE MISSING " + typeName); continue; }
+    output.AppendLine("TYPE " + type.FullName);
+    const BindingFlags qf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(qf)) output.AppendLine("CTOR " + ctor);
+    foreach (var p in type.GetProperties(qf).OrderBy(p => p.Name)) output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name);
+    foreach (var f in type.GetFields(qf).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name);
+    foreach (var m in type.GetMethods(qf).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+}
+Type woodBase = allTypes.FirstOrDefault(t => t.FullName == "Game.WoodBlock");
+if (woodBase != null)
+{
+    output.AppendLine("WOOD BLOCK TYPES:");
+    foreach (var type in allTypes.Where(t => t != woodBase && woodBase.IsAssignableFrom(t)).OrderBy(t => t.FullName))
+        output.AppendLine("WOODTYPE " + type.FullName);
+}
+DumpIl("Game.SubsystemTerrain", "DestroyCell");
+DumpIl("Game.SubsystemTerrain", "ChangeCell");
+DumpIl("Game.ModsManager", "HookAction");
+DumpIl("Game.ModsManager", "RegisterHook");
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
