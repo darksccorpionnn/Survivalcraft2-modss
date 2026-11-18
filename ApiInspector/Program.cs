@@ -525,6 +525,30 @@ foreach (Type type in allTypes.Where(t =>
         output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " static=" + m.IsStatic + " virtual=" + m.IsVirtual);
 }
 
+
+output.AppendLine();
+output.AppendLine("===== FLAT NATURE FINAL HOOK ORDER =====");
+foreach (string typeName in new[]
+{
+    "Game.TerrainUpdater", "GameEntitySystem.Project", "Game.WorldsManager",
+    "Game.SubsystemGameInfo", "Game.TerrainContentsGeneratorFlat"
+})
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) { output.AppendLine("TYPE MISSING " + typeName); continue; }
+    output.AppendLine("TYPE " + type.FullName);
+    const BindingFlags hf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var m in type.GetMethods(hf).OrderBy(m => m.Name))
+        if (typeName == "Game.TerrainUpdater" ||
+            new[] { "FindSubsystem", "GetSubsystem", "Load", "GenerateChunkContents", "UpdateChunkSingleStep", "get_WorldDirectoryName", "CreateWorld", "GetUnusedWorldDirectoryName", "OnTerrainContentsGenerated" }.Any(s => m.Name.Contains(s, StringComparison.OrdinalIgnoreCase)))
+            output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
+}
+DumpIl("Game.TerrainUpdater", "UpdateChunkSingleStep");
+DumpIl("Game.TerrainUpdater", "SynchronousUpdateFunction");
+DumpIl("Game.TerrainUpdater", "ThreadUpdateFunction");
+DumpIl("Game.SubsystemGameInfo", "Load");
+DumpIl("Game.WorldsManager", "GetUnusedWorldDirectoryName");
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
