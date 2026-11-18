@@ -353,6 +353,88 @@ DumpIl("Game.MeleeAttackment", "ProcessAttackment");
 DumpIl("Game.Attackment", "ProcessAttackment");
 DumpIl("Game.Attackment", "ProcessAttackmentToCreature");
 
+// Flat Nature: inspect the real world/terrain generation API before implementing any patches.
+var worldTypeTokens = new[]
+{
+    "WorldGenerator", "TerrainGenerator", "TerrainContentsGenerator", "WorldSettings",
+    "SubsystemTerrain", "TerrainChunk", "TerrainContents", "Flat", "Biome",
+    "WorldInfo", "GameInfo", "WorldsManager", "WorldDirectory", "Chunk",
+    "Lake", "Ocean", "River", "Heightmap", "TerrainSerializer", "BlockGeometryGenerator"
+};
+var worldMemberTokens = new[]
+{
+    "Generate", "Initialize", "Create", "Load", "Terrain", "World", "Chunk",
+    "Flat", "Biome", "Height", "Contents", "Ocean", "Lake", "River",
+    "Mountain", "Surface", "Column", "Cell", "Block", "Generator", "Seed"
+};
+var worldCandidates = allTypes
+    .Where(t => worldTypeTokens.Any(token => t.Name.Contains(token, StringComparison.OrdinalIgnoreCase)))
+    .OrderBy(t => t.FullName)
+    .ToList();
+output.AppendLine();
+output.AppendLine("===== FLAT NATURE WORLD GENERATION API CANDIDATES =====");
+output.AppendLine("Candidate type count: " + worldCandidates.Count);
+foreach (Type type in worldCandidates)
+{
+    output.AppendLine();
+    output.AppendLine("===== WORLD TYPE " + type.FullName + " | " + type.Assembly.GetName().Name + " =====");
+    output.AppendLine("BASE " + (type.BaseType?.FullName ?? "<none>"));
+    output.AppendLine("INTERFACES " + string.Join(", ", type.GetInterfaces().Select(i => i.FullName)));
+    const BindingFlags worldFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(worldFlags))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var property in type.GetProperties(worldFlags).OrderBy(p => p.Name))
+    {
+        if (worldMemberTokens.Any(token => property.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+            worldTypeTokens.Any(token => property.PropertyType.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+            type.Name.Contains("Generator", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.Contains("WorldSettings", StringComparison.OrdinalIgnoreCase))
+            output.AppendLine("PROP " + property.PropertyType.FullName + " " + property.Name +
+                " get=" + (property.GetMethod?.IsPublic ?? false) + " set=" + (property.SetMethod?.IsPublic ?? false));
+    }
+    foreach (var field in type.GetFields(worldFlags).OrderBy(f => f.Name))
+    {
+        if (worldMemberTokens.Any(token => field.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+            worldTypeTokens.Any(token => field.FieldType.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+            type.Name.Contains("Generator", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.Contains("WorldSettings", StringComparison.OrdinalIgnoreCase))
+            output.AppendLine("FIELD " + field.FieldType.FullName + " " + field.Name + " public=" + field.IsPublic);
+    }
+    foreach (var method in type.GetMethods(worldFlags).OrderBy(m => m.Name))
+    {
+        bool coreType = type.Name.Contains("Generator", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.Contains("WorldSettings", StringComparison.OrdinalIgnoreCase) ||
+            type.Name.Contains("TerrainChunk", StringComparison.OrdinalIgnoreCase) ||
+            type.Name == "SubsystemTerrain" || type.Name == "Terrain";
+        bool relevant = worldMemberTokens.Any(token => method.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+            worldTypeTokens.Any(token => method.ReturnType.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+            method.GetParameters().Any(p => worldTypeTokens.Any(token =>
+                p.ParameterType.Name.Contains(token, StringComparison.OrdinalIgnoreCase)));
+        if (coreType || relevant)
+            output.AppendLine("METHOD " + method.ReturnType.FullName + " " + method.Name + "(" +
+                string.Join(", ", method.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) +
+                ") public=" + method.IsPublic + " static=" + method.IsStatic + " virtual=" + method.IsVirtual);
+    }
+}
+
+var worldSupportTypes = new[]
+{
+    "Game.WorldSettings", "Game.SubsystemGameInfo", "Game.SubsystemTerrain",
+    "Game.Terrain", "Game.TerrainChunk", "Game.TerrainContentsGenerator",
+    "Game.TerrainContentsGeneratorFlat", "Game.WorldsManager", "Game.WorldInfo",
+    "Game.TerrainSerializer", "Game.BlockGeometryGenerator"
+};
+foreach (string typeName in worldSupportTypes)
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null)
+    {
+        output.AppendLine("WORLD SUPPORT TYPE MISSING " + typeName);
+        continue;
+    }
+    output.AppendLine("WORLD SUPPORT TYPE FOUND " + type.FullName);
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
