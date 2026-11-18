@@ -665,3 +665,7 @@ DumpIl("Game.SubsystemFireBlockBehavior", "OnNeighborBlockChanged");
 DumpIl("Game.BlocksManager", "InitializeBlocks");
 DumpIl("Game.SubsystemBlocksManager", "CallAllocate");
 DumpIl("Game.SubsystemBlocksManager", "Initialize");
+
+// Rewrite the artifact after the appended focused stove diagnostics above.
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+Console.WriteLine("STOVE API DIAGNOSTICS APPENDED.");
