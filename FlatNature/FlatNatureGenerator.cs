@@ -309,7 +309,10 @@ internal static class FlatNatureGenerator
         FlatNatureWorldContext context, ref bool changed)
     {
         if (context.TallSpruceSaplingIndex <= 0)
+        {
+            Console.WriteLine("[FlatNature] Tall Spruce sapling block was not resolved; tree planting skipped.");
             return;
+        }
 
         int minTreeCellX = FloorDiv(chunk.Origin.X, TreeGrid) - 1;
         int maxTreeCellX = FloorDiv(chunk.Origin.X + ChunkSize - 1, TreeGrid) + 1;
@@ -343,7 +346,13 @@ internal static class FlatNatureGenerator
                     continue;
 
                 int treeHeight = 14 + (int)((h >> 20) % 7u);
-                SetCell(chunk, localX, groundY + 1, localZ, Terrain.MakeBlockValue(context.TallSpruceSaplingIndex), ref changed);
+                int saplingY = groundY + 1;
+                int groundContents = Terrain.ExtractContents(chunk.GetCellValueFast(localX, groundY, localZ));
+                if (groundContents == context.GrassIndex || groundContents == context.DirtIndex)
+                {
+                    SetCell(chunk, localX, saplingY, localZ,
+                        Terrain.MakeBlockValue(context.TallSpruceSaplingIndex), ref changed);
+                }
             }
         }
     }
