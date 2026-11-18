@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
-  "Name": "Flat Nature",
-  "Version": "0.1.0",
+  "Name": "Flat Nature + Wood Stove",
+  "Version": "0.2.0",
   "ApiVersion": "1.9.5.1",
-  "Description": "Adds sparse green hills, snowy peaks, large lakes, clustered forests and solid-rock ore veins to newly created Flat worlds. Does not generate caves.",
+  "Description": "Adds sparse green hills, snowy peaks, lakes, clustered forests, solid-rock ore veins and a working wood-burning stove to newly created Flat worlds. Does not generate caves.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 11000,
   "NonPersistentMod": false,
