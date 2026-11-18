@@ -5,7 +5,6 @@ namespace Game;
 
 internal sealed class FlatNatureWorldContext
 {
-    internal SubsystemTerrain TerrainSubsystem { get; private set; }
     internal int Seed { get; private set; }
     internal int TerrainLevel { get; private set; }
     internal int WaterIndex { get; private set; }
@@ -25,11 +24,10 @@ internal sealed class FlatNatureWorldContext
     internal List<int> TreeLeavesIndices { get; } = new();
     internal List<int> OreIndices { get; } = new();
 
-    internal static FlatNatureWorldContext Create(SubsystemGameInfo gameInfo, SubsystemTerrain terrainSubsystem)
+    internal static FlatNatureWorldContext Create(SubsystemGameInfo gameInfo)
     {
         var context = new FlatNatureWorldContext
         {
-            TerrainSubsystem = terrainSubsystem,
             Seed = gameInfo.WorldSeed,
             TerrainLevel = gameInfo.WorldSettings.TerrainLevel,
             WaterIndex = gameInfo.WorldSettings.TerrainOceanBlockIndex
