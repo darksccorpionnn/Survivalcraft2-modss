@@ -84,7 +84,7 @@ public sealed class WoodStoveBlock : FurnaceBlock
             rotationMeshes[rotation] = blockMesh;
         }
 
-        m_blockMeshesByData = new BlockMesh[8];
+        m_blockMeshesByData = new BlockMesh[16];
         for (int data = 0; data < m_blockMeshesByData.Length; data++)
             m_blockMeshesByData[data] = rotationMeshes[data & 3];
 
