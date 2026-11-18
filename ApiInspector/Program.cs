@@ -741,3 +741,21 @@ DumpIl("Game.SubsystemFireBlockBehavior", "IsCellOnFire");
 DumpIl("Game.SubsystemFireBlockBehavior", "SetCellOnFire");
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+// Final fuel/heat details and value mutation API.
+DumpIl("Game.ComponentFurnace", "UseFuel");
+DumpIl("Game.ComponentFurnace", "Load");
+DumpIl("Game.ComponentFurnace", "Save");
+DumpIl("Game.Block", "GetHeat");
+DumpIl("Game.SubsystemMetersBlockBehavior", "GetHeat");
+DumpIl("Game.SubsystemMetersBlockBehavior", "CalculateTemperature");
+DumpIl("Game.ComponentBlockEntity", "set_BlockValue");
+DumpIl("Game.Terrain", "ReplaceData");
+DumpIl("Game.Terrain", "ExtractData");
+DumpIl("Game.BlockMesh", "GenerateSidesData");
+DumpIl("Game.BlockMesh", "AppendModelMeshPart");
+DumpIl("Game.BlockMesh", "GetVertexData");
+DumpIl("Game.BlockGeometryGenerator", "GenerateMeshVertices");
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
