@@ -55,11 +55,11 @@ internal static class FlatNatureWorldMarkerPatch
         {
             string markerPath = Storage.CombinePaths(new[] { directoryName, MarkerFileName });
             Storage.WriteAllText(markerPath, MarkerContents);
-            Log.Information("[FlatNature] Marked newly created Flat world: " + directoryName);
+            Console.WriteLine("[FlatNature] Marked newly created Flat world: " + directoryName);
         }
         catch (Exception ex)
         {
-            Log.Error("[FlatNature] Could not mark the newly created Flat world: " + ex);
+            Console.WriteLine("[FlatNature] Could not mark the newly created Flat world: " + ex);
         }
     }
 }
