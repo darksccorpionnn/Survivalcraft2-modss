@@ -26,7 +26,12 @@ internal sealed class FlatNatureWorldContext
             WaterIndex = gameInfo.WorldSettings.TerrainOceanBlockIndex
         };
 
-        context.RockIndex = FindBlockByName(new[] { "Stone", "Rock" });
+        // Flat Nature uses granite as the continuous underground base rock.
+        context.RockIndex = FindBlockByName(new[] { "Granite" });
+        if (context.RockIndex == 0)
+            context.RockIndex = FindBlockContaining("granite", "");
+        if (context.RockIndex == 0)
+            context.RockIndex = FindBlockByName(new[] { "Stone", "Rock" });
         if (context.RockIndex == 0)
             context.RockIndex = FindBlockByType("StoneBlock");
         if (context.RockIndex == 0)
@@ -50,6 +55,8 @@ internal sealed class FlatNatureWorldContext
 
         context.SandIndex = FindBlockByName(new[] { "Sand", "SandBlock" });
         if (context.SandIndex == 0)
+            context.SandIndex = FindBlockByType("SandBlock");
+        if (context.SandIndex == 0)
             context.SandIndex = context.DirtIndex;
 
         context.WoodIndex = FindBlockByType("WoodBlock");
@@ -64,6 +71,10 @@ internal sealed class FlatNatureWorldContext
         AddOre(context, "Copper");
         AddOre(context, "Iron");
         AddOre(context, "Gold");
+        AddOre(context, "Diamond");
+        AddOre(context, "Sulphur");
+        AddOre(context, "Saltpeter");
+        LogOreCandidates();
 
         Console.WriteLine("[FlatNature] Block lookup: rock=" + context.RockIndex +
             ", dirt=" + context.DirtIndex + ", grass=" + context.GrassIndex +
@@ -103,6 +114,22 @@ internal sealed class FlatNatureWorldContext
         return 0;
     }
 
+    private static void LogOreCandidates()
+    {
+        foreach (KeyValuePair<string, int> item in BlocksManager.BlockNameToIndex)
+        {
+            if (item.Key.IndexOf("ore", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.Key.IndexOf("granite", StringComparison.OrdinalIgnoreCase) >= 0)
+                Console.WriteLine("[FlatNature] Registry candidate: " + item.Key + " = " + item.Value);
+        }
+        foreach (KeyValuePair<Type, int> item in BlocksManager.BlockTypeToIndex)
+        {
+            if (item.Key.Name.IndexOf("ore", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.Key.Name.IndexOf("granite", StringComparison.OrdinalIgnoreCase) >= 0)
+                Console.WriteLine("[FlatNature] Type candidate: " + item.Key.FullName + " = " + item.Value);
+        }
+    }
+
     private static int FindBlockByName(IEnumerable<string> names)
     {
         foreach (string name in names)
@@ -118,7 +145,8 @@ internal sealed class FlatNatureWorldContext
         foreach (KeyValuePair<string, int> item in BlocksManager.BlockNameToIndex)
         {
             if (item.Key.IndexOf(firstToken, StringComparison.OrdinalIgnoreCase) >= 0 &&
-                item.Key.IndexOf(secondToken, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                (string.IsNullOrEmpty(secondToken) ||
+                 item.Key.IndexOf(secondToken, StringComparison.OrdinalIgnoreCase) >= 0) &&
                 item.Value > 0)
                 return item.Value;
         }
