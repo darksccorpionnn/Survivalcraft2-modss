@@ -2,7 +2,7 @@ name: Build Flat Nature SCMod
 
 on:
   push:
-    branches: [ flat-nature-api-scan ]
+    branches: [ flat-nature-api-scan, wood-stove-integration ]
     paths:
       - "FlatNature/**"
       - "README-FlatNature.md"
@@ -29,6 +29,7 @@ jobs:
           mkdir -p package
           cp FlatNature/bin/Release/net10.0/FlatNature.dll package/
           cp FlatNature/modinfo.json package/
+          if [ -d FlatNature/Assets ]; then cp -R FlatNature/Assets package/; fi
           (cd package && zip -9 -r ../FlatNature.scmod .)
           unzip -l FlatNature.scmod
       - name: Upload installable package
@@ -46,7 +47,3 @@ jobs:
           path: FlatNature/bin/Release/net10.0/
           if-no-files-found: ignore
           retention-days: 7
-
-# Rebuild after adding TreeCapitator behavior.
-
-# Rebuild trigger: include connected leaf felling.
