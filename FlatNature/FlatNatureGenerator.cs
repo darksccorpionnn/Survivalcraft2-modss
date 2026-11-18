@@ -348,7 +348,8 @@ internal static class FlatNatureGenerator
                 int treeHeight = 14 + (int)((h >> 20) % 7u);
                 int saplingY = groundY + 1;
                 int groundContents = Terrain.ExtractContents(chunk.GetCellValueFast(localX, groundY, localZ));
-                if (groundContents == context.GrassIndex || groundContents == context.DirtIndex)
+                int aboveContents = Terrain.ExtractContents(chunk.GetCellValueFast(localX, saplingY, localZ));
+                if ((groundContents == context.GrassIndex || groundContents == context.DirtIndex) && aboveContents == 0)
                 {
                     SetCell(chunk, localX, saplingY, localZ,
                         Terrain.MakeBlockValue(context.TallSpruceSaplingIndex), ref changed);
