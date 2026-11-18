@@ -369,3 +369,53 @@ foreach (string typeName in new[] { "Game.ComponentPathfinding", "Game.Component
     foreach (var f in type.GetFields(pf).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name);
     foreach (var m in type.GetMethods(pf).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
 }
+
+
+// Flat Nature: focused world-generation API discovery.
+var worldTypeHints = new[]
+{
+    "WorldGenerator", "WorldSettings", "TerrainContentsGenerator", "TerrainContentsGeneratorFlat",
+    "SubsystemTerrain", "SubsystemGameInfo", "Subsystems", "WorldInfo", "GameInfo",
+    "TerrainChunk", "TerrainSerializer", "WorldDirectory", "WorldsManager",
+    "BlockGeometryGenerator", "Terrain"
+};
+var worldTypes = allTypes.Where(t =>
+    worldTypeHints.Any(h => t.Name.Contains(h, StringComparison.OrdinalIgnoreCase)) ||
+    ((t.Name.Contains("Generator", StringComparison.OrdinalIgnoreCase) ||
+      t.Name.Contains("World", StringComparison.OrdinalIgnoreCase) ||
+      t.Name.Contains("Terrain", StringComparison.OrdinalIgnoreCase) ||
+      t.Name.Contains("Chunk", StringComparison.OrdinalIgnoreCase)) &&
+     t.Namespace != null && t.Namespace.StartsWith("Game", StringComparison.Ordinal)))
+    .Distinct().OrderBy(t => t.FullName).ToList();
+
+output.AppendLine();
+output.AppendLine("===== FLAT NATURE WORLD GENERATION API SCAN =====");
+output.AppendLine("Candidate type count: " + worldTypes.Count);
+const BindingFlags worldFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+foreach (Type type in worldTypes)
+{
+    output.AppendLine();
+    output.AppendLine("===== WORLD TYPE " + type.FullName + " | " + type.Assembly.GetName().Name + " =====");
+    foreach (var ctor in type.GetConstructors(worldFlags))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(worldFlags).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name +
+            " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var field in type.GetFields(worldFlags).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + field.FieldType.FullName + " " + field.Name + " public=" + field.IsPublic);
+    foreach (var m in type.GetMethods(worldFlags).OrderBy(m => m.Name))
+    {
+        string signature = "METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
+            string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")" +
+            " public=" + m.IsPublic + " virtual=" + m.IsVirtual;
+        output.AppendLine(signature);
+    }
+}
+output.AppendLine();
+output.AppendLine("===== ALL WORLD/GENERATION NAMED TYPES =====");
+foreach (Type type in allTypes.Where(t =>
+    new[] { "Generate", "Terrain", "World", "Chunk", "Flat", "Biome", "Lake", "Ocean", "Height", "Contents" }
+    .Any(h => t.Name.Contains(h, StringComparison.OrdinalIgnoreCase)))
+    .OrderBy(t => t.FullName))
+    output.AppendLine("TYPE " + type.FullName);
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
