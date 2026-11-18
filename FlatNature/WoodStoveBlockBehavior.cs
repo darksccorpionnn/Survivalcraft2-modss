@@ -18,6 +18,7 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
     private const int LitDataFlag = WoodStoveBlock.LitDataFlag;
 
     private readonly HashSet<Point3> m_stoveCells = new();
+    private readonly HashSet<Point3> m_fuelStartRequested = new();
     private readonly Dictionary<Point3, SmokeTrailParticleSystem> m_smokeByCell = new();
 
     private SubsystemTerrain m_terrain;
@@ -78,6 +79,7 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
         Point3 cell = new Point3(x, y, z);
         RemoveEffects(cell);
         m_stoveCells.Remove(cell);
+        m_fuelStartRequested.Remove(cell);
         base.OnBlockRemoved(value, newValue, x, y, z);
     }
 
@@ -100,6 +102,7 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
         {
             RemoveEffects(cell);
             m_stoveCells.Remove(cell);
+            m_fuelStartRequested.Remove(cell);
         }
     }
 
@@ -142,9 +145,18 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
             // This stove must keep burning fuel to heat the room, with no recipe.
             furnace.StopFuelWhenNoRecipeIsActive = false;
 
-            // Consume exactly one fuel item when the previous item has finished.
-            if (furnace.FireTimeRemaining <= 0f && furnace.HeatLevel <= 0f)
+            // Request fuel only once per burn cycle. Calling UseFuel every
+            // update while the furnace component is transitioning can drain
+            // the entire stack before its timer becomes visible.
+            bool activeBurn = furnace.FireTimeRemaining > 0f || furnace.HeatLevel > 0f;
+            if (activeBurn)
+            {
+                m_fuelStartRequested.Remove(cell);
+            }
+            else if (m_fuelStartRequested.Add(cell))
+            {
                 furnace.UseFuel();
+            }
 
             bool burning = furnace.HeatLevel > 0f && furnace.FireTimeRemaining > 0f;
             UpdateLitBlock(cell, value, burning);
