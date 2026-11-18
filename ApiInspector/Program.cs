@@ -458,6 +458,44 @@ if (generationModeType != null)
         output.AppendLine("VALUE " + name + "=" + Convert.ToInt32(Enum.Parse(generationModeType, name)));
 }
 
+
+output.AppendLine();
+output.AppendLine("===== FLAT NATURE WORLD IDENTITY API =====");
+foreach (Type type in allTypes.Where(t =>
+    new[] { "PlayScreen", "GameManager", "GameDatabase", "Project", "GameInfo", "WorldInfo", "WorldSettings", "ModLoader", "ModsManager" }
+        .Contains(t.Name) ||
+    t.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Any(f =>
+        f.Name.Contains("WorldDirectory", StringComparison.OrdinalIgnoreCase) ||
+        f.Name.Contains("DirectoryName", StringComparison.OrdinalIgnoreCase)))
+    .OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== IDENTITY TYPE " + type.FullName + " =====");
+    const BindingFlags idFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(idFlags)) output.AppendLine("CTOR " + ctor);
+    foreach (var p in type.GetProperties(idFlags).OrderBy(p => p.Name))
+        if (new[] { "World", "Directory", "Project", "Name", "Info", "Game" }.Any(s => p.Name.Contains(s, StringComparison.OrdinalIgnoreCase)))
+            output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var field in type.GetFields(idFlags).OrderBy(f => f.Name))
+        if (new[] { "World", "Directory", "Project", "Name", "Info", "Game" }.Any(s => field.Name.Contains(s, StringComparison.OrdinalIgnoreCase)))
+            output.AppendLine("FIELD " + field.FieldType.FullName + " " + field.Name + " public=" + field.IsPublic);
+    foreach (var m in type.GetMethods(idFlags).OrderBy(m => m.Name))
+        if (new[] { "World", "Directory", "Project", "Name", "Info", "Load", "Start", "Play", "Create" }.Any(s => m.Name.Contains(s, StringComparison.OrdinalIgnoreCase)))
+            output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " static=" + m.IsStatic);
+}
+Type gameInfoType = allTypes.FirstOrDefault(t => t.FullName == "Game.SubsystemGameInfo");
+if (gameInfoType != null) DumpIl(gameInfoType.FullName, "Load");
+Type modsType = allTypes.FirstOrDefault(t => t.Name == "ModsManager");
+if (modsType != null)
+{
+    output.AppendLine("===== MODS MANAGER HOOK METHODS =====");
+    const BindingFlags hookFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var m in modsType.GetMethods(hookFlags).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+    foreach (string name in new[] { "HookAction", "CallHook", "OnTerrainContentsGenerated", "OnLoadingFinished" })
+        DumpIl(modsType.FullName, name);
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
