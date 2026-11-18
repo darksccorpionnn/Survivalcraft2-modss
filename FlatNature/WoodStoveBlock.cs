@@ -39,6 +39,14 @@ public sealed class WoodStoveBlock : FurnaceBlock
         return placement;
     }
 
+    // This is a hollow, legged appliance rather than a full opaque cube.
+    // Let neighboring terrain faces (especially the floor below the stove)
+    // remain visible through the open space under and between its feet.
+    public override bool IsFaceTransparent(SubsystemTerrain subsystemTerrain, int face, int value)
+    {
+        return true;
+    }
+
     public override void Initialize()
     {
         // Initialize native furnace behavior first. Its implementation assigns
