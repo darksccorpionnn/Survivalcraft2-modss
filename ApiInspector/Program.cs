@@ -623,3 +623,45 @@ foreach (string typeName in new[] { "Game.ComponentPathfinding", "Game.Component
     foreach (var f in type.GetFields(pf).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name);
     foreach (var m in type.GetMethods(pf).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
 }
+
+
+// Stove model, block registration, fire, heat and rendering API inspection.
+var stoveTypeNames = new HashSet<string>(StringComparer.Ordinal)
+{
+    "Game.BlockMesh", "Game.BlockMeshVertex", "Game.Block", "Game.FurnaceBlock",
+    "Game.FireBlock", "Game.SubsystemFurnaceBlockBehavior", "Game.SubsystemFireBlockBehavior",
+    "Game.SubsystemBlockBehaviors", "Game.SubsystemBlockEntities", "Game.SubsystemBlocksManager",
+    "Game.BlockAllocateData", "Game.ModEntity", "Game.BlockGeometryGenerator",
+    "Game.TerrainGeometry", "Game.TerrainGeometrySubset", "Game.ComponentVitalStats",
+    "Game.ComponentPlayer", "Game.ComponentHealth", "Game.SubsystemTime",
+    "Engine.Graphics.Texture2D", "Engine.Graphics.PrimitivesRenderer3D",
+    "Engine.Graphics.TexturedBatch3D", "Engine.Graphics.VertexBuffer",
+    "Engine.Graphics.Model", "Engine.Graphics.ModelMesh", "Engine.Graphics.ModelMeshPart"
+};
+foreach (Type type in allTypes.Where(t => stoveTypeNames.Contains(t.FullName)).OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== STOVE DEEP TYPE " + type.FullName + " =====");
+    output.AppendLine("BASE " + (type.BaseType?.FullName ?? "<none>"));
+    output.AppendLine("INTERFACES " + string.Join(", ", type.GetInterfaces().Select(i => i.FullName)));
+    const BindingFlags sf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(sf))
+        output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(sf).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(sf).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic + " static=" + f.IsStatic);
+    foreach (var m in type.GetMethods(sf).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
+            string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) +
+            ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
+}
+DumpIl("Game.FurnaceBlock", "DrawBlock");
+DumpIl("Game.FireBlock", "DrawBlock");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "OnBlockAdded");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "OnBlockGenerated");
+DumpIl("Game.SubsystemFireBlockBehavior", "OnBlockAdded");
+DumpIl("Game.SubsystemFireBlockBehavior", "OnNeighborBlockChanged");
+DumpIl("Game.BlocksManager", "InitializeBlocks");
+DumpIl("Game.SubsystemBlocksManager", "CallAllocate");
+DumpIl("Game.SubsystemBlocksManager", "Initialize");
