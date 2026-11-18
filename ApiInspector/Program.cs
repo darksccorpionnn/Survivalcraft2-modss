@@ -549,6 +549,38 @@ DumpIl("Game.TerrainUpdater", "ThreadUpdateFunction");
 DumpIl("Game.SubsystemGameInfo", "Load");
 DumpIl("Game.WorldsManager", "GetUnusedWorldDirectoryName");
 
+
+output.AppendLine();
+output.AppendLine("===== TREE CAPITATOR API INSPECTION =====");
+foreach (string typeName in new[]
+{
+    "Game.ComponentMiner", "Game.SubsystemTerrain", "Game.Block", "Game.BlocksManager",
+    "Game.AxeBlock", "Game.WoodBlock", "Game.LogBlock", "Game.Terrain",
+    "Game.SubsystemParticles", "Game.SubsystemAudio", "Game.SubsystemTime"
+})
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) { output.AppendLine("TYPE MISSING " + typeName); continue; }
+    output.AppendLine();
+    output.AppendLine("===== TREE TYPE " + type.FullName + " =====");
+    const BindingFlags tf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(tf)) output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(tf).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " getPublic=" + (p.GetMethod?.IsPublic ?? false) + " setPublic=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(tf).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic + " static=" + f.IsStatic);
+    foreach (var m in type.GetMethods(tf).OrderBy(m => m.Name))
+        output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " static=" + m.IsStatic + " virtual=" + m.IsVirtual);
+}
+foreach (string typeName in new[] { "Game.ComponentMiner", "Game.AxeBlock", "Game.Block", "Game.SubsystemTerrain" })
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) continue;
+    foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+        .Where(m => new[] { "Hit", "Dig", "Destroy", "Remove", "Drop", "GetDrop", "GetTool", "GetDig", "Use", "Calculate" }.Any(n => m.Name.Contains(n, StringComparison.OrdinalIgnoreCase))))
+        DumpIl(type.FullName, method.Name);
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
