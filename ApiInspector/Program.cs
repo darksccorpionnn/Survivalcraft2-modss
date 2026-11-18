@@ -705,3 +705,39 @@ DumpIl("Game.ComponentBlockEntity", "Save");
 DumpIl("Game.SubsystemBlockBehaviors", "Load");
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+// Furnace component, ambient player temperature, and nearby fire calculations.
+foreach (string typeName in new[]
+{
+    "Game.ComponentFurnace", "Game.ComponentVitalStats",
+    "Game.SubsystemMetersBlockBehavior", "Game.SubsystemFireBlockBehavior",
+    "Game.SubsystemParticles", "Game.SubsystemAmbientSounds",
+    "Game.SubsystemBlockBehaviors", "Game.ComponentBlockEntity"
+})
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName);
+    if (type == null) { output.AppendLine("STOVE TEMP TYPE MISSING " + typeName); continue; }
+    output.AppendLine();
+    output.AppendLine("===== STOVE TEMP TYPE " + type.FullName + " =====");
+    output.AppendLine("BASE " + (type.BaseType?.FullName ?? "<none>"));
+    const BindingFlags tf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(tf)) output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(tf).OrderBy(p => p.Name)) output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(tf).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var m in type.GetMethods(tf).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
+}
+DumpIl("Game.ComponentFurnace", "Update");
+DumpIl("Game.ComponentFurnace", "OnEntityAdded");
+DumpIl("Game.ComponentFurnace", "OnEntityRemoved");
+DumpIl("Game.ComponentFurnace", "OnBlockAdded");
+DumpIl("Game.ComponentFurnace", "OnBlockRemoved");
+DumpIl("Game.ComponentFurnace", "SimulateThermometer");
+DumpIl("Game.ComponentVitalStats", "UpdateTemperature");
+DumpIl("Game.ComponentVitalStats", "get_EnvironmentTemperature");
+DumpIl("Game.SubsystemMetersBlockBehavior", "GetTemperature");
+DumpIl("Game.SubsystemMetersBlockBehavior", "Update");
+DumpIl("Game.SubsystemFireBlockBehavior", "IsCellOnFire");
+DumpIl("Game.SubsystemFireBlockBehavior", "SetCellOnFire");
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
