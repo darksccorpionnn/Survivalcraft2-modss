@@ -105,7 +105,7 @@ public sealed class FlatNatureModLoader : ModLoader
                 return;
             }
 
-            FlatNatureWorldContext context = FlatNatureWorldContext.Create(gameInfo);
+            FlatNatureWorldContext context = FlatNatureWorldContext.Create(gameInfo, subsystemTerrain);
             Interlocked.Exchange(ref s_context, context);
             Console.WriteLine("[FlatNature] Active in newly created Flat world '" + gameInfo.DirectoryName + "'.");
         }
