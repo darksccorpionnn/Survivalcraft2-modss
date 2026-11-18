@@ -18,8 +18,6 @@ internal sealed class FlatNatureWorldContext
     internal int PineLeavesIndex { get; private set; }
     internal int TallSpruceWoodIndex { get; private set; }
     internal int TallSpruceLeavesIndex { get; private set; }
-    internal int TallSpruceWoodIndex { get; private set; }
-    internal int TallSpruceLeavesIndex { get; private set; }
     internal int LeavesIndex { get; private set; }
     internal List<int> TreeWoodIndices { get; } = new();
     internal List<int> TreeLeavesIndices { get; } = new();
