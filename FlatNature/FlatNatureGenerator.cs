@@ -9,7 +9,7 @@ internal static class FlatNatureGenerator
     private const int MountainGrid = 190;
     private const int LakeGrid = 230;
     private const int ForestGrid = 125;
-    private const int TreeGrid = 9;
+    private const int TreeGrid = 6;
 
     internal static void GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -162,7 +162,7 @@ internal static class FlatNatureGenerator
         FlatNatureWorldContext context, ref bool changed)
     {
         int waterY = Math.Max(2, surfaceY - 1);
-        int floorY = Math.Max(1, waterY - 3);
+        int floorY = Math.Max(1, waterY - 10);
         SetCell(chunk, x, floorY, z, Terrain.MakeBlockValue(context.SandIndex), ref changed);
         for (int y = floorY + 1; y <= waterY; y++)
             SetCell(chunk, x, y, z, Terrain.MakeBlockValue(context.WaterIndex), ref changed);
@@ -174,10 +174,9 @@ internal static class FlatNatureGenerator
         TerrainChunk chunk, int x, int z, int surfaceY, float factor,
         FlatNatureWorldContext context, ref bool changed)
     {
-        int waterY = Math.Max(2, surfaceY - 2);
-        int depth = 4 + (int)MathF.Round(15f * MathF.Sqrt(factor));
-        int floorY = Math.Max(1, waterY - depth);
-        int floorBlock = factor < 0.18f ? context.SandIndex : context.DirtIndex;
+        int waterY = Math.Max(11, surfaceY - 2);
+        int floorY = Math.Max(1, waterY - 10);
+        int floorBlock = context.SandIndex;
 
         // Keep the lake bottom solid, then fill every water cell up to the lake surface.
         SetCell(chunk, x, floorY, z, Terrain.MakeBlockValue(floorBlock), ref changed);
@@ -208,7 +207,8 @@ internal static class FlatNatureGenerator
         }
         else
         {
-            for (int y = Math.Max(baseSurface + 1, targetSurface - 2); y < targetSurface; y++)
+            // Keep the visible mountain crown soil/grass, not exposed stone.
+            for (int y = Math.Max(baseSurface + 1, targetSurface - 5); y < targetSurface; y++)
                 SetCell(chunk, x, y, z, dirtValue, ref changed);
             SetCell(chunk, x, targetSurface, z, grassValue, ref changed);
         }
@@ -279,18 +279,19 @@ internal static class FlatNatureGenerator
             for (int gz = minTreeCellZ; gz <= maxTreeCellZ; gz++)
             {
                 uint h = Hash(context.Seed, gx, gz, 901);
-                if (h % 100u >= 62u)
+                if (h % 100u >= 78u)
                     continue;
 
                 int worldX = gx * TreeGrid + 2 + (int)((h >> 8) % 5u);
                 int worldZ = gz * TreeGrid + 2 + (int)((h >> 16) % 5u);
                 int localX = worldX - chunk.Origin.X;
                 int localZ = worldZ - chunk.Origin.Y;
-                if (localX < 3 || localX > 12 || localZ < 3 || localZ > 12)
+                if (localX < 1 || localX > 14 || localZ < 1 || localZ > 14)
                     continue;
 
-                if (GetForestFactor(context.Seed, worldX, worldZ) <= 0.12f ||
-                    GetMountain(context.Seed, worldX, worldZ).Height > 5 ||
+                MountainInfo treeMountain = GetMountain(context.Seed, worldX, worldZ);
+                if (GetForestFactor(context.Seed, worldX, worldZ) <= 0.08f ||
+                    (treeMountain.Snowy && treeMountain.Height > 25) ||
                     GetLakeFactor(context.Seed, worldX, worldZ) > 0f ||
                     !land[localX, localZ])
                     continue;
@@ -299,14 +300,15 @@ internal static class FlatNatureGenerator
                 if (groundY < 2 || groundY > ChunkHeight - 10)
                     continue;
 
-                int treeHeight = 5 + (int)((h >> 20) % 3u);
-                BuildTree(chunk, localX, groundY, localZ, treeHeight, context, ref changed);
+                int treeHeight = 5 + (int)((h >> 20) % 5u);
+                int forestStyle = (int)((h >> 27) % 3u);
+                BuildTree(chunk, localX, groundY, localZ, treeHeight, forestStyle, context, ref changed);
             }
         }
     }
 
     private static void BuildTree(
-        TerrainChunk chunk, int x, int groundY, int z, int height,
+        TerrainChunk chunk, int x, int groundY, int z, int height, int forestStyle,
         FlatNatureWorldContext context, ref bool changed)
     {
         int woodValue = Terrain.MakeBlockValue(context.WoodIndex);
@@ -315,10 +317,14 @@ internal static class FlatNatureGenerator
         for (int y = groundY + 1; y <= groundY + height; y++)
             SetCell(chunk, x, y, z, woodValue, ref changed);
 
-        for (int layer = -1; layer <= 2; layer++)
+        for (int layer = -2; layer <= 3; layer++)
         {
             int centerY = groundY + height + layer;
-            int radius = layer >= 1 ? 1 : 2;
+            int radius = forestStyle == 0
+                ? (layer >= 2 ? 1 : 2)
+                : forestStyle == 1
+                    ? (layer <= 0 ? 3 : layer == 1 ? 2 : 1)
+                    : (layer == 0 ? 2 : 1);
             for (int dx = -radius; dx <= radius; dx++)
             for (int dz = -radius; dz <= radius; dz++)
             {
