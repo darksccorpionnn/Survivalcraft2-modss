@@ -669,3 +669,39 @@ DumpIl("Game.SubsystemBlocksManager", "Initialize");
 // Rewrite the artifact after the appended focused stove diagnostics above.
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
 Console.WriteLine("STOVE API DIAGNOSTICS APPENDED.");
+
+
+// Additional stove behavior and mesh collection internals.
+foreach (string typeName in new[]
+{
+    "Game.SubsystemFurnaceBlockBehavior", "Game.SubsystemEntityBlockBehavior",
+    "Game.ComponentBlockEntity", "Game.ComponentInventory", "Game.Inventory",
+    "Game.SubsystemBlockBehavior", "Game.SubsystemFireBlockBehavior",
+    "Game.SubsystemMetersBlockBehavior", "Game.BlockMesh",
+    "Engine.DynamicArray\u00601", "Game.ModEntity"
+})
+{
+    Type type = allTypes.FirstOrDefault(t => t.FullName == typeName || t.Name == typeName);
+    if (type == null) { output.AppendLine("STOVE EXTRA TYPE MISSING " + typeName); continue; }
+    output.AppendLine();
+    output.AppendLine("===== STOVE EXTRA TYPE " + type.FullName + " =====");
+    const BindingFlags ef = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(ef)) output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var p in type.GetProperties(ef).OrderBy(p => p.Name)) output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    foreach (var f in type.GetFields(ef).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var m in type.GetMethods(ef).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic + " virtual=" + m.IsVirtual);
+}
+DumpIl("Game.FurnaceBlock", "Initialize");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "get_HandledBlocks");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "InteractBlockEntity");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "Load");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "AddFire");
+DumpIl("Game.SubsystemFurnaceBlockBehavior", "OnBlockRemoved");
+DumpIl("Game.SubsystemEntityBlockBehavior", "OnBlockAdded");
+DumpIl("Game.SubsystemEntityBlockBehavior", "OnBlockRemoved");
+DumpIl("Game.SubsystemEntityBlockBehavior", "Load");
+DumpIl("Game.ComponentBlockEntity", "Load");
+DumpIl("Game.ComponentBlockEntity", "Save");
+DumpIl("Game.SubsystemBlockBehaviors", "Load");
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
