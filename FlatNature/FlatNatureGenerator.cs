@@ -8,8 +8,8 @@ internal static class FlatNatureGenerator
     private const int ChunkHeight = 256;
     private const int MountainGrid = 190;
     private const int LakeGrid = 230;
-    private const int ForestGrid = 125;
-    private const int TreeGrid = 5;
+    private const int ForestGrid = 150;
+    private const int TreeGrid = 10;
 
     internal static void GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -324,8 +324,8 @@ internal static class FlatNatureGenerator
                 if (h % 100u >= 96u)
                     continue;
 
-                int worldX = gx * TreeGrid + 2 + (int)((h >> 8) % 5u);
-                int worldZ = gz * TreeGrid + 2 + (int)((h >> 16) % 5u);
+                int worldX = gx * TreeGrid + 2 + (int)((h >> 8) % 7u);
+                int worldZ = gz * TreeGrid + 2 + (int)((h >> 16) % 7u);
                 int localX = worldX - chunk.Origin.X;
                 int localZ = worldZ - chunk.Origin.Y;
                 if (localX < 1 || localX > 14 || localZ < 1 || localZ > 14)
@@ -342,7 +342,7 @@ internal static class FlatNatureGenerator
                 if (groundY < 2 || groundY > ChunkHeight - 10)
                     continue;
 
-                int treeHeight = 13 + (int)((h >> 20) % 8u);
+                int treeHeight = 14 + (int)((h >> 20) % 7u);
                 BuildSpruceTree(chunk, localX, groundY, localZ, treeHeight, context, ref changed);
             }
         }
@@ -353,8 +353,8 @@ internal static class FlatNatureGenerator
         TerrainChunk chunk, int x, int groundY, int z, int height,
         FlatNatureWorldContext context, ref bool changed)
     {
-        int woodValue = Terrain.MakeBlockValue(context.WoodIndex);
-        int leavesValue = Terrain.MakeBlockValue(context.LeavesIndex);
+        int woodValue = Terrain.MakeBlockValue(context.PineWoodIndex > 0 ? context.PineWoodIndex : context.WoodIndex);
+        int leavesValue = Terrain.MakeBlockValue(context.PineLeavesIndex > 0 ? context.PineLeavesIndex : context.LeavesIndex);
 
         // Keep a clearly visible, thick central trunk below the crown.
         for (int y = groundY + 1; y <= groundY + height; y++)
@@ -367,7 +367,7 @@ internal static class FlatNatureGenerator
         for (int y = crownStart; y <= crownHeight; y++)
         {
             float t = (y - crownStart) / (float)Math.Max(1, crownHeight - crownStart);
-            int radius = Math.Max(1, (int)MathF.Round(5f * (1f - t) + 1f));
+            int radius = Math.Max(1, (int)MathF.Round(4f * (1f - t) + 1f));
             int tierOffset = (y - crownStart) % 4;
             if (tierOffset == 3 && radius > 1)
                 radius--;
