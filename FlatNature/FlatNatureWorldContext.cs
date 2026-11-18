@@ -75,9 +75,14 @@ internal sealed class FlatNatureWorldContext
         context.TallSpruceLeavesIndex = FindBlockContaining("TallSpruce", "Leaves");
         if (context.TallSpruceLeavesIndex == 0)
             context.TallSpruceLeavesIndex = FindBlockTypeContaining("TallSpruce", "Leaves");
+        // Some game builds register the Tall Spruce sapling without the "Tall" prefix.
         context.TallSpruceSaplingIndex = FindBlockContaining("TallSpruce", "Sapling");
         if (context.TallSpruceSaplingIndex == 0)
             context.TallSpruceSaplingIndex = FindBlockTypeContaining("TallSpruce", "Sapling");
+        if (context.TallSpruceSaplingIndex == 0)
+            context.TallSpruceSaplingIndex = FindBlockContaining("Spruce", "Sapling");
+        if (context.TallSpruceSaplingIndex == 0)
+            context.TallSpruceSaplingIndex = FindBlockTypeContaining("Spruce", "Sapling");
 
         context.PineWoodIndex = context.TallSpruceWoodIndex > 0
             ? context.TallSpruceWoodIndex : FindBlockContaining("Pine", "Wood");
@@ -174,14 +179,16 @@ internal sealed class FlatNatureWorldContext
         {
             if (item.Key.IndexOf("ore", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 item.Key.IndexOf("granite", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                item.Key.IndexOf("spruce", StringComparison.OrdinalIgnoreCase) >= 0)
+                item.Key.IndexOf("spruce", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.Key.IndexOf("sapling", StringComparison.OrdinalIgnoreCase) >= 0)
                 Console.WriteLine("[FlatNature] Registry candidate: " + item.Key + " = " + item.Value);
         }
         foreach (KeyValuePair<Type, int> item in BlocksManager.BlockTypeToIndex)
         {
             if (item.Key.Name.IndexOf("ore", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 item.Key.Name.IndexOf("granite", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                item.Key.Name.IndexOf("spruce", StringComparison.OrdinalIgnoreCase) >= 0)
+                item.Key.Name.IndexOf("spruce", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                item.Key.Name.IndexOf("sapling", StringComparison.OrdinalIgnoreCase) >= 0)
                 Console.WriteLine("[FlatNature] Type candidate: " + item.Key.FullName + " = " + item.Value);
         }
     }
