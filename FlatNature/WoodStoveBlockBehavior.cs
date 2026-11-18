@@ -49,7 +49,10 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
     {
         base.OnBlockAdded(value, oldValue, x, y, z);
         if (Terrain.ExtractContents(value) == BlocksManager.GetBlockIndex<WoodStoveBlock>())
+        {
             m_stoveCells.Add(new Point3(x, y, z));
+            ConfigureStoveFurnace(x, y, z);
+        }
     }
 
     public override void OnBlockGenerated(int value, int x, int y, int z, bool isLoaded)
@@ -66,6 +69,8 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
         // new dynamic block when a saved chunk is loaded.
         if (m_blockEntities.GetBlockEntity(x, y, z) == null)
             base.OnBlockAdded(value, 0, x, y, z);
+
+        ConfigureStoveFurnace(x, y, z);
     }
 
     public override void OnBlockRemoved(int value, int newValue, int x, int y, int z)
@@ -133,9 +138,12 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
             if (furnace == null)
                 continue;
 
-            // Native ComponentFurnace only starts another fuel item when a
-            // smelting recipe exists. A room heater must burn logs on its own.
-            if (furnace.HeatLevel <= 0f && furnace.FireTimeRemaining <= 0f)
+            // Vanilla furnaces stop their fire when no smelting recipe exists.
+            // This stove must keep burning fuel to heat the room, with no recipe.
+            furnace.StopFuelWhenNoRecipeIsActive = false;
+
+            // Consume exactly one fuel item when the previous item has finished.
+            if (furnace.FireTimeRemaining <= 0f && furnace.HeatLevel <= 0f)
                 furnace.UseFuel();
 
             bool burning = furnace.HeatLevel > 0f && furnace.FireTimeRemaining > 0f;
@@ -146,6 +154,14 @@ public sealed class WoodStoveBlockBehavior : SubsystemFurnaceBlockBehavior, IUpd
 
         foreach (Point3 cell in remove)
             m_stoveCells.Remove(cell);
+    }
+
+    private void ConfigureStoveFurnace(int x, int y, int z)
+    {
+        ComponentBlockEntity blockEntity = m_blockEntities?.GetBlockEntity(x, y, z);
+        ComponentFurnace furnace = blockEntity?.Entity.FindComponent<ComponentFurnace>(false);
+        if (furnace != null)
+            furnace.StopFuelWhenNoRecipeIsActive = false;
     }
 
     private void UpdateLitBlock(Point3 cell, int value, bool burning)
