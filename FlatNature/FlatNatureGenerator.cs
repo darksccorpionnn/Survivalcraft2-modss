@@ -9,7 +9,7 @@ internal static class FlatNatureGenerator
     private const int MountainGrid = 190;
     private const int LakeGrid = 230;
     private const int ForestGrid = 125;
-    private const int TreeGrid = 6;
+    private const int TreeGrid = 5;
 
     internal static void GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -105,7 +105,10 @@ internal static class FlatNatureGenerator
             }
         }
 
-        // Ores only replace solid stone cells below the soil cap.
+        // Local sandy biomes: broad dry patches with sand surface and subsurface.
+        GenerateSandBiomes(chunk, surface, land, context, ref changed);
+
+        // Ores only replace solid granite cells below the soil cap.
         GenerateOreVeins(chunk, context, ref changed);
 
         // Trees are grouped into woodland patches, leaving large open plain areas.
@@ -214,6 +217,45 @@ internal static class FlatNatureGenerator
         }
     }
 
+    private static void GenerateSandBiomes(
+        TerrainChunk chunk, int[,] surface, bool[,] land,
+        FlatNatureWorldContext context, ref bool changed)
+    {
+        if (context.SandIndex <= 0)
+            return;
+
+        for (int x = 0; x < ChunkSize; x++)
+        for (int z = 0; z < ChunkSize; z++)
+        {
+            if (!land[x, z])
+                continue;
+            int wx = chunk.Origin.X + x;
+            int wz = chunk.Origin.Y + z;
+            int gx = FloorDiv(wx, 300);
+            int gz = FloorDiv(wz, 300);
+            bool desert = false;
+            for (int ox = -1; ox <= 1 && !desert; ox++)
+            for (int oz = -1; oz <= 1 && !desert; oz++)
+            {
+                uint h = Hash(context.Seed, gx + ox, gz + oz, 4101);
+                if (h % 100u >= 32u)
+                    continue;
+                int cx = (gx + ox) * 300 + 40 + (int)((h >> 8) % 220u);
+                int cz = (gz + oz) * 300 + 40 + (int)((h >> 16) % 220u);
+                float radius = 65f + ((h >> 24) % 55u);
+                float dx = wx - cx, dz = wz - cz;
+                if (dx * dx + dz * dz < radius * radius)
+                    desert = true;
+            }
+            if (!desert || GetMountain(context.Seed, wx, wz).Height > 8)
+                continue;
+            int top = surface[x, z];
+            for (int y = Math.Max(1, top - 3); y <= top; y++)
+                SetCell(chunk, x, y, z, Terrain.MakeBlockValue(context.SandIndex), ref changed);
+            land[x, z] = false;
+        }
+    }
+
     private static void GenerateOreVeins(TerrainChunk chunk, FlatNatureWorldContext context, ref bool changed)
     {
         if (context.OreIndices.Count == 0 || context.TerrainLevel < 12)
@@ -226,13 +268,13 @@ internal static class FlatNatureGenerator
         for (int ore = 0; ore < context.OreIndices.Count; ore++)
         {
             uint h = Hash(context.Seed, chunk.Origin.X, chunk.Origin.Y, 700 + ore * 37);
-            if (h % 100u >= 90u)
+            if (h % 100u >= 58u)
                 continue;
 
             int centerX = 2 + (int)((h >> 8) % 12u);
             int centerZ = 2 + (int)((h >> 16) % 12u);
             int centerY = 4 + (int)((h >> 24) % (uint)Math.Max(1, maxY - 3));
-            int length = 7 + (int)((h >> 4) % 7u);
+            int length = 10 + (int)((h >> 4) % 9u);
             int direction = (int)((h >> 12) % 3u);
             int oreValue = Terrain.MakeBlockValue(context.OreIndices[ore]);
 
@@ -279,7 +321,7 @@ internal static class FlatNatureGenerator
             for (int gz = minTreeCellZ; gz <= maxTreeCellZ; gz++)
             {
                 uint h = Hash(context.Seed, gx, gz, 901);
-                if (h % 100u >= 78u)
+                if (h % 100u >= 96u)
                     continue;
 
                 int worldX = gx * TreeGrid + 2 + (int)((h >> 8) % 5u);
@@ -290,7 +332,7 @@ internal static class FlatNatureGenerator
                     continue;
 
                 MountainInfo treeMountain = GetMountain(context.Seed, worldX, worldZ);
-                if (GetForestFactor(context.Seed, worldX, worldZ) <= 0.08f ||
+                if (GetForestFactor(context.Seed, worldX, worldZ) <= 0.015f ||
                     (treeMountain.Snowy && treeMountain.Height > 25) ||
                     GetLakeFactor(context.Seed, worldX, worldZ) > 0f ||
                     !land[localX, localZ])
@@ -301,18 +343,19 @@ internal static class FlatNatureGenerator
                     continue;
 
                 int treeHeight = 5 + (int)((h >> 20) % 5u);
-                int forestStyle = (int)((h >> 27) % 3u);
-                BuildTree(chunk, localX, groundY, localZ, treeHeight, forestStyle, context, ref changed);
+                int forestStyle = (int)((h >> 27) % 4u);
+                int species = (int)((h >> 21) % (uint)context.TreeWoodIndices.Count);
+                BuildTree(chunk, localX, groundY, localZ, treeHeight, forestStyle, species, context, ref changed);
             }
         }
     }
 
     private static void BuildTree(
-        TerrainChunk chunk, int x, int groundY, int z, int height, int forestStyle,
+        TerrainChunk chunk, int x, int groundY, int z, int height, int forestStyle, int species,
         FlatNatureWorldContext context, ref bool changed)
     {
-        int woodValue = Terrain.MakeBlockValue(context.WoodIndex);
-        int leavesValue = Terrain.MakeBlockValue(context.LeavesIndex);
+        int woodValue = Terrain.MakeBlockValue(context.TreeWoodIndices[species]);
+        int leavesValue = Terrain.MakeBlockValue(context.TreeLeavesIndices[species]);
 
         for (int y = groundY + 1; y <= groundY + height; y++)
             SetCell(chunk, x, y, z, woodValue, ref changed);
@@ -324,7 +367,9 @@ internal static class FlatNatureGenerator
                 ? (layer >= 2 ? 1 : 2)
                 : forestStyle == 1
                     ? (layer <= 0 ? 3 : layer == 1 ? 2 : 1)
-                    : (layer == 0 ? 2 : 1);
+                    : forestStyle == 2
+                        ? (layer <= 1 ? 2 : 1)
+                        : (layer == 0 ? 3 : layer == 1 ? 2 : 1);
             for (int dx = -radius; dx <= radius; dx++)
             for (int dz = -radius; dz <= radius; dz++)
             {
