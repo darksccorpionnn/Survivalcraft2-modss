@@ -1,4 +1,11 @@
 {
   "DisplayName:WoodStove": "Odun Sobası",
-  "Description:WoodStove": "Odun yakarak çevresine ısı veren çalışan soba."
+  "Description:WoodStove": "Odun yakarak çevresine ısı veren çalışan soba.",
+  "Blocks": {
+    "WoodStoveBlock:0": {
+      "DisplayName": "Odun Sobası",
+      "Description": "Odun yakarak çevresine ısı veren, maden eritmeyen soba.",
+      "CRDescription:0": "5 Demir Külçesi ve 3 Ahşap Kalas. Çalışma Masasında üret."
+    }
+  }
 }
