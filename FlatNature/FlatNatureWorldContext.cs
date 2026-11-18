@@ -77,8 +77,30 @@ internal sealed class FlatNatureWorldContext
     private static void AddOre(FlatNatureWorldContext context, string mineral)
     {
         int index = FindBlockContaining(mineral, "ore");
+        if (index == 0)
+            index = FindBlockTypeContaining(mineral, "ore");
         if (index > 0 && !context.OreIndices.Contains(index))
+        {
             context.OreIndices.Add(index);
+            Console.WriteLine("[FlatNature] Ore registered: " + mineral + " = " + index);
+        }
+        else
+        {
+            Console.WriteLine("[FlatNature] Ore not found in block registry: " + mineral);
+        }
+    }
+
+    private static int FindBlockTypeContaining(string firstToken, string secondToken)
+    {
+        foreach (KeyValuePair<Type, int> item in BlocksManager.BlockTypeToIndex)
+        {
+            string name = item.Key.Name;
+            if (name.IndexOf(firstToken, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                name.IndexOf(secondToken, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                item.Value > 0)
+                return item.Value;
+        }
+        return 0;
     }
 
     private static int FindBlockByName(IEnumerable<string> names)
