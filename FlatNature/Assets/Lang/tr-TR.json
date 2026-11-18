@@ -7,6 +7,11 @@
       "Description": "Odun yakarak çevresine ısı veren, maden eritmeyen soba.",
       "CRDescription:0": "5 Demir Külçesi ve 3 Ahşap Kalas. Çalışma Masasında üret.",
       "CRDescription": "5 Demir Külçesi ve 3 Cam. Çalışma Masasında üret."
+    },
+    "IronKettleBlock:0": {
+      "DisplayName": "Demir Çaydanlık",
+      "Description": "Odun sobasının üzerine yerleştirilebilen dekoratif demir çaydanlık.",
+      "CRDescription": "5 Demir Külçesi. Çalışma Masasında üret."
     }
   }
 }
