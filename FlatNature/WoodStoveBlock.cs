@@ -5,8 +5,9 @@ using Engine.Graphics;
 namespace Game;
 
 /// <summary>
-/// Static stove mesh. It inherits the native furnace placement, collision and
-/// interaction rules, while its heat/light state is stored in data bit 2.
+/// Static GLB stove mesh. Native furnace interaction is retained, but the
+/// custom mesh is assigned AFTER base.Initialize so FurnaceBlock cannot replace
+/// it with the vanilla furnace mesh.
 /// </summary>
 public sealed class WoodStoveBlock : FurnaceBlock
 {
@@ -18,38 +19,29 @@ public sealed class WoodStoveBlock : FurnaceBlock
 
     public override void Initialize()
     {
-        Model model;
-        ModelMesh mesh;
+        // Initialize native furnace behavior first. Its implementation assigns
+        // the vanilla mesh arrays, so the custom GLB must be applied afterwards.
+        base.Initialize();
 
-        try
-        {
-            model = ContentManager.Get<Model>("Models/WoodStove/WoodStove");
-            if (model.Meshes.Count == 0)
-                throw new InvalidOperationException("Wood stove GLB contains no meshes.");
-            mesh = model.Meshes[0];
-        }
-        catch (Exception ex)
-        {
-            // Allows the code package to build and load before the supplied GLB
-            // is copied into Assets/Models/WoodStove. The final package uses the
-            // custom GLB and does not take this fallback path.
-            Log.Warning("[FlatNature] Stove GLB not found; using the vanilla furnace mesh temporarily: " + ex.Message);
-            model = ContentManager.Get<Model>("Models/Furnace");
-            mesh = model.FindMesh("Furnace", true);
-        }
+        Model model = ContentManager.Get<Model>("Models/WoodStove/WoodStove");
+        if (model == null || model.Meshes.Count == 0)
+            throw new InvalidOperationException("[FlatNature] WoodStove GLB loaded without meshes.");
 
+        ModelMesh mesh = model.Meshes[0];
         if (mesh.MeshParts.Count == 0)
-            throw new InvalidOperationException("Wood stove model mesh has no mesh parts.");
+            throw new InvalidOperationException("[FlatNature] WoodStove GLB mesh has no mesh parts.");
 
         m_texture = model.GetDefaultBaseColorTexture();
-        if (m_texture == null && FurnaceBlock.Index > 0)
-            m_texture = BlocksManager.Blocks[FurnaceBlock.Index].GetDefaultTexture(FurnaceBlock.Index);
+        if (m_texture == null)
+            throw new InvalidOperationException("[FlatNature] WoodStove GLB has no base-color texture.");
 
         Matrix boneTransform = mesh.ParentBone != null
             ? BlockMesh.GetBoneAbsoluteTransform(mesh.ParentBone)
             : Matrix.Identity;
         Matrix scale = Matrix.CreateScale(ModelScale);
 
+        // Block data low two bits represent horizontal facing. Bit 2 remains
+        // reserved for the lit state used by GetHeat/GetEmittedLightAmount.
         m_blockMeshesByData = new BlockMesh[4];
         for (int rotation = 0; rotation < 4; rotation++)
         {
@@ -72,8 +64,7 @@ public sealed class WoodStoveBlock : FurnaceBlock
             m_standaloneBlockMesh.AppendModelMeshPart(
                 part, standaloneTransform, false, false, false, false, Color.White);
 
-        base.Initialize();
-        Log.Information("[FlatNature] Wood stove block initialized. GLB mesh: " + mesh.Name);
+        Log.Information("[FlatNature] Custom WoodStove GLB mesh assigned: " + mesh.Name);
     }
 
     public override Texture2D GetDefaultTexture(int value) => m_texture;
