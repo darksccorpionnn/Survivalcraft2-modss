@@ -847,3 +847,5 @@ DumpIl("Game.SubsystemTorchBlockBehavior", "OnBlockModified");
 DumpIl("Game.SubsystemTorchBlockBehavior", "OnBlockRemoved");
 DumpIl("Game.SubsystemTorchBlockBehavior", "OnNeighborBlockChanged");
 DumpIl("Game.FireParticleSystem", ".ctor");
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
