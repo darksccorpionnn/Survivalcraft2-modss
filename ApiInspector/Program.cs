@@ -759,3 +759,22 @@ DumpIl("Game.BlockMesh", "GetVertexData");
 DumpIl("Game.BlockGeometryGenerator", "GenerateMeshVertices");
 
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+// Enumerate native smoke/fire effects available for the Stove implementation.
+foreach (Type type in allTypes.Where(t =>
+    t.FullName.Contains("ParticleSystem", StringComparison.OrdinalIgnoreCase) &&
+    (t.FullName.Contains("Fire", StringComparison.OrdinalIgnoreCase) ||
+     t.FullName.Contains("Smoke", StringComparison.OrdinalIgnoreCase) ||
+     t.FullName.Contains("Steam", StringComparison.OrdinalIgnoreCase)))
+    .OrderBy(t => t.FullName))
+{
+    output.AppendLine();
+    output.AppendLine("===== STOVE PARTICLE TYPE " + type.FullName + " =====");
+    const BindingFlags particleFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(particleFlags)) output.AppendLine("CTOR " + ctor + " public=" + ctor.IsPublic);
+    foreach (var f in type.GetFields(particleFlags).OrderBy(f => f.Name)) output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var m in type.GetMethods(particleFlags).OrderBy(m => m.Name)) output.AppendLine("METHOD " + m.ReturnType.FullName + " " + m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ") public=" + m.IsPublic);
+}
+
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
