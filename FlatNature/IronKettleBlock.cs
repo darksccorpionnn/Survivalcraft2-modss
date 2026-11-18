@@ -12,8 +12,8 @@ public sealed class IronLanternBlock : FurnaceBlock
 {
     public new static int Index = -1;
 
-    private const float ModelScale = 0.8f;
-    private const float ModelOffsetY = -0.2f;
+    private const float ModelScale = 1.0f;
+    private const float ModelOffsetY = 0.477f;
     private Texture2D m_texture;
 
     public override BlockPlacementData GetPlacementValue(
