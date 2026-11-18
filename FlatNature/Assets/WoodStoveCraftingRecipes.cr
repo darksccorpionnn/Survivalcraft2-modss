@@ -10,4 +10,9 @@
     "aba"
     " a "
   </Recipe>
+  <Recipe Result="BlueTorchBlock" ResultCount="2" RequiredHeatLevel="0" a="coal" b="stick" Description="[0]">
+    "   "
+    " a "
+    " b "
+  </Recipe>
 </Mod>

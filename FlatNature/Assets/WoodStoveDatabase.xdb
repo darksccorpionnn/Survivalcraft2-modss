@@ -4,5 +4,8 @@
     <MemberSubsystemTemplate Name="WoodStoveBlockBehavior" Guid="a54d98ac-74f3-4bdb-8a52-22d6db68a501" InheritanceParent="fefb9590-4972-4893-b02a-76063611b745">
       <Parameter Name="Class" Guid="b2d57db4-7b15-4b2f-b10b-4b4d52f4502f" Value="Game.WoodStoveBlockBehavior" Type="string"/>
     </MemberSubsystemTemplate>
+    <MemberSubsystemTemplate Name="BlueTorchBlockBehavior" Guid="475051e0-792e-4ea8-a7bf-f2ba24aed0a0" InheritanceParent="fefb9590-4972-4893-b02a-76063611b745">
+      <Parameter Name="Class" Guid="4a603daf-9aa5-449d-8943-9c2306b8bc00" Value="Game.BlueTorchBlockBehavior" Type="string"/>
+    </MemberSubsystemTemplate>
   </ProjectTemplate>
 </Mod>

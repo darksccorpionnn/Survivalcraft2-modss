@@ -12,6 +12,11 @@
       "DisplayName": "Demir Fener",
       "Description": "Duvara monte edilen, alev veya meşale parçacığı oluşturmadan sabit ışık veren metal fener.",
       "CRDescription": "4 Demir Külçesi ve 1 Cam. Çalışma Masasında üret."
+    },
+    "BlueTorchBlock:0": {
+      "DisplayName": "Mavi Meşale",
+      "Description": "Normal meşalenin duvar ve zemin yerleşimini koruyan, hareketli mavi alevli meşale.",
+      "CRDescription": "1 Kömür Parçası ve 1 Çubuk. Çalışma Masasında üret."
     }
   }
 }

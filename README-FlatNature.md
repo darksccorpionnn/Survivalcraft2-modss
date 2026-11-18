@@ -1,4 +1,4 @@
-# Flat Nature + Wood Stove
+# Flat Nature + Wood Stove + Blue Torch
 
 Independent Survivalcraft 2 API mod for newly created Flat worlds only.
 
@@ -22,6 +22,15 @@ Independent Survivalcraft 2 API mod for newly created Flat worlds only.
 
 The stove uses the static GLB model at `Assets/Models/WoodStove/WoodStove.glb`. If the model is not present, the block temporarily falls back to the vanilla furnace mesh while the code build remains testable.
 
+## Blue torch (0.2.13)
+- Adds a separate **Mavi Meşale** block; the vanilla torch and Iron Lantern are not modified.
+- Retains the native wall and floor placement variants.
+- Uses the vanilla wooden torch mesh but removes its static orange flame mesh on the new block.
+- Uses a dedicated blue-tinted FireParticleSystem subclass for animated fire particles.
+- Emits the native scalar light amount 14/15. This is standard game lighting, not RGB-colored environmental lighting.
+- Crafting: one coal chunk above one stick produces two Blue Torches.
+- The blue flame, placement support and particle cleanup still require an in-game check on the Android Survivalcraft API client.
+
 ## New-world-only terrain safety gate
 When the game creates a FlatContinent or FlatIsland world, the mod writes a FlatNature.created marker into that new world directory. The terrain hook checks both the Flat generator and this marker before making terrain changes. Existing saves are not marked and are ignored.
 
@@ -29,4 +38,4 @@ When the game creates a FlatContinent or FlatIsland world, the mod writes a Flat
 Copy the generated `FlatNature.scmod` into:
 `/storage/emulated/0/Download/Survivalcraft/Mods/`
 
-GitHub Actions builds the DLL and packages the mod. The build is not an in-game verification; the stove still needs a test on the Android Survivalcraft API client.
+GitHub Actions builds the DLL and packages the mod. A successful build is not the same as in-game verification.

@@ -2,5 +2,14 @@
   "DisplayName:WoodStove": "Wood Stove",
   "Description:WoodStove": "A working wood-burning stove that heats its surroundings.",
   "DisplayName:IronLantern": "Iron Lantern",
-  "Description:IronLantern": "A wall-mounted metal lantern that emits steady light without flame or torch particles."
+  "Description:IronLantern": "A wall-mounted metal lantern that emits steady light without flame or torch particles.",
+  "DisplayName:BlueTorch": "Blue Torch",
+  "Description:BlueTorch": "A torch with animated blue flame particles.",
+  "Blocks": {
+    "BlueTorchBlock:0": {
+      "DisplayName": "Blue Torch",
+      "Description": "A torch with animated blue fire.",
+      "CRDescription": "One coal chunk and one stick. Craft at the Workbench."
+    }
+  }
 }

@@ -2,7 +2,7 @@ name: Build Flat Nature SCMod
 
 on:
   push:
-    branches: [ flat-nature-api-scan, wood-stove-integration ]
+    branches: [ flat-nature-api-scan, wood-stove-integration, blue-torch ]
     paths:
       - "FlatNature/**"
       - "README-FlatNature.md"
