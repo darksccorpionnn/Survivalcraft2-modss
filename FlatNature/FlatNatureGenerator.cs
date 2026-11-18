@@ -353,8 +353,8 @@ internal static class FlatNatureGenerator
         TerrainChunk chunk, int x, int groundY, int z, int height,
         FlatNatureWorldContext context, ref bool changed)
     {
-        int woodValue = Terrain.MakeBlockValue(context.PineWoodIndex > 0 ? context.PineWoodIndex : context.WoodIndex);
-        int leavesValue = Terrain.MakeBlockValue(context.PineLeavesIndex > 0 ? context.PineLeavesIndex : context.LeavesIndex);
+        int woodValue = Terrain.MakeBlockValue(context.TallSpruceWoodIndex > 0 ? context.TallSpruceWoodIndex : (context.PineWoodIndex > 0 ? context.PineWoodIndex : context.WoodIndex));
+        int leavesValue = Terrain.MakeBlockValue(context.TallSpruceLeavesIndex > 0 ? context.TallSpruceLeavesIndex : (context.PineLeavesIndex > 0 ? context.PineLeavesIndex : context.LeavesIndex));
 
         // Keep a clearly visible, thick central trunk below the crown.
         for (int y = groundY + 1; y <= groundY + height; y++)
