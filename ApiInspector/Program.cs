@@ -868,3 +868,26 @@ foreach (Type type in allTypes.Where(t => t.FullName == "Game.FireParticleSystem
 DumpIl("Game.FireParticleSystem", "Draw");
 DumpIl("Game.FireParticleSystem", "Simulate");
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+Type fireParticleType = allTypes.FirstOrDefault(t => t.FullName == "Game.FireParticleSystem");
+Type fireNestedParticle = fireParticleType?.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).FirstOrDefault();
+if (fireNestedParticle != null)
+{
+    output.AppendLine();
+    output.AppendLine("===== FIRE NESTED PARTICLE DETAIL " + fireNestedParticle.FullName + " | BASE=" + fireNestedParticle.BaseType?.FullName + " | PUBLIC=" + fireNestedParticle.IsPublic + " | NESTEDPUBLIC=" + fireNestedParticle.IsNestedPublic + " =====");
+    const BindingFlags nestedFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var f in fireNestedParticle.GetFields(nestedFlags).OrderBy(f => f.Name))
+        output.AppendLine("FIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    foreach (var p in fireNestedParticle.GetProperties(nestedFlags).OrderBy(p => p.Name))
+        output.AppendLine("PROP " + p.PropertyType.FullName + " " + p.Name + " get=" + (p.GetMethod?.IsPublic ?? false) + " set=" + (p.SetMethod?.IsPublic ?? false));
+    for (Type b = fireNestedParticle.BaseType; b != null; b = b.BaseType)
+    {
+        output.AppendLine("PARTICLE BASE " + b.FullName + " public=" + b.IsPublic + " nestedpublic=" + b.IsNestedPublic);
+        foreach (var f in b.GetFields(nestedFlags).OrderBy(f => f.Name))
+            output.AppendLine("BASEFIELD " + f.FieldType.FullName + " " + f.Name + " public=" + f.IsPublic);
+    }
+}
+DumpIl("Game.SubsystemTorchBlockBehavior", "AddTorch");
+DumpIl("Game.SubsystemTorchBlockBehavior", "RemoveTorch");
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
