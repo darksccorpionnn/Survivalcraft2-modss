@@ -435,6 +435,29 @@ foreach (string typeName in worldSupportTypes)
     output.AppendLine("WORLD SUPPORT TYPE FOUND " + type.FullName);
 }
 
+
+output.AppendLine();
+output.AppendLine("===== FLAT NATURE TARGETED IL =====");
+foreach (string methodName in new[]
+{
+    "GenerateChunkContentsPass1", "GenerateChunkContentsPass2",
+    "GenerateChunkContentsPass3", "GenerateChunkContentsPass4",
+    "CalculateHeight", "FindCoarseSpawnPosition"
+})
+    DumpIl("Game.TerrainContentsGeneratorFlat", methodName);
+DumpIl("Game.WorldsManager", "CreateWorld");
+DumpIl("Game.WorldsManager", "ChangeWorld");
+DumpIl("Game.WorldsManager", "GetUnusedWorldDirectoryName");
+DumpIl("Game.ModsManager", "RegisterHook");
+DumpIl("Game.ModsManager", "HookAction");
+Type generationModeType = allTypes.FirstOrDefault(t => t.Name == "TerrainGenerationMode" && t.IsEnum);
+if (generationModeType != null)
+{
+    output.AppendLine("===== TERRAIN GENERATION MODE ENUM =====");
+    foreach (string name in Enum.GetNames(generationModeType))
+        output.AppendLine("VALUE " + name + "=" + Convert.ToInt32(Enum.Parse(generationModeType, name)));
+}
+
 string result = output.ToString();
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), result);
 Console.WriteLine(result);
