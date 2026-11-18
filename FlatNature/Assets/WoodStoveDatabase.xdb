@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Mod xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/Assets/Database.xsd">
+  <ProjectTemplate Name="Project" Guid="85023bf8-1c90-4dd1-9442-e6c13691d078">
+    <MemberSubsystemTemplate Name="WoodStoveBlockBehavior" Guid="a54d98ac-74f3-4bdb-8a52-22d6db68a501" InheritanceParent="fefb9590-4972-4893-b02a-76063611b745">
+      <Parameter Name="Class" Guid="b2d57db4-7b15-4b2f-b10b-4b4d52f4502f" Value="Game.WoodStoveBlockBehavior" Type="string"/>
+    </MemberSubsystemTemplate>
+  </ProjectTemplate>
+</Mod>
