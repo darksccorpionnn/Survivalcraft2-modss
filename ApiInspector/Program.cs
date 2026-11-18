@@ -419,3 +419,30 @@ foreach (Type type in allTypes.Where(t =>
     .OrderBy(t => t.FullName))
     output.AppendLine("TYPE " + type.FullName);
 File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "api-inspection.txt"), output.ToString());
+
+
+// Emit a compact, reliable terrain-generation API summary into the Actions log.
+var terrainSummary = new StringBuilder();
+terrainSummary.AppendLine("===== FLAT NATURE TERRAIN API SUMMARY =====");
+foreach (Type type in allTypes.Where(t =>
+    t.Namespace == "Game" &&
+    (t.Name.Contains("TerrainContentsGenerator", StringComparison.OrdinalIgnoreCase) ||
+     t.Name.Contains("ChunkGenerationStep", StringComparison.OrdinalIgnoreCase) ||
+     t.Name == "WorldSettings" || t.Name == "SubsystemTerrain" ||
+     t.Name == "TerrainChunk" || t.Name == "TerrainUpdater" ||
+     t.Name == "ModLoader" || t.Name == "ModsManager"))
+    .Distinct().OrderBy(t => t.FullName))
+{
+    terrainSummary.AppendLine("TYPE " + type.FullName + " BASE=" + type.BaseType?.FullName);
+    const BindingFlags sf = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var ctor in type.GetConstructors(sf))
+        terrainSummary.AppendLine(" CTOR " + ctor);
+    foreach (var p in type.GetProperties(sf).OrderBy(p => p.Name))
+        terrainSummary.AppendLine(" PROP " + p.PropertyType.FullName + " " + p.Name + " set=" + (p.SetMethod != null));
+    foreach (var f in type.GetFields(sf).OrderBy(f => f.Name))
+        terrainSummary.AppendLine(" FIELD " + f.FieldType.FullName + " " + f.Name);
+    foreach (var m in type.GetMethods(sf).OrderBy(m => m.Name))
+        terrainSummary.AppendLine(" METHOD " + m.ReturnType.FullName + " " + m.Name + "(" +
+            string.Join(", ", m.GetParameters().Select(p => p.ParameterType.FullName + " " + p.Name)) + ")");
+}
+Console.WriteLine(terrainSummary.ToString());
