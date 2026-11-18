@@ -5,6 +5,7 @@ namespace Game;
 
 internal sealed class FlatNatureWorldContext
 {
+    internal SubsystemTerrain TerrainSubsystem { get; private set; }
     internal int Seed { get; private set; }
     internal int TerrainLevel { get; private set; }
     internal int WaterIndex { get; private set; }
@@ -24,10 +25,11 @@ internal sealed class FlatNatureWorldContext
     internal List<int> TreeLeavesIndices { get; } = new();
     internal List<int> OreIndices { get; } = new();
 
-    internal static FlatNatureWorldContext Create(SubsystemGameInfo gameInfo)
+    internal static FlatNatureWorldContext Create(SubsystemGameInfo gameInfo, SubsystemTerrain terrainSubsystem)
     {
         var context = new FlatNatureWorldContext
         {
+            TerrainSubsystem = terrainSubsystem,
             Seed = gameInfo.WorldSeed,
             TerrainLevel = gameInfo.WorldSettings.TerrainLevel,
             WaterIndex = gameInfo.WorldSettings.TerrainOceanBlockIndex
@@ -66,14 +68,13 @@ internal sealed class FlatNatureWorldContext
         if (context.SandIndex == 0)
             context.SandIndex = context.DirtIndex;
 
-        // Match "Tall Spruce Sapling" regardless of spaces or suffixes.
+        // SaplingBlock is block 119; data value 3 is Tall Spruce.
         context.TallSpruceWoodIndex = FindBlockNameNormalized("TallSpruceWood");
         if (context.TallSpruceWoodIndex == 0) context.TallSpruceWoodIndex = FindBlockTypeNormalized("TallSpruceWood");
         context.TallSpruceLeavesIndex = FindBlockNameNormalized("TallSpruceLeaves");
         if (context.TallSpruceLeavesIndex == 0) context.TallSpruceLeavesIndex = FindBlockTypeNormalized("TallSpruceLeaves");
-        context.TallSpruceSaplingIndex = FindBlockNameNormalized("TallSpruceSapling");
-        if (context.TallSpruceSaplingIndex == 0) context.TallSpruceSaplingIndex = FindBlockTypeNormalized("TallSpruceSapling");
-        Console.WriteLine("[FlatNature] Tall Spruce sapling resolved index=" + context.TallSpruceSaplingIndex);
+        context.TallSpruceSaplingIndex = 119;
+        Console.WriteLine("[FlatNature] Tall Spruce sapling uses SaplingBlock index=119, data=3.");
 
         context.PineWoodIndex = context.TallSpruceWoodIndex > 0
             ? context.TallSpruceWoodIndex : FindBlockContaining("Pine", "Wood");
@@ -116,7 +117,6 @@ internal sealed class FlatNatureWorldContext
              ", pineWood=" + context.PineWoodIndex + ", pineLeaves=" + context.PineLeavesIndex +
             ", tallSpruceWood=" + context.TallSpruceWoodIndex + ", tallSpruceLeaves=" + context.TallSpruceLeavesIndex +
             ", tallSpruceSapling=" + context.TallSpruceSaplingIndex +
-            ", tallSpruceWood=" + context.TallSpruceWoodIndex + ", tallSpruceLeaves=" + context.TallSpruceLeavesIndex +
             ", ores=" + context.OreIndices.Count);
 
         return context;
