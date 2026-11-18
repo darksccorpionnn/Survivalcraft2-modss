@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Flat Nature + Wood Stove",
-  "Version": "0.2.6",
+  "Version": "0.2.8",
   "ApiVersion": "1.9.5.1",
-  "Description": "Adds Flat Nature terrain features and a craftable GLB wood-burning heater. Craft at the workbench with 5 iron ingots and 3 glass blocks. The stove heats nearby players and does not smelt ores.",
+  "Description": "Flat Nature terrain features, a functional wood-burning heater and a decorative iron kettle craftable at the workbench.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 11000,
   "NonPersistentMod": false,
