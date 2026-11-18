@@ -17,6 +17,7 @@ public sealed class FlatNatureModLoader : ModLoader
         {
             s_harmony = new Harmony("darksccorpionnn.FlatNature.WorldMarker");
             FlatNatureWorldMarkerPatch.Install(s_harmony);
+            WoodStoveFurnacePatch.Install(s_harmony);
 
             ModsManager.RegisterHook("OnProjectLoaded", this);
             ModsManager.RegisterHook("OnLoadingFinished", this);
