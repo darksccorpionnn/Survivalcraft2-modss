@@ -62,6 +62,28 @@ internal static class FlatNatureGenerator
             }
         }
 
+        // Meandering rivers are generated as shallow, solid-bottom channels.
+        for (int x = 0; x < ChunkSize; x++)
+        {
+            for (int z = 0; z < ChunkSize; z++)
+            {
+                if (!land[x, z] || context.WaterIndex <= 0)
+                    continue;
+
+                int worldX = chunk.Origin.X + x;
+                int worldZ = chunk.Origin.Y + z;
+                if (GetLakeFactor(context.Seed, worldX, worldZ) > 0f)
+                    continue;
+
+                float riverFactor = GetRiverFactor(context.Seed, worldX, worldZ);
+                if (riverFactor <= 0f)
+                    continue;
+
+                ApplyRiver(chunk, x, z, surface[x, z], riverFactor, context, ref changed);
+                land[x, z] = false;
+            }
+        }
+
         // Two separate feature profiles: green medium-height hills and tall snowy peaks.
         for (int x = 0; x < ChunkSize; x++)
         {
@@ -133,6 +155,19 @@ internal static class FlatNatureGenerator
 
         if (context.GrassIndex > 0)
             SetCell(chunk, x, surfaceY, z, grassValue, ref changed);
+    }
+
+    private static void ApplyRiver(
+        TerrainChunk chunk, int x, int z, int surfaceY, float factor,
+        FlatNatureWorldContext context, ref bool changed)
+    {
+        int waterY = Math.Max(2, surfaceY - 1);
+        int floorY = Math.Max(1, waterY - 3);
+        SetCell(chunk, x, floorY, z, Terrain.MakeBlockValue(context.SandIndex), ref changed);
+        for (int y = floorY + 1; y <= waterY; y++)
+            SetCell(chunk, x, y, z, Terrain.MakeBlockValue(context.WaterIndex), ref changed);
+        for (int y = waterY + 1; y <= surfaceY; y++)
+            SetCell(chunk, x, y, z, 0, ref changed);
     }
 
     private static void ApplyLake(
@@ -383,6 +418,43 @@ internal static class FlatNatureGenerator
                 best = factor;
         }
 
+        return best;
+    }
+
+    private static float GetRiverFactor(int seed, int x, int z)
+    {
+        const int grid = 280;
+        int gx = FloorDiv(x, grid);
+        int gz = FloorDiv(z, grid);
+        float best = 0f;
+
+        for (int ox = -1; ox <= 1; ox++)
+        for (int oz = -1; oz <= 1; oz++)
+        {
+            int cellX = gx + ox;
+            int cellZ = gz + oz;
+            uint h = Hash(seed, cellX, cellZ, 2501);
+            if (h % 100u >= 42u)
+                continue;
+
+            int centerX = cellX * grid + 40 + (int)((h >> 8) % 200u);
+            int centerZ = cellZ * grid + 40 + (int)((h >> 16) % 200u);
+            bool horizontal = (h & 1u) == 0u;
+            float along = horizontal ? Math.Abs(x - centerX) : Math.Abs(z - centerZ);
+            if (along > 175f)
+                continue;
+
+            float wave = MathF.Sin(along / 62f + Unit(h) * 6.28f) * 17f;
+            float offset = horizontal ? (z - centerZ - wave) : (x - centerX - wave);
+            float width = 3.5f + ((h >> 24) % 4u);
+            float distance = Math.Abs(offset);
+            if (distance >= width)
+                continue;
+
+            float factor = 1f - distance / width;
+            if (factor > best)
+                best = factor;
+        }
         return best;
     }
 
