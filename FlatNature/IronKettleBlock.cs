@@ -144,6 +144,10 @@ public sealed class IronLanternBlock : TorchBlock
         int variant = Terrain.ExtractData(value);
         if (variant >= 0 && variant < 4)
         {
+            // Route the model vertices into a geometry subset bound to the GLB's
+            // embedded base-color texture. Using geometry.SubsetOpaque here binds
+            // the terrain atlas and causes the UVs to sample unrelated block tiles.
+            TerrainGeometry lanternGeometry = geometry.GetGeometry(m_texture);
             generator.GenerateMeshVertices(
                 this,
                 x,
@@ -152,7 +156,7 @@ public sealed class IronLanternBlock : TorchBlock
                 m_blockMeshesByVariant[variant],
                 Color.White,
                 null,
-                geometry.SubsetOpaque);
+                lanternGeometry.SubsetOpaque);
         }
     }
 
@@ -173,6 +177,7 @@ public sealed class IronLanternBlock : TorchBlock
         BlocksManager.DrawMeshBlock(
             primitivesRenderer,
             m_standaloneBlockMesh,
+            m_texture,
             color,
             2f * size,
             ref matrix,
