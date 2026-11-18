@@ -5,4 +5,9 @@
     "a a"
     "bbb"
   </Recipe>
+  <Recipe Result="IronKettleBlock" ResultCount="1" RequiredHeatLevel="0" a="ironingot" Description="[0]">
+    " a "
+    "aaa"
+    " a "
+  </Recipe>
 </Mod>
