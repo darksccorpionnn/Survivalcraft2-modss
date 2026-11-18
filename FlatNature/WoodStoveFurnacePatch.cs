@@ -22,9 +22,13 @@ internal static class WoodStoveFurnacePatch
             typeof(ComponentFurnace),
             nameof(ComponentFurnace.GetSlotCapacity),
             new[] { typeof(int), typeof(int) });
+        MethodInfo update = AccessTools.Method(
+            typeof(ComponentFurnace),
+            nameof(ComponentFurnace.Update),
+            new[] { typeof(float) });
 
-        if (findRecipe == null || slotCapacity == null)
-            throw new InvalidOperationException("[FlatNature] Could not locate native furnace recipe/slot methods.");
+        if (findRecipe == null || slotCapacity == null || update == null)
+            throw new InvalidOperationException("[FlatNature] Could not locate native furnace recipe/slot/update methods.");
 
         harmony.Patch(
             findRecipe,
@@ -34,8 +38,20 @@ internal static class WoodStoveFurnacePatch
             slotCapacity,
             prefix: new HarmonyMethod(
                 AccessTools.Method(typeof(WoodStoveFurnacePatch), nameof(GetSlotCapacityPrefix))));
+        harmony.Patch(
+            update,
+            prefix: new HarmonyMethod(
+                AccessTools.Method(typeof(WoodStoveFurnacePatch), nameof(UpdatePrefix))));
 
         Log.Information("[FlatNature] Stove heating-only inventory patch installed.");
+    }
+
+    private static bool UpdatePrefix(ComponentFurnace __instance, float dt)
+    {
+        // The native furnace Update forcibly clears heat and fuel time whenever
+        // no smelting recipe exists. A heater intentionally has no recipe, so
+        // its timer and fuel consumption are managed by WoodStoveBlockBehavior.
+        return !IsWoodStove(__instance);
     }
 
     private static bool FindSmeltingRecipePrefix(
