@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Flat Nature + Wood Stove",
-  "Version": "0.2.8",
+  "Version": "0.2.9",
   "ApiVersion": "1.9.5.1",
-  "Description": "Flat Nature terrain features, a functional wood-burning heater and a decorative iron kettle craftable at the workbench.",
+  "Description": "Flat Nature terrain features, a functional wood-burning heater and a non-flame iron lantern with steady light.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 11000,
   "NonPersistentMod": false,
