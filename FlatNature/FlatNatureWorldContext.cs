@@ -65,7 +65,7 @@ internal sealed class FlatNatureWorldContext
         AddOre(context, "Iron");
         AddOre(context, "Gold");
 
-        Log.Information("[FlatNature] Block lookup: rock=" + context.RockIndex +
+        Console.WriteLine("[FlatNature] Block lookup: rock=" + context.RockIndex +
             ", dirt=" + context.DirtIndex + ", grass=" + context.GrassIndex +
             ", snow=" + context.SnowIndex + ", water=" + context.WaterIndex +
             ", wood=" + context.WoodIndex + ", leaves=" + context.LeavesIndex +
