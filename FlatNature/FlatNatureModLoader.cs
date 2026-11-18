@@ -23,11 +23,11 @@ public sealed class FlatNatureModLoader : ModLoader
             ModsManager.RegisterHook("OnProjectDisposed", this);
             ModsManager.RegisterHook("OnTerrainContentsGenerated", this);
 
-            Log.Information("[FlatNature] Initialized. Only newly created Flat worlds with the marker are affected.");
+            Console.WriteLine("[FlatNature] Initialized. Only newly created Flat worlds with the marker are affected.");
         }
         catch (Exception ex)
         {
-            Log.Error("[FlatNature] Initialization failed: " + ex);
+            Console.WriteLine("[FlatNature] Initialization failed: " + ex);
         }
     }
 
@@ -44,14 +44,14 @@ public sealed class FlatNatureModLoader : ModLoader
         }
         catch (Exception ex)
         {
-            Log.Error("[FlatNature] Could not verify the loaded world: " + ex);
+            Console.WriteLine("[FlatNature] Could not verify the loaded world: " + ex);
         }
     }
 
     public override void OnProjectDisposed()
     {
         Interlocked.Exchange(ref s_context, null);
-        Log.Information("[FlatNature] World context cleared.");
+        Console.WriteLine("[FlatNature] World context cleared.");
     }
 
     public override void OnTerrainContentsGenerated(TerrainChunk chunk)
@@ -66,7 +66,7 @@ public sealed class FlatNatureModLoader : ModLoader
         }
         catch (Exception ex)
         {
-            Log.Error("[FlatNature] Chunk generation failed at " + chunk.Origin + ": " + ex);
+            Console.WriteLine("[FlatNature] Chunk generation failed at " + chunk.Origin + ": " + ex);
         }
     }
 
@@ -107,12 +107,12 @@ public sealed class FlatNatureModLoader : ModLoader
 
             FlatNatureWorldContext context = FlatNatureWorldContext.Create(gameInfo);
             Interlocked.Exchange(ref s_context, context);
-            Log.Information("[FlatNature] Active in newly created Flat world '" + gameInfo.DirectoryName + "'.");
+            Console.WriteLine("[FlatNature] Active in newly created Flat world '" + gameInfo.DirectoryName + "'.");
         }
         catch (Exception ex)
         {
             Interlocked.Exchange(ref s_context, null);
-            Log.Error("[FlatNature] World marker check failed; generation remains disabled: " + ex);
+            Console.WriteLine("[FlatNature] World marker check failed; generation remains disabled: " + ex);
         }
     }
 }
