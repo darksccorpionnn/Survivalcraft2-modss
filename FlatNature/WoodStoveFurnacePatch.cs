@@ -1,5 +1,7 @@
 using System;
 using System.Reflection;
+using Engine;
+using GameEntitySystem;
 using HarmonyLib;
 
 namespace Game;
