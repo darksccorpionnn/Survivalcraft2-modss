@@ -6,9 +6,9 @@ internal static class FlatNatureGenerator
 {
     private const int ChunkSize = 16;
     private const int ChunkHeight = 256;
-    private const int MountainGrid = 340;
-    private const int LakeGrid = 420;
-    private const int ForestGrid = 200;
+    private const int MountainGrid = 190;
+    private const int LakeGrid = 230;
+    private const int ForestGrid = 125;
     private const int TreeGrid = 9;
 
     internal static void GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
@@ -191,13 +191,13 @@ internal static class FlatNatureGenerator
         for (int ore = 0; ore < context.OreIndices.Count; ore++)
         {
             uint h = Hash(context.Seed, chunk.Origin.X, chunk.Origin.Y, 700 + ore * 37);
-            if (h % 100u >= 62u)
+            if (h % 100u >= 90u)
                 continue;
 
             int centerX = 2 + (int)((h >> 8) % 12u);
             int centerZ = 2 + (int)((h >> 16) % 12u);
             int centerY = 4 + (int)((h >> 24) % (uint)Math.Max(1, maxY - 3));
-            int length = 4 + (int)((h >> 4) % 5u);
+            int length = 7 + (int)((h >> 4) % 7u);
             int direction = (int)((h >> 12) % 3u);
             int oreValue = Terrain.MakeBlockValue(context.OreIndices[ore]);
 
@@ -325,14 +325,14 @@ internal static class FlatNatureGenerator
                 int cellX = gx + ox;
                 int cellZ = gz + oz;
                 uint h = Hash(seed, cellX, cellZ, 1001);
-                if (h % 100u >= 28u)
+                if (h % 100u >= 52u)
                     continue;
 
                 int centerX = cellX * MountainGrid + 70 + (int)((h >> 8) % 200u);
                 int centerZ = cellZ * MountainGrid + 70 + (int)((h >> 16) % 200u);
-                float radius = 88f + ((h >> 24) % 62u);
+                float radius = 78f + ((h >> 24) % 65u);
                 bool snowy = ((h >> 5) % 3u) == 0u;
-                float peak = snowy ? 54f + ((h >> 12) % 34u) : 20f + ((h >> 12) % 23u);
+                float peak = snowy ? 48f + ((h >> 12) % 42u) : 24f + ((h >> 12) % 30u);
 
                 float dx = x - centerX;
                 float dz = z - centerZ;
@@ -366,12 +366,12 @@ internal static class FlatNatureGenerator
             int cellX = gx + ox;
             int cellZ = gz + oz;
             uint h = Hash(seed, cellX, cellZ, 2001);
-            if (h % 100u >= 10u)
+            if (h % 100u >= 24u)
                 continue;
 
             int centerX = cellX * LakeGrid + 65 + (int)((h >> 8) % 290u);
             int centerZ = cellZ * LakeGrid + 65 + (int)((h >> 16) % 290u);
-            float radius = 40f + ((h >> 24) % 24u);
+            float radius = 48f + ((h >> 24) % 34u);
             float dx = x - centerX;
             float dz = z - centerZ;
             float distance = MathF.Sqrt(dx * dx + dz * dz);
@@ -398,12 +398,12 @@ internal static class FlatNatureGenerator
             int cellX = gx + ox;
             int cellZ = gz + oz;
             uint h = Hash(seed, cellX, cellZ, 3001);
-            if (h % 100u >= 25u)
+            if (h % 100u >= 48u)
                 continue;
 
             int centerX = cellX * ForestGrid + 35 + (int)((h >> 8) % 130u);
             int centerZ = cellZ * ForestGrid + 35 + (int)((h >> 16) % 130u);
-            float radius = 48f + ((h >> 24) % 38u);
+            float radius = 42f + ((h >> 24) % 36u);
             float dx = x - centerX;
             float dz = z - centerZ;
             float distance = MathF.Sqrt(dx * dx + dz * dz);
