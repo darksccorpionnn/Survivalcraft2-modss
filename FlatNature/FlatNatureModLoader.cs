@@ -64,7 +64,7 @@ public sealed class FlatNatureModLoader : ModLoader
         ref bool mute,
         ref int playerDataDugAdd)
     {
-        TreeCapitator.TryChop(componentMiner, cellValue);
+        TreeCapitator.TryChop(componentMiner, digValue, cellValue);
     }
 
     public override void OnTerrainContentsGenerated(TerrainChunk chunk)
