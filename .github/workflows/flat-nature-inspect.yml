@@ -32,3 +32,5 @@ jobs:
           path: ApiInspector/bin/Release/net10.0/api-inspection.txt
           if-no-files-found: error
           retention-days: 14
+
+# TreeCapitator API inspection extension
