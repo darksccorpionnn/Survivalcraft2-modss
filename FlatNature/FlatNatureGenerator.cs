@@ -348,7 +348,7 @@ internal static class FlatNatureGenerator
         }
     }
 
-    // Use one consistent tall spruce silhouette across Survivalcraft block registries.
+    // Tall, broad, tiered evergreen matching the reference conifer silhouette.
     private static void BuildSpruceTree(
         TerrainChunk chunk, int x, int groundY, int z, int height,
         FlatNatureWorldContext context, ref bool changed)
@@ -356,26 +356,60 @@ internal static class FlatNatureGenerator
         int woodValue = Terrain.MakeBlockValue(context.WoodIndex);
         int leavesValue = Terrain.MakeBlockValue(context.LeavesIndex);
 
+        // Keep a clearly visible, thick central trunk below the crown.
         for (int y = groundY + 1; y <= groundY + height; y++)
             SetCell(chunk, x, y, z, woodValue, ref changed);
 
-        // Broad lower boughs taper into a pointed crown, like a tall spruce.
-        for (int layer = -5; layer <= 4; layer++)
+        // The crown starts around one third of the way up the tree.
+        // Overlapping irregular bough tiers create the full, layered pine shape.
+        int crownStart = groundY + height / 3;
+        int crownHeight = groundY + height;
+        for (int y = crownStart; y <= crownHeight; y++)
         {
-            int centerY = groundY + height + layer;
-            int radius = layer <= -3 ? 3 : layer <= 0 ? 2 : 1;
+            float t = (y - crownStart) / (float)Math.Max(1, crownHeight - crownStart);
+            int radius = Math.Max(1, (int)MathF.Round(5f * (1f - t) + 1f));
+            int tierOffset = (y - crownStart) % 4;
+            if (tierOffset == 3 && radius > 1)
+                radius--;
+
             for (int dx = -radius; dx <= radius; dx++)
             for (int dz = -radius; dz <= radius; dz++)
             {
-                if (dx * dx + dz * dz > radius * radius + 1)
+                float distance = MathF.Sqrt(dx * dx + dz * dz);
+                float edgeNoise = ((Hash(context.Seed, x + dx, z + dz, y * 13) >> 5) & 3u) * 0.18f;
+                if (distance > radius + edgeNoise)
                     continue;
+
                 int lx = x + dx;
                 int lz = z + dz;
                 if (lx < 0 || lx >= ChunkSize || lz < 0 || lz >= ChunkSize ||
-                    centerY < 1 || centerY >= ChunkHeight)
+                    y < 1 || y >= ChunkHeight)
                     continue;
-                if (Terrain.ExtractContents(chunk.GetCellValueFast(lx, centerY, lz)) == 0)
-                    SetCell(chunk, lx, centerY, lz, leavesValue, ref changed);
+
+                // Preserve the trunk through the middle of the foliage.
+                if (dx == 0 && dz == 0)
+                    continue;
+
+                if (Terrain.ExtractContents(chunk.GetCellValueFast(lx, y, lz)) == 0)
+                    SetCell(chunk, lx, y, lz, leavesValue, ref changed);
+            }
+        }
+
+        // A compact pointed top finishes the conical crown.
+        for (int y = crownHeight - 2; y <= crownHeight + 1 && y < ChunkHeight; y++)
+        {
+            int radius = y >= crownHeight ? 0 : (y == crownHeight - 1 ? 1 : 2);
+            for (int dx = -radius; dx <= radius; dx++)
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                int lx = x + dx;
+                int lz = z + dz;
+                if (lx < 0 || lx >= ChunkSize || lz < 0 || lz >= ChunkSize)
+                    continue;
+                if (dx == 0 && dz == 0)
+                    continue;
+                if (Terrain.ExtractContents(chunk.GetCellValueFast(lx, y, lz)) == 0)
+                    SetCell(chunk, lx, y, lz, leavesValue, ref changed);
             }
         }
     }
