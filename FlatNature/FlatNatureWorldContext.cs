@@ -14,6 +14,8 @@ internal sealed class FlatNatureWorldContext
     internal int SnowIndex { get; private set; }
     internal int SandIndex { get; private set; }
     internal int WoodIndex { get; private set; }
+    internal int PineWoodIndex { get; private set; }
+    internal int PineLeavesIndex { get; private set; }
     internal int LeavesIndex { get; private set; }
     internal List<int> TreeWoodIndices { get; } = new();
     internal List<int> TreeLeavesIndices { get; } = new();
@@ -61,11 +63,14 @@ internal sealed class FlatNatureWorldContext
         if (context.SandIndex == 0)
             context.SandIndex = context.DirtIndex;
 
-        context.WoodIndex = FindBlockByType("WoodBlock");
+        context.PineWoodIndex = FindBlockContaining("Pine", "Wood");
+        context.PineLeavesIndex = FindBlockContaining("Pine", "Leaves");
+
+        context.WoodIndex = context.PineWoodIndex > 0 ? context.PineWoodIndex : FindBlockByType("WoodBlock");
         if (context.WoodIndex == 0)
             context.WoodIndex = FindBlockByName(new[] { "OakWood", "Wood" });
 
-        context.LeavesIndex = FindBlockByType("LeavesBlock");
+        context.LeavesIndex = context.PineLeavesIndex > 0 ? context.PineLeavesIndex : FindBlockByType("LeavesBlock");
         if (context.LeavesIndex == 0)
             context.LeavesIndex = FindBlockByName(new[] { "OakLeaves", "Leaves" });
 
@@ -94,6 +99,7 @@ internal sealed class FlatNatureWorldContext
             ", dirt=" + context.DirtIndex + ", grass=" + context.GrassIndex +
             ", snow=" + context.SnowIndex + ", water=" + context.WaterIndex +
             ", wood=" + context.WoodIndex + ", leaves=" + context.LeavesIndex +
+            ", pineWood=" + context.PineWoodIndex + ", pineLeaves=" + context.PineLeavesIndex +
             ", ores=" + context.OreIndices.Count);
 
         return context;
