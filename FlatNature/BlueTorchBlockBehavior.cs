@@ -142,7 +142,7 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
         m_glowPointsByCell[cell] = new[] { first, second };
 
         // The terrain-vertex hook adds a local blue cast to nearby block faces.
-        BlueTorchTerrainLightPatch.Register(cell, new Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
+        BlueTorchTerrainLightPatch.Register(cell, new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), m_terrain);
     }
 
     private GlowPoint CreateGlowPoint(Vector3 position, Vector3 right, Vector3 up, Vector3 forward)
@@ -185,6 +185,6 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
             m_glowPointsByCell.Remove(cell);
         }
 
-        BlueTorchTerrainLightPatch.Unregister(cell);
+        BlueTorchTerrainLightPatch.Unregister(cell, m_terrain);
     }
 }
