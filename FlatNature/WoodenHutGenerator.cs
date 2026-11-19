@@ -37,8 +37,8 @@ internal static class WoodenHutGenerator
             return false;
 
         // Keep the full 9x9 house inside the owning 16x16 chunk.
-        int startX = 1 + (int)((hash >> 24) % 2u);
-        int startZ = 1 + (int)((Hash(context.Seed, regionX, regionZ, 7321) >> 8) % 2u);
+        int startX = 1;
+        int startZ = 1;
         int groundY = FindFlatGround(chunk, startX, startZ, context.WaterIndex);
         if (groundY < 2 || groundY > 243 ||
             !CanPlace(chunk, startX, startZ, groundY, context.WaterIndex))
@@ -71,8 +71,8 @@ internal static class WoodenHutGenerator
         int startZ = anchorZ - HutSize / 2;
         int groundY = anchorY - 1;
 
-        for (int x = startX; x < startX + HutSize; x++)
-        for (int z = startZ; z < startZ + HutSize; z++)
+        for (int x = startX; x < startX + 15; x++)
+        for (int z = startZ; z < startZ + 9; z++)
         {
             int supportValue = terrain.Terrain.GetCellValue(x, groundY, z);
             int supportContents = Terrain.ExtractContents(supportValue);
@@ -327,8 +327,8 @@ internal static class WoodenHutGenerator
     private static int FindFlatGround(TerrainChunk chunk, int startX, int startZ, int waterIndex)
     {
         int ground = -1;
-        for (int x = startX; x < startX + HutSize; x++)
-        for (int z = startZ; z < startZ + HutSize; z++)
+        for (int x = startX; x < startX + 15; x++)
+        for (int z = startZ; z < startZ + 9; z++)
         {
             int y = chunk.CalculateTopmostCellHeight(x, z);
             while (y > 1 && Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) == 0)
@@ -347,8 +347,8 @@ internal static class WoodenHutGenerator
 
     private static bool CanPlace(TerrainChunk chunk, int sx, int sz, int groundY, int waterIndex)
     {
-        for (int x = sx; x < sx + HutSize; x++)
-        for (int z = sz; z < sz + HutSize; z++)
+        for (int x = sx; x < sx + 15; x++)
+        for (int z = sz; z < sz + 9; z++)
         {
             int groundValue = chunk.GetCellValueFast(x, groundY, z);
             int contents = Terrain.ExtractContents(groundValue);
