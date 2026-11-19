@@ -35,7 +35,7 @@ internal static class WoodenHutGenerator
         int startX = 4;
         int startZ = 4;
         int groundY = FindFlatGround(chunk, startX, startZ, context.WaterIndex);
-        if (groundY < 2 || groundY > 247)
+        if (groundY < 2 || groundY > 246)
             return;
 
         if (!CanPlace(chunk, startX, startZ, groundY, context.WaterIndex))
@@ -59,7 +59,7 @@ internal static class WoodenHutGenerator
         SubsystemTerrain terrain, int anchorX, int anchorY, int anchorZ,
         int waterIndex, int kitIndex)
     {
-        if (terrain == null || anchorY < 2 || anchorY > 248)
+        if (terrain == null || anchorY < 2 || anchorY > 247)
             return false;
 
         int plankIndex = FindBlock("WoodPlanks", "Planks", "OakPlanks", "PinePlanks");
@@ -90,7 +90,7 @@ internal static class WoodenHutGenerator
             if (supportBlock == null || !supportBlock.IsCollidable_(supportValue))
                 return false;
 
-            for (int y = anchorY; y <= anchorY + 6; y++)
+            for (int y = anchorY; y <= anchorY + 7; y++)
             {
                 int value = terrain.Terrain.GetCellValue(x, y, z);
                 int contents = Terrain.ExtractContents(value);
@@ -152,7 +152,7 @@ internal static class WoodenHutGenerator
             PutWorld(terrain, sx + x, roofY, sz, plankIndex);
             PutWorld(terrain, sx + x, roofY + 1, sz + 1, plankIndex);
             PutWorld(terrain, sx + x, roofY + 2, sz + 2, plankIndex);
-            PutWorld(terrain, sx + x, roofY + 2, sz + 3, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 3, sz + 3, plankIndex);
             PutWorld(terrain, sx + x, roofY + 2, sz + 4, plankIndex);
             PutWorld(terrain, sx + x, roofY + 1, sz + 5, plankIndex);
             PutWorld(terrain, sx + x, roofY, sz + 6, plankIndex);
@@ -204,7 +204,7 @@ internal static class WoodenHutGenerator
             if (groundBlock == null || !groundBlock.IsCollidable_(groundValue))
                 return false;
 
-            for (int y = groundY + 1; y <= groundY + 7; y++)
+            for (int y = groundY + 1; y <= groundY + 8; y++)
             {
                 if (Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) != 0)
                     return false;
@@ -266,7 +266,7 @@ internal static class WoodenHutGenerator
             Put(chunk, sx + x, roofY, sz, plankIndex);
             Put(chunk, sx + x, roofY + 1, sz + 1, plankIndex);
             Put(chunk, sx + x, roofY + 2, sz + 2, plankIndex);
-            Put(chunk, sx + x, roofY + 2, sz + 3, plankIndex);
+            Put(chunk, sx + x, roofY + 3, sz + 3, plankIndex);
             Put(chunk, sx + x, roofY + 2, sz + 4, plankIndex);
             Put(chunk, sx + x, roofY + 1, sz + 5, plankIndex);
             Put(chunk, sx + x, roofY, sz + 6, plankIndex);
