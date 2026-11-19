@@ -114,6 +114,9 @@ internal static class FlatNatureGenerator
         // Trees are grouped into woodland patches, leaving large open plain areas.
         GenerateForestTrees(chunk, surface, land, context, ref changed);
 
+        // Structures are generated after terrain and vegetation so they sit on the finished surface.
+        WoodenHutGenerator.GenerateChunk(chunk, context);
+
         if (changed)
         {
             chunk.ModificationCounter++;
