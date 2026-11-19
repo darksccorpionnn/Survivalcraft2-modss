@@ -246,7 +246,7 @@ internal static class WoodenHutGenerator
                 y--;
 
             int value = chunk.GetCellValueFast(x, y, z);
-            if (y < 2 || Terrain.ExtractContents(value) == waterIndex)
+            if (y < 2 || (waterIndex > 0 && Terrain.ExtractContents(value) == waterIndex))
                 return -1;
             if (ground < 0)
                 ground = y;
@@ -310,6 +310,10 @@ internal static class WoodenHutGenerator
 
     private static int FindBlockType(string typeToken)
     {
+        foreach (KeyValuePair<Type, int> item in BlocksManager.BlockTypeToIndex)
+            if (item.Value > 0 && string.Equals(item.Key.Name, typeToken, StringComparison.OrdinalIgnoreCase))
+                return item.Value;
+
         foreach (KeyValuePair<Type, int> item in BlocksManager.BlockTypeToIndex)
             if (item.Value > 0 && item.Key.Name.IndexOf(typeToken, StringComparison.OrdinalIgnoreCase) >= 0)
                 return item.Value;
