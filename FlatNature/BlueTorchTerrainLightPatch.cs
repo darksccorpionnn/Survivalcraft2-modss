@@ -17,6 +17,7 @@ internal static class BlueTorchTerrainLightPatch
     private const float MaximumTintStrength = 0.72f;
 
     private static readonly object s_sync = new();
+    private static SubsystemTerrain s_terrain;
     private static readonly Dictionary<Point3, Vector3> s_sourcesByCell = new();
     private static volatile Vector3[] s_sourceSnapshot = Array.Empty<Vector3>();
 
@@ -49,21 +50,55 @@ internal static class BlueTorchTerrainLightPatch
         Log.Information("[FlatNature] Local blue terrain-light tint patch installed.");
     }
 
-    internal static void Register(Point3 cell, Vector3 sourcePosition)
+    internal static void Register(Point3 cell, Vector3 sourcePosition, SubsystemTerrain terrain)
     {
         lock (s_sync)
         {
+            s_terrain = terrain;
             s_sourcesByCell[cell] = sourcePosition;
             RebuildSnapshot();
         }
+
+        RefreshGeometryNear(sourcePosition);
     }
 
-    internal static void Unregister(Point3 cell)
+    internal static void Unregister(Point3 cell, SubsystemTerrain terrain)
     {
+        Vector3? removedPosition = null;
         lock (s_sync)
         {
+            if (s_sourcesByCell.TryGetValue(cell, out Vector3 oldPosition))
+                removedPosition = oldPosition;
+
             if (s_sourcesByCell.Remove(cell))
                 RebuildSnapshot();
+
+            if (terrain != null)
+                s_terrain = terrain;
+        }
+
+        if (removedPosition.HasValue)
+            RefreshGeometryNear(removedPosition.Value);
+    }
+
+    private static void RefreshGeometryNear(Vector3 position)
+    {
+        SubsystemTerrain terrain = s_terrain;
+        TerrainUpdater updater = terrain?.TerrainUpdater;
+        if (terrain == null || updater == null)
+            return;
+
+        TerrainChunk chunk = terrain.Terrain.GetChunkAtCell(
+            (int)MathF.Floor(position.X),
+            (int)MathF.Floor(position.Z));
+
+        if (chunk != null)
+        {
+            // A 1-chunk neighborhood covers the 4.8-block light radius even
+            // when a torch sits close to a chunk edge. Force slice hashes to
+            // invalidate so already-built neighboring faces are regenerated.
+            updater.DowngradeChunkNeighborhoodState(
+                chunk.Coords, 1, TerrainChunkState.InvalidVertices1, true);
         }
     }
 
