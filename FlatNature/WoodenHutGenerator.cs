@@ -28,7 +28,7 @@ internal static class WoodenHutGenerator
             return false;
 
         int ownerChunkX = regionX * ChunksPerRegion + (int)((hash >> 8) % ChunksPerRegion);
-        int ownerChunkZ = regionZ * ChunksPerRegion + (int)((hash >> 16) % ChunksPerRegion);
+        int ownerChunkZ = regionZ * ChunksPerRegion + 1 + (int)((hash >> 16) % 7u);
         if (FloorDiv(chunk.Origin.X, ChunkSize) != ownerChunkX ||
             FloorDiv(chunk.Origin.Y, ChunkSize) != ownerChunkZ)
             return false;
