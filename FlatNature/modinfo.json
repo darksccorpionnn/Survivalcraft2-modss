@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Flat Nature + Wood Stove + Blue Torch",
-  "Version": "0.2.29",
+  "Version": "0.2.30",
   "ApiVersion": "1.9.5.1",
-  "Description": "Flat Nature with a single-entrance cottage and a spaced two-room grand house. The grand house has a continuous solid gabled roof, a proper two-leaf front double door, clean stone terrace and furnished rooms. Includes wood stove, iron kettle and blue lantern assets.",
+  "Description": "Flat Nature with two neighboring cottage-style houses: the original small single-entrance cottage and a slightly larger two-room version with an expanded rear garden. Includes wood stove, iron kettle and blue lantern assets.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 11000,
   "NonPersistentMod": false,
