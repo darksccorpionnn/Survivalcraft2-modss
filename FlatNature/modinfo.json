@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Flat Nature + Wood Stove + Blue Torch",
-  "Version": "0.2.19",
+  "Version": "0.2.20",
   "ApiVersion": "1.9.5.1",
-  "Description": "Flat Nature terrain features, functional wood-burning stove, wall-mounted iron lantern, blue-flame torch and deterministic wooden hut structures with manual placement support.",
+  "Description": "Flat Nature terrain features, functional wood-burning stove, wall-mounted iron lantern, original soft-blue torch lighting and automatic/manual wooden hut structures.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 11000,
   "NonPersistentMod": false,
