@@ -194,8 +194,14 @@ internal static class WoodenHutGenerator
         for (int x = startX; x < startX + HutSize; x++)
         for (int z = startZ; z < startZ + HutSize; z++)
         {
-            int groundContents = Terrain.ExtractContents(chunk.GetCellValueFast(x, groundY, z));
-            if (groundContents == 0 || (waterIndex > 0 && groundContents == waterIndex)) // never build over air or water
+            int groundValue = chunk.GetCellValueFast(x, groundY, z);
+            int groundContents = Terrain.ExtractContents(groundValue);
+            if (groundContents <= 0 || groundContents >= BlocksManager.Blocks.Length ||
+                (waterIndex > 0 && groundContents == waterIndex))
+                return false;
+
+            Block groundBlock = BlocksManager.Blocks[groundContents];
+            if (groundBlock == null || !groundBlock.IsCollidable_(groundValue))
                 return false;
 
             for (int y = groundY + 1; y <= groundY + 7; y++)
