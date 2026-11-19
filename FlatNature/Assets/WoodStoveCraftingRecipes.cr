@@ -15,4 +15,9 @@
     " a "
     " b "
   </Recipe>
+  <Recipe Result="WoodenHutKitBlock" ResultCount="1" RequiredHeatLevel="0" a="woodplanks" b="stick" Description="[0]">
+    "aaa"
+    "aba"
+    "aaa"
+  </Recipe>
 </Mod>
