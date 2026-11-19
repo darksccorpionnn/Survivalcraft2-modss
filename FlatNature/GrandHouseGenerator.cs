@@ -80,16 +80,22 @@ internal static class GrandHouseGenerator
             int side = (q==4||q==10) && windowBand ? g : p;
             put(q,y,0,front);
             put(q,y,10,rear);
-            put(0,y,q,side);
-            put(14,y,q,side);
+        }
+        for (int y=floorY+1;y<=floorY+4;y++)
+        for (int q=0;q<SizeZ;q++)
+        {
+            put(0,y,q,side); put(14,y,q,side);
         }
         for (int y=floorY+1;y<=floorY+4;y++)
         {
             put(0,y,0,l); put(14,y,0,l); put(0,y,10,l); put(14,y,10,l);
         }
-        for (int q=0;q<SizeZ;q++)
+        for (int q=0;q<SizeX;q++)
         {
             put(q,floorY+4,0,l); put(q,floorY+4,10,l);
+        }
+        for (int q=0;q<SizeZ;q++)
+        {
             put(0,floorY+4,q,l); put(14,floorY+4,q,l);
         }
 
