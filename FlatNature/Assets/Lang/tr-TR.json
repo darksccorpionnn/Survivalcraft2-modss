@@ -17,6 +17,11 @@
       "DisplayName": "Mavi Meşale",
       "Description": "Normal meşalenin duvar ve zemin yerleşimini koruyan, hareketli mavi alevli meşale.",
       "CRDescription": "1 Kömür Parçası ve 1 Çubuk. Çalışma Masasında üret."
+    },
+    "WoodenHutKitBlock": {
+      "DisplayName": "Ahşap Kulübe Kiti",
+      "Description": "Yere yerleştirerek uygun düz zeminde 7×7 ahşap kulübe kurar.",
+      "CRDescription": "8 Ahşap Kalas ve 1 Çubuk. Çalışma Masasında üret."
     }
   }
 }
