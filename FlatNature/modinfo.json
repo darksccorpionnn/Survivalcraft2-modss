@@ -1,9 +1,9 @@
 {
   "$schema": "https://gitee.com/SC-SPM/SurvivalcraftApi/raw/SCAPI1.9/Survivalcraft/Content/modinfo-scheme.json",
   "Name": "Flat Nature + Wood Stove + Blue Torch",
-  "Version": "0.2.23",
+  "Version": "0.2.24",
   "ApiVersion": "1.9.5.1",
-  "Description": "Flat Nature with sparse cottage villages, improved stone roofs, furnished interiors, fenced crop gardens and stone paths.",
+  "Description": "Flat Nature with sparse furnished cottages, wooden-fenced gardens with ground-level moist compost, stone roofs and paths.",
   "ScVersion": "2.4.0.0",
   "LoadOrder": 11000,
   "NonPersistentMod": false,
