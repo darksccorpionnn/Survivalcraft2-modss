@@ -37,8 +37,8 @@ public sealed class BlueTorchBlock : TorchBlock
         return placement;
     }
 
-    // Matches the vanilla torch's scalar light emission.
-    public override int GetEmittedLightAmount(int value) => 14;
+    // Uses the maximum native scalar light level supported by the game.
+    public override int GetEmittedLightAmount(int value) => 15;
 
     public override void Initialize()
     {
