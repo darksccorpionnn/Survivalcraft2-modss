@@ -1,17 +1,19 @@
 using System;
+using System.Collections.Generic;
 using Engine;
 using TemplatesDatabase;
 
 namespace Game;
 
 /// <summary>
-/// Dedicated native-torch behavior for BlueTorchBlock.
-/// It preserves the vanilla particle positions and block-support rules,
-/// but uses BlueFireParticleSystem for the visible flame.
+/// Dedicated torch behavior for BlueTorchBlock.
+/// The native torch flame is replaced by a blue flame and a softer,
+/// wider blue particle layer to create a visible glow around the torch.
 /// </summary>
 public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
 {
     private SubsystemTerrain m_terrain;
+    private readonly Dictionary<Point3, FireParticleSystem> m_glowParticleSystemsByCell = new();
 
     public override int[] HandledBlocks
     {
@@ -51,16 +53,29 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
 
     public override void OnChunkDiscarding(TerrainChunk chunk)
     {
-        // The inherited cleanup removes FireParticleSystem instances from the
-        // same native dictionary, and BlueFireParticleSystem derives from that type.
+        // Remove only the extra glow systems belonging to this discarded chunk.
+        List<Point3> cellsToRemove = new();
+        foreach (KeyValuePair<Point3, FireParticleSystem> pair in m_glowParticleSystemsByCell)
+        {
+            Point3 cell = pair.Key;
+            if (cell.X >= chunk.BoundingBox.Min.X && cell.X < chunk.BoundingBox.Max.X &&
+                cell.Z >= chunk.BoundingBox.Min.Z && cell.Z < chunk.BoundingBox.Max.Z)
+            {
+                m_subsystemParticles?.RemoveParticleSystem(pair.Value, false);
+                cellsToRemove.Add(cell);
+            }
+        }
+
+        foreach (Point3 cell in cellsToRemove)
+            m_glowParticleSystemsByCell.Remove(cell);
+
+        // The inherited cleanup removes the regular blue flame system.
         base.OnChunkDiscarding(chunk);
     }
 
     public override void OnNeighborBlockChanged(
         int x, int y, int z, int neighborX, int neighborY, int neighborZ)
     {
-        // Native behavior hard-codes the vanilla torch IDs (31/132), so validate
-        // this dynamic block's support with the same face-to-cell mapping.
         int value = m_terrain.Terrain.GetCellValueFast(x, y, z);
         if (Terrain.ExtractContents(value) != BlocksManager.GetBlockIndex<BlueTorchBlock>())
             return;
@@ -114,19 +129,32 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
         };
 
         Vector3 position = new Vector3(x, y, z) + offset;
-        BlueFireParticleSystem fire = new BlueFireParticleSystem(position, 0.15f, 32f);
-
         Point3 cell = new Point3(x, y, z);
+
+        BlueFireParticleSystem fire = new BlueFireParticleSystem(position, 0.15f, 32f);
         m_particleSystemsByCell[cell] = fire;
         m_subsystemParticles.AddParticleSystem(fire, false);
+
+        // A larger, low-opacity blue particle layer creates a soft aura.
+        // It is separate from the sharp flame so the flame remains readable.
+        BlueGlowParticleSystem glow = new BlueGlowParticleSystem(position, 0.52f, 24f);
+        m_glowParticleSystemsByCell[cell] = glow;
+        m_subsystemParticles.AddParticleSystem(glow, false);
     }
 
     private void RemoveBlueTorch(int x, int y, int z)
     {
+        Point3 cell = new Point3(x, y, z);
+
+        if (m_glowParticleSystemsByCell.TryGetValue(cell, out FireParticleSystem glow))
+        {
+            m_subsystemParticles?.RemoveParticleSystem(glow, false);
+            m_glowParticleSystemsByCell.Remove(cell);
+        }
+
         if (m_particleSystemsByCell == null)
             return;
 
-        Point3 cell = new Point3(x, y, z);
         if (m_particleSystemsByCell.TryGetValue(cell, out FireParticleSystem fire))
         {
             m_subsystemParticles?.RemoveParticleSystem(fire, false);
