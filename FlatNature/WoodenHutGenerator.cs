@@ -128,16 +128,18 @@ internal static class WoodenHutGenerator
         {
             for (int p = 1; p < HutSize - 1; p++)
             {
-                bool doorOpening = p == 4 && y <= wallBottom + 1;
-                if (!doorOpening)
+                bool frontDoorOpening = p == 4 && y <= wallBottom + 1;
+                if (!frontDoorOpening)
                 {
                     int frontValue = (y == wallBottom + 1 && (p == 2 || p == 6))
                         ? m.GlassValue : m.PlankValue;
-                    int rearValue = (y == wallBottom + 1 && (p == 2 || p == 6))
-                        ? m.GlassValue : m.PlankValue;
                     place(sx + p, y, sz, frontValue);
-                    place(sx + p, y, sz + HutSize - 1, rearValue);
                 }
+
+                // The rear wall is solid; the cottage has only one entrance.
+                int rearValue = (y == wallBottom + 1 && (p == 2 || p == 6))
+                    ? m.GlassValue : m.PlankValue;
+                place(sx + p, y, sz + HutSize - 1, rearValue);
 
                 int sideValue = (y == wallBottom + 1 && (p == 3 || p == 5))
                     ? m.GlassValue : m.PlankValue;
@@ -228,7 +230,8 @@ internal static class WoodenHutGenerator
         {
             for (int x = 0; x < gardenSize; x++)
             {
-                place(gx + x, groundY + 1, gz, m.FenceValue);
+                if (x != gardenSize / 2)
+                    place(gx + x, groundY + 1, gz, m.FenceValue);
                 place(gx + x, groundY + 1, gz + gardenSize - 1, m.FenceValue);
             }
             for (int z = 1; z < gardenSize - 1; z++)
@@ -247,11 +250,14 @@ internal static class WoodenHutGenerator
                 place(gx + x, groundY, gz + z, m.MoistCompostValue);
         }
 
-        // Keep a simple stone approach from the cottage door to the garden.
-        for (int z = -1; z <= 5; z++)
+        // Stone path stays entirely outside the cottage. It exits the front
+        // door, follows the front facade, then reaches the centered garden gate.
+        for (int z = -2; z <= -1; z++)
             place(sx + 4, floorY, sz + z, m.PathValue);
-        for (int x = sx + 4; x <= gx + 3; x++)
-            place(x, floorY, sz + 5, m.PathValue);
+        for (int x = sx + 4; x <= gx + gardenSize / 2; x++)
+            place(x, floorY, sz - 2, m.PathValue);
+        for (int z = sz - 1; z < gz; z++)
+            place(gx + gardenSize / 2, floorY, z, m.PathValue);
     }
 
     private static bool TryGetMaterials(out HutMaterials m)
