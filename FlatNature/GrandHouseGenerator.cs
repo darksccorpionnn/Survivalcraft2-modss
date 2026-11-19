@@ -102,9 +102,10 @@ internal static class GrandHouseGenerator
         }
 
         // Double front doors: two adjacent two-block doorways.
+        // Both door leaves use the same closed-door rotation data (0),
+        // matching the working two-cell door implementation used by the cottage.
         put(6,floorY+1,10,d); put(6,floorY+2,10,d);
-        put(7,floorY+1,10,Terrain.ReplaceData(d,1));
-        put(7,floorY+2,10,Terrain.ReplaceData(d,1));
+        put(7,floorY+1,10,d); put(7,floorY+2,10,d);
 
         // Two rooms divided by a full-height interior wall, with a wide passage.
         for (int x=1;x<14;x++)
@@ -112,17 +113,22 @@ internal static class GrandHouseGenerator
             if (x==6||x==7||x==8) continue;
             put(x,floorY+1,5,p); put(x,floorY+2,5,p); put(x,floorY+3,5,p);
         }
-        // High gabled roof with stone trim and a raised central ridge.
+        // Continuous solid gabled roof: fill the entire triangular cross-section
+        // instead of placing isolated one-block-wide roof strips.
         for (int x=0;x<SizeX;x++)
         {
             int rise = 5 - Math.Abs(7-x)*5/7;
             int roofY = floorY+5+rise;
-            for (int z=-1;z<=11;z++) put(x,roofY,z,s);
+            for (int y=floorY+5;y<=roofY;y++)
+            for (int z=0;z<=11;z++)
+                put(x,y,z,s);
         }
-        for (int z=0;z<SizeZ;z++)
+        // Raised ridge cap and clean stone eaves.
+        for (int z=0;z<=11;z++)
         {
             put(7,floorY+10,z,l);
-            put(1,floorY+5,z,s); put(13,floorY+5,z,s);
+            put(0,floorY+5,z,s);
+            put(14,floorY+5,z,s);
         }
 
         // Furnish both rooms independently.
@@ -139,13 +145,10 @@ internal static class GrandHouseGenerator
             put(13,floorY+3,8,Terrain.ReplaceData(tv,3));
         }
 
-        // Grand front terrace, steps, and low decorative garden border.
+        // Simple stone entrance terrace and centered approach steps.
         for (int x=4;x<=9;x++) put(x,ground,11,s);
-        if (fence>0)
-        {
-            int fv=Terrain.MakeBlockValue(fence);
-            for (int x=1;x<=13;x++) { put(x,floorY,11,fv); }
-        }
+        for (int x=5;x<=8;x++) put(x,ground,12,s);
+
         Console.WriteLine("[FlatNature] Grand two-room house generated opposite the cottage at "+chunk.Origin.X+","+ground+","+chunk.Origin.Y);
         return true;
     }
