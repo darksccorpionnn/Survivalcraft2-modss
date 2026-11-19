@@ -114,10 +114,8 @@ internal static class FlatNatureGenerator
         // Trees are grouped into woodland patches, leaving large open plain areas.
         GenerateForestTrees(chunk, surface, land, context, ref changed);
 
-        // Structures are generated after terrain and vegetation so they sit on the finished surface.
-        if (WoodenHutGenerator.GenerateChunk(chunk, context))
-            changed = true;
-        if (ExpandedCottageGenerator.GenerateChunk(chunk, context))
+        // Deterministic village layout replaces sparse individual cottage spawns.
+        if (VillageGenerator.GenerateChunk(chunk, context))
             changed = true;
 
         if (changed)
