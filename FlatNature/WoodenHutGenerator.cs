@@ -11,9 +11,9 @@ internal static class WoodenHutGenerator
 {
     private const int ChunkSize = 16;
     private const int HutSize = 9;
-    private const int RegionSize = 96;
+    private const int RegionSize = 256;
     private const int ChunksPerRegion = RegionSize / ChunkSize;
-    private const int RegionSpawnChancePercent = 30;
+    private const int RegionSpawnChancePercent = 25;
 
     internal static bool GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -183,11 +183,15 @@ internal static class WoodenHutGenerator
         for (int y = roofBase + 3; y <= roofBase + 5; y++)
             place(sx + 6, y, sz + 6, m.RoofValue);
 
-        // Furnished interior: crafting table, working wood stove and wall torches.
+        // Furnished interior: crafting table, stove, chest, bed and wall torches.
         if (m.CraftingTableValue != 0)
             place(sx + 2, floorY + 1, sz + 2, m.CraftingTableValue);
         if (m.StoveValue != 0)
             place(sx + 6, floorY + 1, sz + 6, m.StoveValue);
+        if (m.ChestValue != 0)
+            place(sx + 6, floorY + 1, sz + 2, m.ChestValue);
+        if (m.BedValue != 0)
+            place(sx + 2, floorY + 1, sz + 6, m.BedValue);
         if (m.TorchWestValue != 0)
             place(sx + 1, wallBottom + 1, sz + 4, m.TorchWestValue);
         if (m.TorchEastValue != 0)
@@ -215,6 +219,8 @@ internal static class WoodenHutGenerator
         int torch = FindBlockType("TorchBlock");
         int table = FindBlockType("CraftingTableBlock");
         int stove = FindBlockType("WoodStoveBlock");
+        int chest = FindBlockType("ChestBlock");
+        int bed = FindBlockType("BedBlock");
 
         if (plank <= 0) plank = log;
         if (log <= 0) log = plank;
@@ -239,7 +245,9 @@ internal static class WoodenHutGenerator
             TorchWestValue = Terrain.ReplaceData(torchValue, 1),
             TorchEastValue = Terrain.ReplaceData(torchValue, 3),
             CraftingTableValue = Terrain.MakeBlockValue(table),
-            StoveValue = stove > 0 ? Terrain.MakeBlockValue(stove) : 0
+            StoveValue = stove > 0 ? Terrain.MakeBlockValue(stove) : 0,
+            ChestValue = chest > 0 ? Terrain.MakeBlockValue(chest) : 0,
+            BedValue = bed > 0 ? Terrain.MakeBlockValue(bed) : 0
         };
         return true;
     }
@@ -362,5 +370,7 @@ internal static class WoodenHutGenerator
         public int TorchEastValue;
         public int CraftingTableValue;
         public int StoveValue;
+        public int ChestValue;
+        public int BedValue;
     }
 }
