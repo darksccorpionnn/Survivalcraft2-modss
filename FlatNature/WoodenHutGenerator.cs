@@ -216,42 +216,41 @@ internal static class WoodenHutGenerator
         int sx, int floorY, int sz, HutMaterials m,
         Action<int, int, int, int> place)
     {
+        // The garden uses the existing terrain surface. Moist compost replaces
+        // the surface block so its top is exactly level with the surrounding ground.
         int gx = sx + 9;
         int gz = sz + 2;
+        int groundY = floorY - 1;
+        const int gardenSize = 7;
 
-        // Fenced vegetable garden beside the cottage.
+        // Wooden fence forms a complete perimeter, one block above the ground.
         if (m.FenceValue != 0)
         {
-            for (int x = 0; x < 6; x++)
+            for (int x = 0; x < gardenSize; x++)
             {
-                place(gx + x, floorY, gz, m.FenceValue);
-                place(gx + x, floorY, gz + 6, m.FenceValue);
+                place(gx + x, groundY + 1, gz, m.FenceValue);
+                place(gx + x, groundY + 1, gz + gardenSize - 1, m.FenceValue);
             }
-            for (int z = 1; z < 6; z++)
+            for (int z = 1; z < gardenSize - 1; z++)
             {
-                place(gx, floorY, gz + z, m.FenceValue);
-                place(gx + 5, floorY, gz + z, m.FenceValue);
+                place(gx, groundY + 1, gz + z, m.FenceValue);
+                place(gx + gardenSize - 1, groundY + 1, gz + z, m.FenceValue);
             }
         }
 
-        // Tilled crop rows separated by an irrigation channel.
-        for (int x = 1; x <= 4; x++)
-        for (int z = 1; z <= 5; z++)
+        // Moist compost is a ground-level surface block; no extra dirt,
+        // farmland, water channel, crops, or raised soil is placed.
+        if (m.MoistCompostValue != 0)
         {
-            if (z == 3)
-                place(gx + x, floorY, gz + z, m.WaterValue != 0 ? m.WaterValue : m.PathValue);
-            else
-            {
-                place(gx + x, floorY, gz + z, m.FarmlandValue != 0 ? m.FarmlandValue : m.DirtValue);
-                if (m.CropValue != 0)
-                    place(gx + x, floorY + 1, gz + z, m.CropValue);
-            }
+            for (int x = 1; x < gardenSize - 1; x++)
+            for (int z = 1; z < gardenSize - 1; z++)
+                place(gx + x, groundY, gz + z, m.MoistCompostValue);
         }
 
-        // Stone path from the front door to the garden entrance.
+        // Keep a simple stone approach from the cottage door to the garden.
         for (int z = -1; z <= 5; z++)
             place(sx + 4, floorY, sz + z, m.PathValue);
-        for (int x = sx + 4; x <= gx + 2; x++)
+        for (int x = sx + 4; x <= gx + 3; x++)
             place(x, floorY, sz + 5, m.PathValue);
     }
 
@@ -278,10 +277,14 @@ internal static class WoodenHutGenerator
         int stove = FindBlockType("WoodStoveBlock");
         int chest = FindBlockType("ChestBlock");
         int bed = FindBlockType("BedBlock");
-        int fence = FindBlockType("FenceBlock");
-        int farmland = FindBlockType("FarmlandBlock");
-        int crop = FindBlock("Wheat", "WheatCrop", "Crop");
-        int water = FindBlockType("WaterBlock");
+        int fence = FindBlock("WoodenFence", "WoodFence", "WoodenFenceBlock");
+        if (fence <= 0)
+            fence = FindBlockType("WoodenFenceBlock");
+        if (fence <= 0)
+            fence = FindBlockType("FenceBlock");
+        int moistCompost = FindBlock("MoistCompost", "MoistCompostBlock");
+        if (moistCompost <= 0)
+            moistCompost = FindBlockType("MoistCompostBlock");
         int path = FindBlock("Gravel", "Cobblestone", "Stone");
         int ridge = FindBlock("StoneBrickStairs", "StoneStairs", "Cobblestone");
         int trim = FindBlock("StoneBricks", "StoneBrick", "Cobblestone");
@@ -303,11 +306,8 @@ internal static class WoodenHutGenerator
         m = new HutMaterials
         {
             PlankValue = Terrain.MakeBlockValue(plank),
-            DirtValue = Terrain.MakeBlockValue(FindBlock("Dirt", "Soil") > 0 ? FindBlock("Dirt", "Soil") : plank),
             FenceValue = fence > 0 ? Terrain.MakeBlockValue(fence) : 0,
-            FarmlandValue = farmland > 0 ? Terrain.MakeBlockValue(farmland) : 0,
-            CropValue = crop > 0 ? Terrain.MakeBlockValue(crop) : 0,
-            WaterValue = water > 0 ? Terrain.MakeBlockValue(water) : 0,
+            MoistCompostValue = moistCompost > 0 ? Terrain.MakeBlockValue(moistCompost) : 0,
             PathValue = Terrain.MakeBlockValue(path > 0 ? path : stone),
             RidgeValue = Terrain.MakeBlockValue(ridge > 0 ? ridge : stone),
             TrimValue = Terrain.MakeBlockValue(trim > 0 ? trim : stone),
@@ -455,11 +455,8 @@ internal static class WoodenHutGenerator
     private struct HutMaterials
     {
         public int PlankValue;
-        public int DirtValue;
         public int FenceValue;
-        public int FarmlandValue;
-        public int CropValue;
-        public int WaterValue;
+        public int MoistCompostValue;
         public int PathValue;
         public int RidgeValue;
         public int TrimValue;
