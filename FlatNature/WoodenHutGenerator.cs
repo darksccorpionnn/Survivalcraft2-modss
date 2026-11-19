@@ -37,8 +37,8 @@ internal static class WoodenHutGenerator
             return false;
 
         // Keep the full 9x9 house inside the owning 16x16 chunk.
-        int startX = 3 + (int)((hash >> 24) % 5u);
-        int startZ = 3 + (int)((Hash(context.Seed, regionX, regionZ, 7321) >> 8) % 5u);
+        int startX = 1 + (int)((hash >> 24) % 2u);
+        int startZ = 1 + (int)((Hash(context.Seed, regionX, regionZ, 7321) >> 8) % 2u);
         int groundY = FindFlatGround(chunk, startX, startZ, context.WaterIndex);
         if (groundY < 2 || groundY > 243 ||
             !CanPlace(chunk, startX, startZ, groundY, context.WaterIndex))
@@ -46,6 +46,8 @@ internal static class WoodenHutGenerator
 
         BuildHut(
             startX, groundY + 1, startZ, materials,
+            (x, y, z, value) => PutChunk(chunk, x, y, z, value));
+        BuildGardenAndPath(startX, groundY + 1, startZ, materials,
             (x, y, z, value) => PutChunk(chunk, x, y, z, value));
 
         Console.WriteLine("[FlatNature] Wooden cottage generated at " +
@@ -95,6 +97,8 @@ internal static class WoodenHutGenerator
 
         BuildHut(
             startX, anchorY, startZ, materials,
+            (x, y, z, value) => PutWorld(terrain, x, y, z, value));
+        BuildGardenAndPath(startX, anchorY, startZ, materials,
             (x, y, z, value) => PutWorld(terrain, x, y, z, value));
         return true;
     }
@@ -170,13 +174,19 @@ internal static class WoodenHutGenerator
             place(sx + 4, wallBottom + 1, sz, m.DoorValue);
         }
 
-        // Thick stone gable roof, with ridge running from front to rear.
+        // Layered stone gable roof with broad eaves and a raised ridge.
         for (int x = 0; x < HutSize; x++)
         {
             int rise = 4 - Math.Abs(4 - x);
             int roofY = roofBase + rise;
-            for (int z = 0; z < HutSize; z++)
+            for (int z = -1; z <= HutSize; z++)
                 place(sx + x, roofY, sz + z, m.RoofValue);
+        }
+        for (int z = 0; z < HutSize; z++)
+        {
+            place(sx + 4, roofBase + 4, sz + z, m.RidgeValue);
+            place(sx + 1, wallTop + 1, sz + z, m.TrimValue);
+            place(sx + 7, wallTop + 1, sz + z, m.TrimValue);
         }
 
         // Stone chimney aligned directly above the indoor wood stove.
@@ -196,6 +206,49 @@ internal static class WoodenHutGenerator
             place(sx + 1, wallBottom + 1, sz + 4, m.TorchWestValue);
         if (m.TorchEastValue != 0)
             place(sx + 7, wallBottom + 1, sz + 4, m.TorchEastValue);
+    }
+
+    private static void BuildGardenAndPath(
+        int sx, int floorY, int sz, HutMaterials m,
+        Action<int, int, int, int> place)
+    {
+        int gx = sx + 9;
+        int gz = sz + 2;
+
+        // Fenced vegetable garden beside the cottage.
+        if (m.FenceValue != 0)
+        {
+            for (int x = 0; x < 6; x++)
+            {
+                place(gx + x, floorY, gz, m.FenceValue);
+                place(gx + x, floorY, gz + 6, m.FenceValue);
+            }
+            for (int z = 1; z < 6; z++)
+            {
+                place(gx, floorY, gz + z, m.FenceValue);
+                place(gx + 5, floorY, gz + z, m.FenceValue);
+            }
+        }
+
+        // Tilled crop rows separated by an irrigation channel.
+        for (int x = 1; x <= 4; x++)
+        for (int z = 1; z <= 5; z++)
+        {
+            if (z == 3)
+                place(gx + x, floorY, gz + z, m.WaterValue != 0 ? m.WaterValue : m.PathValue);
+            else
+            {
+                place(gx + x, floorY, gz + z, m.FarmlandValue != 0 ? m.FarmlandValue : m.DirtValue);
+                if (m.CropValue != 0)
+                    place(gx + x, floorY + 1, gz + z, m.CropValue);
+            }
+        }
+
+        // Stone path from the front door to the garden entrance.
+        for (int z = -1; z <= 5; z++)
+            place(sx + 4, floorY, sz + z, m.PathValue);
+        for (int x = sx + 4; x <= gx + 2; x++)
+            place(x, floorY, sz + 5, m.PathValue);
     }
 
     private static bool TryGetMaterials(out HutMaterials m)
@@ -221,6 +274,15 @@ internal static class WoodenHutGenerator
         int stove = FindBlockType("WoodStoveBlock");
         int chest = FindBlockType("ChestBlock");
         int bed = FindBlockType("BedBlock");
+        int fence = FindBlockType("FenceBlock");
+        int farmland = FindBlockType("FarmlandBlock");
+        int crop = FindBlock("Wheat", "WheatCrop", "Crop");
+        int water = FindBlockType("WaterBlock");
+        int path = FindBlock("Gravel", "Cobblestone", "Stone");
+        int ridge = FindBlock("StoneBrickStairs", "StoneStairs", "Cobblestone");
+        int trim = FindBlock("StoneBricks", "StoneBrick", "Cobblestone");
+        int bookcase = FindBlockType("BookshelfBlock");
+        int flowerPot = FindBlockType("FlowerPotBlock");
 
         if (plank <= 0) plank = log;
         if (log <= 0) log = plank;
@@ -237,6 +299,16 @@ internal static class WoodenHutGenerator
         m = new HutMaterials
         {
             PlankValue = Terrain.MakeBlockValue(plank),
+            DirtValue = Terrain.MakeBlockValue(FindBlock("Dirt", "Soil") > 0 ? FindBlock("Dirt", "Soil") : plank),
+            FenceValue = fence > 0 ? Terrain.MakeBlockValue(fence) : 0,
+            FarmlandValue = farmland > 0 ? Terrain.MakeBlockValue(farmland) : 0,
+            CropValue = crop > 0 ? Terrain.MakeBlockValue(crop) : 0,
+            WaterValue = water > 0 ? Terrain.MakeBlockValue(water) : 0,
+            PathValue = Terrain.MakeBlockValue(path > 0 ? path : stone),
+            RidgeValue = Terrain.MakeBlockValue(ridge > 0 ? ridge : stone),
+            TrimValue = Terrain.MakeBlockValue(trim > 0 ? trim : stone),
+            BookcaseValue = bookcase > 0 ? Terrain.MakeBlockValue(bookcase) : 0,
+            FlowerPotValue = flowerPot > 0 ? Terrain.MakeBlockValue(flowerPot) : 0,
             LogValue = Terrain.MakeBlockValue(log),
             StoneValue = Terrain.MakeBlockValue(stone),
             RoofValue = Terrain.MakeBlockValue(stone),
@@ -361,6 +433,16 @@ internal static class WoodenHutGenerator
     private struct HutMaterials
     {
         public int PlankValue;
+        public int DirtValue;
+        public int FenceValue;
+        public int FarmlandValue;
+        public int CropValue;
+        public int WaterValue;
+        public int PathValue;
+        public int RidgeValue;
+        public int TrimValue;
+        public int BookcaseValue;
+        public int FlowerPotValue;
         public int LogValue;
         public int StoneValue;
         public int RoofValue;
