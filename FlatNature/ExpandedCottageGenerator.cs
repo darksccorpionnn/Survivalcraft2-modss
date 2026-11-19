@@ -135,21 +135,32 @@ internal static class ExpandedCottageGenerator
         put(5,floorY+1,1,d);
         put(5,floorY+2,1,d);
 
-        // Cottage-style pitched roof, continuous across the full house width.
+        // Fully filled pitched roof: build the entire triangular roof volume,
+        // not just the outer ridge line. This closes the open gable seen in-game.
         int roofBase=floorY+4;
         for (int x=0;x<HouseWidth;x++)
         {
             int rise=5-Math.Abs(5-x);
             int roofY=roofBase+rise;
+            for (int y=roofBase;y<=roofY;y++)
             for (int z=0;z<=11;z++)
-                put(x,roofY,z,s);
+                put(x,y,z,s);
         }
-        for (int z=1;z<=10;z++)
+
+        // Close both triangular gable ends beneath the roof with matching planks.
+        for (int x=1;x<HouseWidth-1;x++)
         {
-            put(5,roofBase+5,z,l);
-            put(1,roofBase+1,z,s);
-            put(9,roofBase+1,z,s);
+            int rise=5-Math.Abs(5-x);
+            for (int y=roofBase;y<roofBase+rise;y++)
+            {
+                put(x,y,0,p);
+                put(x,y,11,p);
+            }
         }
+
+        // Timber ridge beam runs the full length of the roof.
+        for (int z=0;z<=11;z++)
+            put(5,roofBase+5,z,l);
 
         // Separate room furnishings: living/work room and bedroom.
         if (table>0) put(2,floorY+1,3,Terrain.MakeBlockValue(table));
