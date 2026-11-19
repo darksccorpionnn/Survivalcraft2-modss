@@ -34,11 +34,11 @@ internal static class WoodenHutGenerator
         // Keep the complete 7x7 hut inside this chunk. No cross-chunk writes.
         int startX = 4;
         int startZ = 4;
-        int groundY = FindFlatGround(chunk, startX, startZ);
+        int groundY = FindFlatGround(chunk, startX, startZ, context.WaterIndex);
         if (groundY < 2 || groundY > 235)
             return;
 
-        if (!CanPlace(chunk, startX, startZ, groundY))
+        if (!CanPlace(chunk, startX, startZ, groundY, context.WaterIndex))
             return;
 
         BuildHut(chunk, startX, startZ, groundY, plankIndex, logIndex, glassIndex);
@@ -49,7 +49,7 @@ internal static class WoodenHutGenerator
             (chunk.Origin.X + startX) + "," + groundY + "," + (chunk.Origin.Y + startZ));
     }
 
-    private static int FindFlatGround(TerrainChunk chunk, int startX, int startZ)
+    private static int FindFlatGround(TerrainChunk chunk, int startX, int startZ, int waterIndex)
     {
         int ground = -1;
         for (int x = startX; x < startX + HutSize; x++)
@@ -59,7 +59,7 @@ internal static class WoodenHutGenerator
             while (y > 1 && Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) == 0)
                 y--;
 
-            if (y < 2)
+            if (y < 2 || (waterIndex > 0 && Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) == waterIndex))
                 return -1;
             if (ground < 0)
                 ground = y;
@@ -69,13 +69,13 @@ internal static class WoodenHutGenerator
         return ground;
     }
 
-    private static bool CanPlace(TerrainChunk chunk, int startX, int startZ, int groundY)
+    private static bool CanPlace(TerrainChunk chunk, int startX, int startZ, int groundY, int waterIndex)
     {
         for (int x = startX; x < startX + HutSize; x++)
         for (int z = startZ; z < startZ + HutSize; z++)
         {
             int groundContents = Terrain.ExtractContents(chunk.GetCellValueFast(x, groundY, z));
-            if (groundContents == 0 || groundContents == 18) // never build over air or water
+            if (groundContents == 0 || (waterIndex > 0 && groundContents == waterIndex)) // never build over air or water
                 return false;
 
             for (int y = groundY + 1; y <= groundY + 6; y++)
