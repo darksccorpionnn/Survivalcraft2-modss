@@ -7,13 +7,14 @@ namespace Game;
 
 /// <summary>
 /// Dedicated torch behavior for BlueTorchBlock.
-/// The native torch flame is replaced by a blue flame and a softer,
-/// wider blue particle layer to create a visible glow around the torch.
+/// It keeps the blue flame, adds native soft-blue glow sprites and registers
+/// the torch as a local color source for terrain vertex tinting.
 /// </summary>
 public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
 {
     private SubsystemTerrain m_terrain;
-    private readonly Dictionary<Point3, FireParticleSystem> m_glowParticleSystemsByCell = new();
+    private SubsystemGlow m_subsystemGlow;
+    private readonly Dictionary<Point3, GlowPoint[]> m_glowPointsByCell = new();
 
     public override int[] HandledBlocks
     {
@@ -28,6 +29,7 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
     {
         base.Load(valuesDictionary);
         m_terrain = Project.FindSubsystem<SubsystemTerrain>(true);
+        m_subsystemGlow = Project.FindSubsystem<SubsystemGlow>(true);
     }
 
     public override void OnBlockAdded(int value, int oldValue, int x, int y, int z)
@@ -53,23 +55,21 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
 
     public override void OnChunkDiscarding(TerrainChunk chunk)
     {
-        // Remove only the extra glow systems belonging to this discarded chunk.
+        // Remove the extra glow visuals and tint registrations for this chunk.
         List<Point3> cellsToRemove = new();
-        foreach (KeyValuePair<Point3, FireParticleSystem> pair in m_glowParticleSystemsByCell)
+        foreach (Point3 cell in m_glowPointsByCell.Keys)
         {
-            Point3 cell = pair.Key;
-            if (cell.X >= chunk.BoundingBox.Min.X && cell.X < chunk.BoundingBox.Max.X &&
-                cell.Z >= chunk.BoundingBox.Min.Z && cell.Z < chunk.BoundingBox.Max.Z)
+            if (cell.X >= chunk.Origin.X && cell.X < chunk.Origin.X + TerrainChunk.Size &&
+                cell.Z >= chunk.Origin.Y && cell.Z < chunk.Origin.Y + TerrainChunk.Size)
             {
-                m_subsystemParticles?.RemoveParticleSystem(pair.Value, false);
                 cellsToRemove.Add(cell);
             }
         }
 
         foreach (Point3 cell in cellsToRemove)
-            m_glowParticleSystemsByCell.Remove(cell);
+            RemoveGlowForCell(cell);
 
-        // The inherited cleanup removes the regular blue flame system.
+        // Let the native behavior clean up the blue flame particle systems.
         base.OnChunkDiscarding(chunk);
     }
 
@@ -135,22 +135,35 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
         m_particleSystemsByCell[cell] = fire;
         m_subsystemParticles.AddParticleSystem(fire, false);
 
-        // A larger, low-opacity blue particle layer creates a soft aura.
-        // It is separate from the sharp flame so the flame remains readable.
-        BlueGlowParticleSystem glow = new BlueGlowParticleSystem(position, 0.52f, 24f);
-        m_glowParticleSystemsByCell[cell] = glow;
-        m_subsystemParticles.AddParticleSystem(glow, false);
+        // Two crossed round glow planes keep the soft blue aura visible from
+        // both sides of a wall-mounted torch and from different viewing angles.
+        GlowPoint first = CreateGlowPoint(position, Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ);
+        GlowPoint second = CreateGlowPoint(position, Vector3.UnitZ, Vector3.UnitY, Vector3.UnitX);
+        m_glowPointsByCell[cell] = new[] { first, second };
+
+        // The terrain-vertex hook adds a local blue cast to nearby block faces.
+        BlueTorchTerrainLightPatch.Register(cell, new Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
+    }
+
+    private GlowPoint CreateGlowPoint(Vector3 position, Vector3 right, Vector3 up, Vector3 forward)
+    {
+        GlowPoint glow = m_subsystemGlow.AddGlowPoint();
+        glow.Position = position;
+        glow.Right = right;
+        glow.Up = up;
+        glow.Forward = forward;
+        glow.Color = new Color(55, 145, 255, 92);
+        glow.Size = 0.40f;
+        glow.FarSize = 0.62f;
+        glow.FarDistance = 12f;
+        glow.Type = GlowPointType.Round;
+        return glow;
     }
 
     private void RemoveBlueTorch(int x, int y, int z)
     {
         Point3 cell = new Point3(x, y, z);
-
-        if (m_glowParticleSystemsByCell.TryGetValue(cell, out FireParticleSystem glow))
-        {
-            m_subsystemParticles?.RemoveParticleSystem(glow, false);
-            m_glowParticleSystemsByCell.Remove(cell);
-        }
+        RemoveGlowForCell(cell);
 
         if (m_particleSystemsByCell == null)
             return;
@@ -160,5 +173,18 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
             m_subsystemParticles?.RemoveParticleSystem(fire, false);
             m_particleSystemsByCell.Remove(cell);
         }
+    }
+
+    private void RemoveGlowForCell(Point3 cell)
+    {
+        if (m_glowPointsByCell.TryGetValue(cell, out GlowPoint[] glows))
+        {
+            foreach (GlowPoint glow in glows)
+                m_subsystemGlow?.RemoveGlowPoint(glow);
+
+            m_glowPointsByCell.Remove(cell);
+        }
+
+        BlueTorchTerrainLightPatch.Unregister(cell);
     }
 }
