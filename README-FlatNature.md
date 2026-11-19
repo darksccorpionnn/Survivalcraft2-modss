@@ -39,3 +39,12 @@ Copy the generated `FlatNature.scmod` into:
 `/storage/emulated/0/Download/Survivalcraft/Mods/`
 
 GitHub Actions builds the DLL and packages the mod. A successful build is not the same as in-game verification.
+
+
+## Wooden structures (0.2.20)
+- New Flat Nature chunks can receive a deterministic 7×7 wooden hut when a clear, level footprint is found.
+- The hut generator keeps its footprint inside a single 16×16 chunk, preventing partial structures at chunk edges.
+- The **Ahşap Kulübe Kiti** block can also be crafted and placed manually. It builds a centered hut only when the full 7×7 footprint is level, solid, dry and clear.
+- Manual placement uses `SubsystemTerrain.ChangeCell` so terrain lighting and chunk geometry are refreshed.
+- Automatic huts are generated only in new Flat Nature worlds protected by the existing world marker. The manual kit can be used in any world where the mod is loaded.
+- A build success is not an in-game test; verify automatic placement in a newly created Flat Nature world and manual placement in a clear area.
