@@ -75,7 +75,7 @@ internal static class VillageGenerator
                 int sx = hx - chunk.Origin.X;
                 int sz = hz - chunk.Origin.Y;
                 if (sx<0 || sx+HouseSize>16 || sz<0 || sz+HouseSize>16) continue;
-                int ground = FindHouseGround(chunk,sx,sz,context.WaterIndex);
+                int ground = FindHouseGround(chunk,sx,sz,context);
                 if (ground<2 || ground>238 || !CanPlaceHouse(chunk,sx,sz,ground,context.WaterIndex)) continue;
                 BuildHouse(chunk,sx,ground+1,sz,plankValue,logValue,roadValue,glassValue,doorValue,context);
                 changed = true;
@@ -217,18 +217,25 @@ internal static class VillageGenerator
         }
     }
 
-    private static int FindHouseGround(TerrainChunk c,int sx,int sz,int water)
+    private static int FindHouseGround(TerrainChunk c,int sx,int sz,FlatNatureWorldContext ctx)
     {
         int min=999,max=0;
         for(int x=sx;x<sx+9;x++) for(int z=sz;z<sz+9;z++)
         {
-            int y=Surface(c,x,z),v=c.GetCellValueFast(x,y,z),id=Terrain.ExtractContents(v);
-            if(y<2||id==water) return -1;
-            Block b=id>0&&id<BlocksManager.Blocks.Length?BlocksManager.Blocks[id]:null;
+            int y=255;
+            while(y>1)
+            {
+                int id=Terrain.ExtractContents(c.GetCellValueFast(x,y,z));
+                if(id==ctx.GrassIndex||id==ctx.DirtIndex||id==ctx.SandIndex) break;
+                y--;
+            }
+            int v=c.GetCellValueFast(x,y,z),idAtGround=Terrain.ExtractContents(v);
+            if(y<2||idAtGround==ctx.WaterIndex) return -1;
+            Block b=idAtGround>0&&idAtGround<BlocksManager.Blocks.Length?BlocksManager.Blocks[idAtGround]:null;
             if(b==null||!b.IsCollidable_(v)) return -1;
             min=Math.Min(min,y);max=Math.Max(max,y);
         }
-        return max-min<=2?max:-1;
+        return max-min<=3?max:-1;
     }
 
     private static bool CanPlaceHouse(TerrainChunk c,int sx,int sz,int ground,int water)
@@ -237,8 +244,11 @@ internal static class VillageGenerator
         {
             int y=Surface(c,x,z),id=Terrain.ExtractContents(c.GetCellValueFast(x,y,z));
             if(y<ground-2||y>ground||id==water) return false;
+            // Clear pre-existing grassland trees and shrubs from the house footprint
+            // so vegetation cannot randomly suppress one of the eight village homes.
             for(int yy=y+1;yy<=ground+12;yy++)
-                if(Terrain.ExtractContents(c.GetCellValueFast(x,yy,z))!=0) return false;
+                if(Terrain.ExtractContents(c.GetCellValueFast(x,yy,z))!=0)
+                    c.SetCellValueFast(x,yy,z,0);
         }
         return true;
     }
