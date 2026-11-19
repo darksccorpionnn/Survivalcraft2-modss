@@ -117,6 +117,8 @@ internal static class FlatNatureGenerator
         // Structures are generated after terrain and vegetation so they sit on the finished surface.
         if (WoodenHutGenerator.GenerateChunk(chunk, context))
             changed = true;
+        if (GrandHouseGenerator.GenerateChunk(chunk, context))
+            changed = true;
 
         if (changed)
         {
