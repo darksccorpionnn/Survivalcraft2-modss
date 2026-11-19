@@ -16,6 +16,14 @@ public sealed class WoodenHutKitBlock : TorchBlock
         int value,
         TerrainRaycastResult raycastResult)
     {
+        // A hut needs a ground anchor; reject wall and ceiling placement.
+        if (raycastResult.CellFace.Face != 4)
+        {
+            BlockPlacementData rejected = default;
+            rejected.CellFace = raycastResult.CellFace;
+            return rejected;
+        }
+
         BlockPlacementData placement = base.GetPlacementValue(
             subsystemTerrain, componentMiner, value, raycastResult);
 
