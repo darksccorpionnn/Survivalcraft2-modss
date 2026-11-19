@@ -13,8 +13,8 @@ namespace Game;
 /// </summary>
 internal static class BlueTorchTerrainLightPatch
 {
-    private const float LightRadius = 8.0f;
-    private const float MaximumTintStrength = 0.96f;
+    private const float LightRadius = 4.8f;
+    private const float MaximumTintStrength = 0.72f;
 
     private static readonly object s_sync = new();
     private static SubsystemTerrain s_terrain;
@@ -175,7 +175,7 @@ internal static class BlueTorchTerrainLightPatch
                 continue;
 
             float falloff = 1f - MathF.Sqrt(distanceSquared) / LightRadius;
-            float strength = falloff * (0.35f + 0.65f * falloff) * MaximumTintStrength;
+            float strength = falloff * falloff * MaximumTintStrength;
             if (strength > bestStrength)
                 bestStrength = strength;
         }
@@ -186,8 +186,8 @@ internal static class BlueTorchTerrainLightPatch
     private static Color ApplyBlueTint(Color original, float strength)
     {
         // Preserve texture detail while reducing red/green and raising blue.
-        float red = original.R * (1f - 0.88f * strength);
-        float green = original.G * (1f - 0.92f * strength);
+        float red = original.R * (1f - 0.72f * strength);
+        float green = original.G * (1f - 0.42f * strength);
         float blue = original.B + (255f - original.B) * (0.62f * strength);
 
         return new Color(
