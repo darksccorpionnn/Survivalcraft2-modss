@@ -9,12 +9,9 @@ namespace Game;
 /// It preserves the vanilla particle positions and block-support rules,
 /// but uses BlueFireParticleSystem for the visible flame.
 /// </summary>
-public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior, IUpdateable
+public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
 {
     private SubsystemTerrain m_terrain;
-    private float m_glowTimer;
-
-    public int UpdateOrder => 0;
 
     public override int[] HandledBlocks
     {
@@ -29,32 +26,6 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior, IUpdat
     {
         base.Load(valuesDictionary);
         m_terrain = Project.FindSubsystem<SubsystemTerrain>(true);
-    }
-
-    public void Update(float dt)
-    {
-        if (m_subsystemParticles == null || m_particleSystemsByCell == null || m_particleSystemsByCell.Count == 0)
-            return;
-
-        m_glowTimer -= dt;
-        if (m_glowTimer > 0f)
-            return;
-
-        // A tinted, soft billboard is emitted continuously around each active blue flame.
-        // This creates a visible blue halo even though native terrain light is monochrome.
-        m_glowTimer = 0.55f;
-        foreach (Point3 cell in m_particleSystemsByCell.Keys)
-        {
-            int value = m_terrain.Terrain.GetCellValueFast(cell.X, cell.Y, cell.Z);
-            if (Terrain.ExtractContents(value) != BlocksManager.GetBlockIndex<BlueTorchBlock>())
-                continue;
-
-            Vector3 position = new Vector3(cell.X + 0.5f, cell.Y + 0.72f, cell.Z + 0.5f);
-            FloatingImageParticleSystem glow = new FloatingImageParticleSystem(
-                position, Vector3.Zero, new Vector2(1.15f),
-                new Color(0.12f, 0.42f, 1f, 0.42f), 0.8f, "Textures/Fire");
-            m_subsystemParticles.AddParticleSystem(glow);
-        }
     }
 
     public override void OnBlockAdded(int value, int oldValue, int x, int y, int z)
