@@ -7,5 +7,8 @@
     <MemberSubsystemTemplate Name="BlueTorchBlockBehavior" Guid="475051e0-792e-4ea8-a7bf-f2ba24aed0a0" InheritanceParent="fefb9590-4972-4893-b02a-76063611b745">
       <Parameter Name="Class" Guid="4a603daf-9aa5-449d-8943-9c2306b8bc00" Value="Game.BlueTorchBlockBehavior" Type="string"/>
     </MemberSubsystemTemplate>
+    <MemberSubsystemTemplate Name="WoodenHutKitBlockBehavior" Guid="76c20d53-b66b-4a4e-88bc-8499f9c1ce81" InheritanceParent="fefb9590-4972-4893-b02a-76063611b745">
+      <Parameter Name="Class" Guid="ea4ca2e8-fb26-40fd-a7f1-44a25b3e0870" Value="Game.WoodenHutKitBlockBehavior" Type="string"/>
+    </MemberSubsystemTemplate>
   </ProjectTemplate>
 </Mod>
