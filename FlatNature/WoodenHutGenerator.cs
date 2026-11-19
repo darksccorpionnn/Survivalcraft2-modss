@@ -179,9 +179,9 @@ internal static class WoodenHutGenerator
                 place(sx + x, roofY, sz + z, m.RoofValue);
         }
 
-        // A short stone chimney near the rear corner.
-        for (int y = roofBase + 1; y <= roofBase + 4; y++)
-            place(sx + 7, y, sz + 7, m.RoofValue);
+        // Stone chimney aligned directly above the indoor wood stove.
+        for (int y = roofBase + 3; y <= roofBase + 5; y++)
+            place(sx + 6, y, sz + 6, m.RoofValue);
 
         // Furnished interior: crafting table, working wood stove and wall torches.
         if (m.CraftingTableValue != 0)
@@ -197,8 +197,17 @@ internal static class WoodenHutGenerator
     private static bool TryGetMaterials(out HutMaterials m)
     {
         int plank = FindBlock("WoodPlanks", "Planks", "OakPlanks", "PinePlanks");
-        int log = FindBlock("OakWood", "PineWood", "Wood");
-        int stone = FindBlock("Cobblestone", "StoneBricks", "StoneBrick", "Stone");
+        int log = FindBlock("OakWood", "PineWood", "BirchWood", "AcaciaWood", "SpruceWood");
+        if (log <= 0)
+            log = FindBlockType("WoodBlock");
+        if (log <= 0)
+            log = FindBlock("Wood");
+
+        int stone = FindBlock("Cobblestone", "StoneBricks", "StoneBrick");
+        if (stone <= 0)
+            stone = FindBlockType("StoneBlock");
+        if (stone <= 0)
+            stone = FindBlock("Stone");
         int glass = FindBlock("Glass", "GlassBlock");
         int door = FindBlockType("WoodenDoorBlock");
         if (door <= 0)
