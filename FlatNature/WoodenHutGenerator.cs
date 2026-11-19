@@ -63,7 +63,7 @@ internal static class WoodenHutGenerator
             return false;
 
         int plankIndex = FindBlock("WoodPlanks", "Planks", "OakPlanks", "PinePlanks");
-        int logIndex = FindBlock("OakWood", "PineWood", "Wood");
+        int logIndex = FindBlock("OakWood", "PineWood", "WoodBlock", "Wood");
         int glassIndex = FindBlock("Glass", "GlassBlock");
         if (plankIndex <= 0)
             plankIndex = logIndex;
@@ -285,15 +285,23 @@ internal static class WoodenHutGenerator
 
     private static int FindBlock(params string[] tokens)
     {
+        // Prefer more specific names before generic substrings such as "Wood".
+        foreach (string token in tokens)
         foreach (KeyValuePair<string, int> item in BlocksManager.BlockNameToIndex)
         {
-            foreach (string token in tokens)
-            {
-                if (item.Key.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0 &&
-                    item.Value > 0)
-                    return item.Value;
-            }
+            if (item.Value > 0 &&
+                string.Equals(item.Key, token, StringComparison.OrdinalIgnoreCase))
+                return item.Value;
         }
+
+        foreach (string token in tokens)
+        foreach (KeyValuePair<string, int> item in BlocksManager.BlockNameToIndex)
+        {
+            if (item.Value > 0 &&
+                item.Key.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                return item.Value;
+        }
+
         return 0;
     }
 
