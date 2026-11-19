@@ -79,7 +79,7 @@ internal static class GrandHouseGenerator
             int side = (q==4||q==10) && windowBand ? g : p;
             if (!(q==6||q==7) || y>floorY+2)
                 put(q,y,0,front);
-            put(q,y,14,rear);
+            if (!(q==6||q==7) || y>floorY+2) put(q,y,14,rear);
             put(0,y,q,side);
             put(14,y,q,side);
         }
@@ -94,9 +94,9 @@ internal static class GrandHouseGenerator
         }
 
         // Double front doors: two adjacent two-block doorways.
-        put(6,floorY+1,0,d); put(6,floorY+2,0,d);
-        put(7,floorY+1,0,Terrain.ReplaceData(d,1));
-        put(7,floorY+2,0,Terrain.ReplaceData(d,1));
+        put(6,floorY+1,14,d); put(6,floorY+2,14,d);
+        put(7,floorY+1,14,Terrain.ReplaceData(d,1));
+        put(7,floorY+2,14,Terrain.ReplaceData(d,1));
 
         // Two rooms divided by a full-height interior wall, with a wide passage.
         for (int x=1;x<14;x++)
@@ -132,8 +132,7 @@ internal static class GrandHouseGenerator
         }
 
         // Grand front terrace, steps, and low decorative garden border.
-        for (int x=4;x<=9;x++) put(x,ground, -1,s);
-        for (int x=5;x<=8;x++) put(x,ground-1,-2,s);
+        for (int x=4;x<=9;x++) put(x,ground,15,s);
         if (fence>0)
         {
             int fv=Terrain.MakeBlockValue(fence);
