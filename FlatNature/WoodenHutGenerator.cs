@@ -11,9 +11,9 @@ internal static class WoodenHutGenerator
 {
     private const int ChunkSize = 16;
     private const int HutSize = 9;
-    private const int RegionSize = 256;
+    private const int RegionSize = 128;
     private const int ChunksPerRegion = RegionSize / ChunkSize;
-    private const int RegionSpawnChancePercent = 25;
+    private const int RegionSpawnChancePercent = 65;
 
     internal static bool GenerateChunk(TerrainChunk chunk, FlatNatureWorldContext context)
     {
@@ -34,7 +34,10 @@ internal static class WoodenHutGenerator
             return false;
 
         if (!TryGetMaterials(out HutMaterials materials))
+        {
+            Console.WriteLine("[FlatNature] Cottage skipped: required base building blocks were not found.");
             return false;
+        }
 
         // Keep the full 9x9 house inside the owning 16x16 chunk.
         int startX = 1;
@@ -44,6 +47,7 @@ internal static class WoodenHutGenerator
             !CanPlace(chunk, startX, startZ, groundY, context.WaterIndex))
             return false;
 
+        FillFoundation(chunk, startX, startZ, groundY, materials.StoneValue);
         BuildHut(
             startX, groundY + 1, startZ, materials,
             (x, y, z, value) => PutChunk(chunk, x, y, z, value));
@@ -289,7 +293,7 @@ internal static class WoodenHutGenerator
         if (stone <= 0) stone = plank;
 
         // The door is required for this design; don't silently build a doorless house.
-        if (plank <= 0 || log <= 0 || stone <= 0 || door <= 0 || torch <= 0 || table <= 0)
+        if (plank <= 0 || log <= 0 || stone <= 0)
         {
             m = default;
             return false;
@@ -326,7 +330,8 @@ internal static class WoodenHutGenerator
 
     private static int FindFlatGround(TerrainChunk chunk, int startX, int startZ, int waterIndex)
     {
-        int ground = -1;
+        int minGround = int.MaxValue;
+        int maxGround = int.MinValue;
         for (int x = startX; x < startX + 15; x++)
         for (int z = startZ; z < startZ + 9; z++)
         {
@@ -337,12 +342,12 @@ internal static class WoodenHutGenerator
             int value = chunk.GetCellValueFast(x, y, z);
             if (y < 2 || (waterIndex > 0 && Terrain.ExtractContents(value) == waterIndex))
                 return -1;
-            if (ground < 0)
-                ground = y;
-            else if (y != ground)
+            minGround = Math.Min(minGround, y);
+            maxGround = Math.Max(maxGround, y);
+            if (maxGround - minGround > 2)
                 return -1;
         }
-        return ground;
+        return maxGround;
     }
 
     private static bool CanPlace(TerrainChunk chunk, int sx, int sz, int groundY, int waterIndex)
@@ -350,9 +355,13 @@ internal static class WoodenHutGenerator
         for (int x = sx; x < sx + 15; x++)
         for (int z = sz; z < sz + 9; z++)
         {
-            int groundValue = chunk.GetCellValueFast(x, groundY, z);
+            int columnY = chunk.CalculateTopmostCellHeight(x, z);
+            while (columnY > 1 && Terrain.ExtractContents(chunk.GetCellValueFast(x, columnY, z)) == 0)
+                columnY--;
+            int groundValue = chunk.GetCellValueFast(x, columnY, z);
             int contents = Terrain.ExtractContents(groundValue);
-            if (contents <= 0 || contents >= BlocksManager.Blocks.Length ||
+            if (columnY < groundY - 2 || columnY > groundY ||
+                contents <= 0 || contents >= BlocksManager.Blocks.Length ||
                 (waterIndex > 0 && contents == waterIndex))
                 return false;
 
@@ -360,11 +369,24 @@ internal static class WoodenHutGenerator
             if (block == null || !block.IsCollidable_(groundValue))
                 return false;
 
-            for (int y = groundY + 1; y <= groundY + 10; y++)
+            for (int y = columnY + 1; y <= groundY + 10; y++)
                 if (Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) != 0)
                     return false;
         }
         return true;
+    }
+
+    private static void FillFoundation(TerrainChunk chunk, int sx, int sz, int groundY, int stoneValue)
+    {
+        for (int x = sx; x < sx + 15; x++)
+        for (int z = sz; z < sz + 9; z++)
+        {
+            int y = chunk.CalculateTopmostCellHeight(x, z);
+            while (y > 1 && Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) == 0)
+                y--;
+            for (int fillY = y + 1; fillY <= groundY; fillY++)
+                PutChunk(chunk, x, fillY, z, stoneValue);
+        }
     }
 
     private static void PutChunk(TerrainChunk chunk, int x, int y, int z, int value)
