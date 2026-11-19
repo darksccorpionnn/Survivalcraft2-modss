@@ -35,7 +35,7 @@ internal static class WoodenHutGenerator
         int startX = 4;
         int startZ = 4;
         int groundY = FindFlatGround(chunk, startX, startZ, context.WaterIndex);
-        if (groundY < 2 || groundY > 235)
+        if (groundY < 2 || groundY > 247)
             return;
 
         if (!CanPlace(chunk, startX, startZ, groundY, context.WaterIndex))
@@ -90,7 +90,7 @@ internal static class WoodenHutGenerator
             if (supportBlock == null || !supportBlock.IsCollidable_(supportValue))
                 return false;
 
-            for (int y = anchorY; y <= anchorY + 5; y++)
+            for (int y = anchorY; y <= anchorY + 6; y++)
             {
                 int value = terrain.Terrain.GetCellValue(x, y, z);
                 int contents = Terrain.ExtractContents(value);
@@ -121,10 +121,8 @@ internal static class WoodenHutGenerator
         for (int p = 0; p < HutSize; p++)
         {
             bool frontDoor = p == 3 && y <= wallBottom + 1;
-            if (frontDoor)
-                continue;
-
-            PutWorld(terrain, sx + p, y, sz, plankIndex);
+            if (!frontDoor)
+                PutWorld(terrain, sx + p, y, sz, plankIndex);
             PutWorld(terrain, sx + p, y, sz + HutSize - 1, plankIndex);
             PutWorld(terrain, sx, y, sz + p, plankIndex);
             PutWorld(terrain, sx + HutSize - 1, y, sz + p, plankIndex);
@@ -151,11 +149,13 @@ internal static class WoodenHutGenerator
 
         for (int x = 0; x < HutSize; x++)
         {
-            PutWorld(terrain, sx + x, roofY, sz + 1, plankIndex);
-            PutWorld(terrain, sx + x, roofY + 1, sz + 2, plankIndex);
-            PutWorld(terrain, sx + x, roofY + 1, sz + 3, plankIndex);
-            PutWorld(terrain, sx + x, roofY + 1, sz + 4, plankIndex);
-            PutWorld(terrain, sx + x, roofY, sz + 5, plankIndex);
+            PutWorld(terrain, sx + x, roofY, sz, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 1, sz + 1, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 2, sz + 2, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 2, sz + 3, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 2, sz + 4, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 1, sz + 5, plankIndex);
+            PutWorld(terrain, sx + x, roofY, sz + 6, plankIndex);
         }
     }
 
@@ -198,7 +198,7 @@ internal static class WoodenHutGenerator
             if (groundContents == 0 || (waterIndex > 0 && groundContents == waterIndex)) // never build over air or water
                 return false;
 
-            for (int y = groundY + 1; y <= groundY + 6; y++)
+            for (int y = groundY + 1; y <= groundY + 7; y++)
             {
                 if (Terrain.ExtractContents(chunk.GetCellValueFast(x, y, z)) != 0)
                     return false;
@@ -225,14 +225,12 @@ internal static class WoodenHutGenerator
         for (int y = wallBottom; y <= wallTop; y++)
         for (int p = 0; p < HutSize; p++)
         {
-            bool frontDoor = p >= 3 && p <= 3 && y <= wallBottom + 1;
+            bool frontDoor = p == 3 && y <= wallBottom + 1;
             if (!frontDoor)
-            {
                 Put(chunk, sx + p, y, sz, plankIndex);
-                Put(chunk, sx + p, y, sz + HutSize - 1, plankIndex);
-                Put(chunk, sx, y, sz + p, plankIndex);
-                Put(chunk, sx + HutSize - 1, y, sz + p, plankIndex);
-            }
+            Put(chunk, sx + p, y, sz + HutSize - 1, plankIndex);
+            Put(chunk, sx, y, sz + p, plankIndex);
+            Put(chunk, sx + HutSize - 1, y, sz + p, plankIndex);
         }
 
         // Corner posts.
@@ -256,14 +254,16 @@ internal static class WoodenHutGenerator
             }
         }
 
-        // Simple pitched roof with overhang-free stepped profile.
+        // Symmetric pitched roof across the full 7-block width.
         for (int x = 0; x < HutSize; x++)
         {
-            Put(chunk, sx + x, roofY, sz + 1, plankIndex);
-            Put(chunk, sx + x, roofY + 1, sz + 2, plankIndex);
-            Put(chunk, sx + x, roofY + 1, sz + 3, plankIndex);
-            Put(chunk, sx + x, roofY + 1, sz + 4, plankIndex);
-            Put(chunk, sx + x, roofY, sz + 5, plankIndex);
+            Put(chunk, sx + x, roofY, sz, plankIndex);
+            Put(chunk, sx + x, roofY + 1, sz + 1, plankIndex);
+            Put(chunk, sx + x, roofY + 2, sz + 2, plankIndex);
+            Put(chunk, sx + x, roofY + 2, sz + 3, plankIndex);
+            Put(chunk, sx + x, roofY + 2, sz + 4, plankIndex);
+            Put(chunk, sx + x, roofY + 1, sz + 5, plankIndex);
+            Put(chunk, sx + x, roofY, sz + 6, plankIndex);
         }
     }
 
