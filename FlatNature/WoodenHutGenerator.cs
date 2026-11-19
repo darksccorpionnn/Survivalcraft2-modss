@@ -49,6 +49,126 @@ internal static class WoodenHutGenerator
             (chunk.Origin.X + startX) + "," + groundY + "," + (chunk.Origin.Y + startZ));
     }
 
+
+    /// <summary>
+    /// Builds a hut centered on a placed kit. The kit occupies the center floor cell
+    /// and is replaced only after the complete 7x7 footprint has passed validation.
+    /// Uses ChangeCell so lighting, chunk invalidation and block notifications run.
+    /// </summary>
+    internal static bool TryBuildManual(
+        SubsystemTerrain terrain, int anchorX, int anchorY, int anchorZ,
+        int waterIndex, int kitIndex)
+    {
+        if (terrain == null || anchorY < 2 || anchorY > 248)
+            return false;
+
+        int plankIndex = FindBlock("WoodPlanks", "Planks", "OakPlanks", "PinePlanks");
+        int logIndex = FindBlock("OakWood", "PineWood", "Wood");
+        int glassIndex = FindBlock("Glass", "GlassBlock");
+        if (plankIndex <= 0)
+            plankIndex = logIndex;
+        if (logIndex <= 0)
+            logIndex = plankIndex;
+        if (plankIndex <= 0 || logIndex <= 0)
+            return false;
+
+        int sx = anchorX - 3;
+        int sz = anchorZ - 3;
+        int groundY = anchorY - 1;
+
+        // Require a level, solid, non-water 7x7 footprint.
+        for (int x = sx; x < sx + HutSize; x++)
+        for (int z = sz; z < sz + HutSize; z++)
+        {
+            int supportValue = terrain.Terrain.GetCellValue(x, groundY, z);
+            int supportContents = Terrain.ExtractContents(supportValue);
+            if (supportContents <= 0 || supportContents >= BlocksManager.Blocks.Length ||
+                (waterIndex > 0 && supportContents == waterIndex))
+                return false;
+
+            Block supportBlock = BlocksManager.Blocks[supportContents];
+            if (supportBlock == null || !supportBlock.IsCollidable_(supportValue))
+                return false;
+
+            for (int y = anchorY; y <= anchorY + 5; y++)
+            {
+                int value = terrain.Terrain.GetCellValue(x, y, z);
+                int contents = Terrain.ExtractContents(value);
+                bool isKitCell = x == anchorX && y == anchorY && z == anchorZ &&
+                                 contents == kitIndex;
+                if (contents != 0 && !isKitCell)
+                    return false;
+            }
+        }
+
+        BuildHutInTerrain(terrain, sx, anchorY, sz, plankIndex, logIndex, glassIndex);
+        return true;
+    }
+
+    private static void BuildHutInTerrain(
+        SubsystemTerrain terrain, int sx, int floorY, int sz,
+        int plankIndex, int logIndex, int glassIndex)
+    {
+        int wallBottom = floorY + 1;
+        int wallTop = floorY + 3;
+        int roofY = floorY + 4;
+
+        for (int x = 0; x < HutSize; x++)
+        for (int z = 0; z < HutSize; z++)
+            PutWorld(terrain, sx + x, floorY, sz + z, plankIndex);
+
+        for (int y = wallBottom; y <= wallTop; y++)
+        for (int p = 0; p < HutSize; p++)
+        {
+            bool frontDoor = p == 3 && y <= wallBottom + 1;
+            if (frontDoor)
+                continue;
+
+            PutWorld(terrain, sx + p, y, sz, plankIndex);
+            PutWorld(terrain, sx + p, y, sz + HutSize - 1, plankIndex);
+            PutWorld(terrain, sx, y, sz + p, plankIndex);
+            PutWorld(terrain, sx + HutSize - 1, y, sz + p, plankIndex);
+        }
+
+        for (int y = wallBottom; y <= roofY; y++)
+        {
+            PutWorld(terrain, sx, y, sz, logIndex);
+            PutWorld(terrain, sx + 6, y, sz, logIndex);
+            PutWorld(terrain, sx, y, sz + 6, logIndex);
+            PutWorld(terrain, sx + 6, y, sz + 6, logIndex);
+        }
+
+        if (glassIndex > 0)
+        {
+            for (int y = wallBottom + 1; y <= wallBottom + 2; y++)
+            {
+                PutWorld(terrain, sx, y, sz + 2, glassIndex);
+                PutWorld(terrain, sx, y, sz + 4, glassIndex);
+                PutWorld(terrain, sx + 6, y, sz + 2, glassIndex);
+                PutWorld(terrain, sx + 6, y, sz + 4, glassIndex);
+            }
+        }
+
+        for (int x = 0; x < HutSize; x++)
+        {
+            PutWorld(terrain, sx + x, roofY, sz + 1, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 1, sz + 2, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 1, sz + 3, plankIndex);
+            PutWorld(terrain, sx + x, roofY + 1, sz + 4, plankIndex);
+            PutWorld(terrain, sx + x, roofY, sz + 5, plankIndex);
+        }
+    }
+
+    private static void PutWorld(SubsystemTerrain terrain, int x, int y, int z, int contents)
+    {
+        if (y < 1 || y >= 255 || contents <= 0)
+            return;
+
+        int value = Terrain.MakeBlockValue(contents);
+        if (terrain.Terrain.GetCellValue(x, y, z) != value)
+            terrain.ChangeCell(x, y, z, value);
+    }
+
     private static int FindFlatGround(TerrainChunk chunk, int startX, int startZ, int waterIndex)
     {
         int ground = -1;
