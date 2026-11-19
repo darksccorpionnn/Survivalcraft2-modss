@@ -10,6 +10,11 @@
       "DisplayName": "Blue Torch",
       "Description": "A torch with animated blue fire.",
       "CRDescription": "One coal chunk and one stick. Craft at the Workbench."
+    },
+    "WoodenHutKitBlock": {
+      "DisplayName": "Wooden Hut Kit",
+      "Description": "Place on a clear, level area to build a 7×7 wooden hut.",
+      "CRDescription": "8 wooden planks and 1 stick. Craft at the Workbench."
     }
   }
 }
