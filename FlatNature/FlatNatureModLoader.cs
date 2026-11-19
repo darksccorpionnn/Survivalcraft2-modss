@@ -18,6 +18,16 @@ public sealed class FlatNatureModLoader : ModLoader
             s_harmony = new Harmony("darksccorpionnn.FlatNature.WorldMarker");
             FlatNatureWorldMarkerPatch.Install(s_harmony);
             WoodStoveFurnacePatch.Install(s_harmony);
+            try
+            {
+                BlueTorchTerrainLightPatch.Install(s_harmony);
+            }
+            catch (Exception blueLightException)
+            {
+                // A glow sprite is still available if a future API build changes
+                // the terrain geometry method signature.
+                Console.WriteLine("[FlatNature] Terrain blue tint unavailable; retaining blue glow sprites: " + blueLightException);
+            }
 
             ModsManager.RegisterHook("OnProjectLoaded", this);
             ModsManager.RegisterHook("OnLoadingFinished", this);
