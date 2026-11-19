@@ -84,6 +84,8 @@ internal static class GrandHouseGenerator
         for (int y=floorY+1;y<=floorY+4;y++)
         for (int q=0;q<SizeZ;q++)
         {
+            bool windowBand = y==floorY+2;
+            int side = (q==4||q==6) && windowBand ? g : p;
             put(0,y,q,side); put(14,y,q,side);
         }
         for (int y=floorY+1;y<=floorY+4;y++)
