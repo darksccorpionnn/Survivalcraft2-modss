@@ -152,10 +152,10 @@ public sealed class BlueTorchBlockBehavior : SubsystemTorchBlockBehavior
         glow.Right = right;
         glow.Up = up;
         glow.Forward = forward;
-        glow.Color = new Color(28, 105, 255, 175);
-        glow.Size = 0.78f;
-        glow.FarSize = 1.20f;
-        glow.FarDistance = 20f;
+        glow.Color = new Color(55, 145, 255, 92);
+        glow.Size = 0.40f;
+        glow.FarSize = 0.62f;
+        glow.FarDistance = 12f;
         glow.Type = GlowPointType.Round;
         return glow;
     }
