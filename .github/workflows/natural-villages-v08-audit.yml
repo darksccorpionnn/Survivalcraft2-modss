@@ -1,0 +1,18 @@
+name: Natural Villages v0.8 - SDK block class audit
+on:
+  push:
+    branches: [natural-villages-v0.8-stability]
+    paths:
+      - NaturalVillagesBlockAudit/**
+      - .github/workflows/natural-villages-v08-audit.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Audit stock block classes
+        run: dotnet run -c Release --project NaturalVillagesBlockAudit/NaturalVillagesBlockAudit.csproj
