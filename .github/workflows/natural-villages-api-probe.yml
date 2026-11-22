@@ -1,0 +1,25 @@
+name: Natural Villages - API 1.9.5.1 compile probe
+on:
+  push:
+    branches: [natural-villages-v0.6-build-probe]
+    paths:
+      - 'NaturalVillagesBuildProbe/**'
+      - '.github/workflows/natural-villages-api-probe.yml'
+  workflow_dispatch:
+jobs:
+  compile-probe:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: NaturalVillagesBuildProbe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore SCAPI reference package
+        run: dotnet restore NaturalVillagesBuildProbe.csproj --configfile nuget.config
+      - name: Compile API hook smoke test
+        run: dotnet build NaturalVillagesBuildProbe.csproj -c Release --no-restore
+      - name: Confirm actual DLL exists
+        run: test -s bin/Release/net10.0/NaturalVillagesBuildProbe.dll
