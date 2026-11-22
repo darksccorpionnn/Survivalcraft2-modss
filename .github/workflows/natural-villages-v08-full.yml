@@ -1,0 +1,71 @@
+name: Natural Villages v0.8 - Full build and seed regression
+on:
+  push:
+    branches: [natural-villages-v0.8-stability]
+    paths:
+      - 'NaturalVillagesBuildProbe/v08-stability-patch.py'
+      - '.github/workflows/natural-villages-v08-full.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore V0.7 source archive and apply V0.8 changes
+        run: |
+          base64 -d NaturalVillagesBuildProbe/v07-source.tar.xz.b64 | tar -xJf -
+          mv NaturalVillages-Medieval-V0.7 NaturalVillages-Medieval-V0.8
+          python3 NaturalVillagesBuildProbe/v08-stability-patch.py NaturalVillages-Medieval-V0.8
+          test "$(find NaturalVillages-Medieval-V0.8/Source -name '*.cs' | wc -l)" -eq 8
+      - name: Run 109 Python algorithm/source checks
+        working-directory: NaturalVillages-Medieval-V0.8
+        run: python3 -m unittest discover -s Tests -q
+      - name: Restore SCAPI 1.9.5.1
+        working-directory: NaturalVillages-Medieval-V0.8
+        run: dotnet restore NaturalVillagesMedieval.csproj --configfile nuget.config
+      - name: Compile actual village mod
+        working-directory: NaturalVillages-Medieval-V0.8
+        run: dotnet build NaturalVillagesMedieval.csproj -c Release --no-restore
+      - name: Runtime reflection regression for inherited seed
+        working-directory: NaturalVillages-Medieval-V0.8
+        run: dotnet run --project RuntimeProbe/SeedProbe.csproj -c Release
+      - name: Package and validate binary scmod
+        working-directory: NaturalVillages-Medieval-V0.8
+        run: |
+          test -s bin/Release/net10.0/NaturalVillagesMedieval.dll
+          python3 package_mod.py
+          python3 - <<'PY'
+          import zipfile,json
+          p='NaturalVillages-Medieval-V0.8.scmod'
+          with zipfile.ZipFile(p) as f:
+            assert f.testzip() is None
+            assert set(f.namelist())=={'modinfo.json','NaturalVillagesMedieval.dll'}
+            assert json.loads(f.read('modinfo.json'))['Version']=='0.8.0'
+            assert len(f.read('NaturalVillagesMedieval.dll'))>1024
+          print('V0.8 real compiled .scmod PASS')
+          PY
+      - name: Upload V0.8 experimental mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.8-Experimental
+          path: NaturalVillages-Medieval-V0.8/NaturalVillages-Medieval-V0.8.scmod
+          if-no-files-found: error
+      - name: Upload full mod source
+        uses: actions/upload-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.8-Source
+          path: |
+            NaturalVillages-Medieval-V0.8/Source/**
+            NaturalVillages-Medieval-V0.8/Tests/*.py
+            NaturalVillages-Medieval-V0.8/RuntimeProbe/*
+            NaturalVillages-Medieval-V0.8/NaturalVillagesMedieval.csproj
+            NaturalVillages-Medieval-V0.8/modinfo.json
+            NaturalVillages-Medieval-V0.8/nuget.config
+            NaturalVillages-Medieval-V0.8/package_mod.py
+            NaturalVillages-Medieval-V0.8/README.md
