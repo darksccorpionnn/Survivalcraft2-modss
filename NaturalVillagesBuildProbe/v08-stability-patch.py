@@ -100,10 +100,12 @@ meta.write_text(json.dumps(m,ensure_ascii=False,indent=2)+"\n")
 patch("package_mod.py","V0.7.scmod","V0.8.scmod")
 for name in ("Tests/test_v04.py","Tests/test_v05_build.py"):
     p=root/name
+    if not p.exists(): continue
     s=p.read_text().replace("'0.7.0'","'0.8.0'").replace("V0.7.scmod","V0.8.scmod")
     s=s.replace("self.assertIn('if (h < 0) return;',src)","self.assertIn('if (h < 0)',src)")
     p.write_text(s)
 
+(root/"Tests").mkdir(exist_ok=True)
 (root/"Tests"/"test_v08.py").write_text("""import pathlib
 import unittest
 
