@@ -1,0 +1,11 @@
+{
+  "Name": "Natural Villages API Compile Probe (not playable)",
+  "Version": "0.6.0-probe",
+  "ApiVersion": "1.9.5.1",
+  "ScVersion": "2.4.0.0",
+  "PackageName": "natural.villages.buildprobe",
+  "Description": "Non-world-mutating source-only compilation probe. Not a village generator.",
+  "LoadOrder": 10000,
+  "NonPersistentMod": true,
+  "GameplayImpactLevel": "Cosmetic"
+}
