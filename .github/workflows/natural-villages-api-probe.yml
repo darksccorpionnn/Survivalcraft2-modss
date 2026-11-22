@@ -19,6 +19,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Restore SCAPI reference package
         run: dotnet restore NaturalVillagesBuildProbe.csproj --configfile nuget.config
+      - name: Inspect actual SCAPI method signatures
+        run: dotnet run --project Introspect/ApiIntrospect.csproj -c Release
       - name: Compile API hook smoke test
         run: dotnet build NaturalVillagesBuildProbe.csproj -c Release --no-restore
       - name: Confirm actual DLL exists
