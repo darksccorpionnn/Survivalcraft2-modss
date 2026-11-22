@@ -14,8 +14,9 @@ namespace NaturalVillagesBuildProbe
         }
 
         public override void TerrainContentsGenerator24Initialize(
-            TerrainContentsGenerator24 generator, SubsystemTerrain subsystemTerrain)
+            ITerrainContentsGenerator terrainGenerator, SubsystemTerrain subsystemTerrain)
         {
+            if (terrainGenerator is not TerrainContentsGenerator24 generator) return;
             generator.ChunkGenerationStep4.Add(
                 new ChunkGenerationStep(1500, chunk =>
                 {
