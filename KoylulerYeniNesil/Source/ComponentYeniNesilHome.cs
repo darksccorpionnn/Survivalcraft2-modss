@@ -37,6 +37,12 @@ namespace Game
         private void LoadHomeState(ValuesDictionary values)
         {
             m_dayClock = Entity.Project.FindSubsystem<SubsystemTimeOfDay>(false);
+            if (values.GetValue<bool>("YeniNesilHasBed", false))
+            {
+                Vector3 stored = values.GetValue<Vector3>("YeniNesilBedPosition");
+                m_bedPosition = new Point3((int)stored.X, (int)stored.Y, (int)stored.Z);
+                m_hasBed = true;
+            }
             if (values.GetValue<bool>("YeniNesilHasHomeGoal", false))
             {
                 m_homeGoal = values.GetValue<Vector3>("YeniNesilHomeGoal");
@@ -47,6 +53,11 @@ namespace Game
 
         private void SaveHomeState(ValuesDictionary values)
         {
+            if (m_hasBed)
+            {
+                values.SetValue("YeniNesilHasBed", true);
+                values.SetValue("YeniNesilBedPosition", new Vector3(m_bedPosition.X, m_bedPosition.Y, m_bedPosition.Z));
+            }
             if (!m_homeKnown) return;
             values.SetValue("YeniNesilHasHomeGoal", true);
             values.SetValue("YeniNesilHomeGoal", m_homeGoal);
@@ -79,9 +90,11 @@ namespace Game
             m_returnFailures = 0;
             m_lastHomeMovePosition = m_body.Position;
             SyncNightRestAnimation(false);
-            if (!m_homeKnown || !m_homeFoundDoor)
+            if (!m_hasBed || !IsMyBedPresent() || BedClaimedByOther(m_bedPosition))
+                SearchForUnownedBed();
+            if (!m_hasBed && (!m_homeKnown || !m_homeFoundDoor))
                 SearchHomeNearOrigin();
-            LogHome("Evening return started; home door found="+m_homeFoundDoor);
+            LogHome("Evening: owns a valid bed="+m_hasBed+", door found="+m_homeFoundDoor);
         }
 
         private void WakeForMorning()
@@ -119,9 +132,14 @@ namespace Game
             if (!eveningOrNight)
             {
                 WakeForMorning();
-                // Try to find a real door in the background every minute.
-                if ((!m_homeKnown || !m_homeFoundDoor) && m_homeScanCooldown <= 0f)
-                    SearchHomeNearOrigin();
+                // Claim at most one loaded bed, recheck when removed or unassigned.
+                if (m_homeScanCooldown <= 0f)
+                {
+                    if (!m_hasBed || !IsMyBedPresent() || BedClaimedByOther(m_bedPosition))
+                        SearchForUnownedBed();
+                    if (!m_hasBed && (!m_homeKnown || !m_homeFoundDoor))
+                        SearchHomeNearOrigin();
+                }
                 return false;
             }
 
@@ -135,6 +153,15 @@ namespace Game
                 return true;
             }
 
+            if (m_hasBed && !IsMyBedPresent())
+            {
+                m_hasBed = false;
+                m_homeKnown = false;
+                m_returnAttempts = 0;
+                m_returnFailures = 0;
+                SearchForUnownedBed();
+            }
+            if (!m_hasBed && m_homeScanCooldown <= 0f) SearchForUnownedBed();
             if (!m_homeKnown) SearchHomeNearOrigin();
             if (!m_homeKnown) m_homeGoal = m_origin;
 
@@ -203,11 +230,12 @@ namespace Game
             m_hasTarget=false;
             m_returnElapsed=0f;
             SyncNightRestAnimation(true);
-            LogHome(reason+" Night rest activated (no physical bed required).");
+            LogHome(reason+" Night rest active. Bed assigned="+m_hasBed+"; actual lying animation not yet confirmed.");
         }
 
         private void SearchHomeNearOrigin()
         {
+            if (m_hasBed && IsMyBedPresent()) return;
             if(m_terrain?.Terrain==null || !m_hasOrigin)
                 return;
             m_homeScanCooldown=60f;
