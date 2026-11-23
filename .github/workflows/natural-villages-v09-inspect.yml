@@ -1,0 +1,17 @@
+name: Natural Villages v0.9 - Door and Glass API inspection
+on:
+  push:
+    branches: [natural-villages-v0.9-houses]
+    paths:
+      - NaturalVillagesBlockAudit/Detail.cs
+      - NaturalVillagesBlockAudit/Detail.csproj
+      - .github/workflows/natural-villages-v09-inspect.yml
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project NaturalVillagesBlockAudit/Detail.csproj -c Release
