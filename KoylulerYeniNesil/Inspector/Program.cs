@@ -14,7 +14,7 @@ foreach(var name in new[]{"Game.ComponentModel","Game.ComponentFrame","Game.Comp
 }
 
 // Animation controller is located in Engine, not Game.
-foreach (var t in new [] {typeof(ComponentModel).GetProperty("AnimationController").PropertyType}) {
+foreach (var t in new [] {typeof(ComponentModel).GetProperty("AnimationController").PropertyType, typeof(ComponentModel).GetProperty("AnimationController").PropertyType.GetProperty("Parameters").PropertyType}) {
  Console.WriteLine("ANIMTYPE "+t.FullName);
  foreach(var m in t.GetMethods(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.DeclaredOnly))
   Console.WriteLine("ANIMM "+m.ReturnType.Name+" "+m.Name+"("+string.Join(",",m.GetParameters().Select(p=>p.ParameterType.Name+" "+p.Name))+")");
