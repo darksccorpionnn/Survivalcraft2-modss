@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>KoylulerSocialAddon</AssemblyName>
+    <RootNamespace>Game</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SocialAddonLoader.cs" />
+    <Compile Include="VillagerBedRoamingPatched.cs" />
+    <PackageReference Include="SurvivalcraftAPI.Survivalcraft" Version="1.9.5.1" />
+  </ItemGroup>
+</Project>
