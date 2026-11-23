@@ -114,7 +114,8 @@ namespace Game
                 }
                 else
                 {
-                    m_model.LookAtOrder = m_partner.m_body.Position + new Vector3(0f, 1.25f, 0f);
+                    if (m_model != null)
+                        m_model.LookAtOrder = m_partner.m_body.Position + new Vector3(0f, 1.25f, 0f);
                     SetTalking(true);
                 }
             }
@@ -315,8 +316,7 @@ namespace Game
 
         private void SetTalking(bool talking)
         {
-            if (m_isTalking == talking && m_model?.AnimationController != null)
-                return;
+            // Animation controller can initialize after first AI tick; always sync state.
             m_isTalking = talking;
             var controller = m_model?.AnimationController;
             if (controller != null)
