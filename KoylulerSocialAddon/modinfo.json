@@ -1,0 +1,13 @@
+{
+  "Name": "Köylüler Sosyal Yaşam - Gezinme Testi",
+  "Version": "0.1.0",
+  "ApiVersion": "1.9.5.1",
+  "ScVersion": "2.4.0.0",
+  "PackageName": "darksccorpionnn.KoylulerSosyalYasam",
+  "Author": "DARK SCORPION",
+  "Description": "Non-invasive idle roaming enhancement for Köylüler Modu 0.2.14.7. It keeps work, inventory, door, bed and sleep AI untouched. Test in a new world.",
+  "LoadOrder": 10100,
+  "NonPersistentMod": true,
+  "GameplayImpactLevel": "Minor",
+  "Dependencies": {}
+}
