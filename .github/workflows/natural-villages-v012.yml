@@ -1,0 +1,77 @@
+name: Natural Villages V0.12 - Automatically Furnished Villager Beds
+on:
+  push:
+    branches: [natural-villages-v0.12-auto-beds]
+    paths:
+      - 'NaturalVillagesBuildProbe/V012/**'
+      - '.github/workflows/natural-villages-v012.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore tested complete V0.11 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.11-SOURCE
+          run-id: 45121543663
+          github-token: ${{ github.token }}
+          path: NaturalVillages-Medieval-V0.12
+      - name: Add optional bed to future village houses
+        run: python NaturalVillagesBuildProbe/V012/add_beds.py NaturalVillages-Medieval-V0.12
+      - name: Check source still includes original generation protections
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('NaturalVillages-Medieval-V0.12/Source')
+          house=(src/'MedievalHouseGenerator.cs').read_text()
+          hut=(src/'MedievalHillsideHutGenerator.cs').read_text()
+          for s in (house,hut):
+            assert 'YeniNesilBedBlock' in s
+            assert 'TryGenerate' in s
+          assert 'ClearVegetation' in house and 'ClearVegetation' in hut
+          assert house.count('if(p.Bed>0)Add(')==1
+          assert hut.count('if(bed>0)Add(')==1
+          print('V0.12 optional beds regression PASS')
+          PY
+      - name: Restore SCAPI
+        working-directory: NaturalVillages-Medieval-V0.12
+        run: dotnet restore NaturalVillagesMedieval.csproj --configfile nuget.config
+      - name: Compile
+        working-directory: NaturalVillages-Medieval-V0.12
+        run: dotnet build NaturalVillagesMedieval.csproj -c Release --no-restore
+      - name: Package and verify
+        working-directory: NaturalVillages-Medieval-V0.12
+        run: |
+          python package_mod.py
+          python - <<'PY'
+          from zipfile import ZipFile
+          import json
+          with ZipFile('NaturalVillages-Medieval-V0.12.scmod') as z:
+            assert z.testzip() is None
+            assert 'NaturalVillagesMedieval.dll' in z.namelist()
+            assert json.loads(z.read('modinfo.json'))['Version']=='0.12.0'
+          print('V0.12 compiled package PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.12-EXPERIMENTAL
+          path: NaturalVillages-Medieval-V0.12/NaturalVillages-Medieval-V0.12.scmod
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.12-SOURCE
+          path: |
+            NaturalVillages-Medieval-V0.12/Source/*.cs
+            NaturalVillages-Medieval-V0.12/Tests/*.py
+            NaturalVillages-Medieval-V0.12/NaturalVillagesMedieval.csproj
+            NaturalVillages-Medieval-V0.12/modinfo.json
+            NaturalVillages-Medieval-V0.12/README.md
+          if-no-files-found: error
