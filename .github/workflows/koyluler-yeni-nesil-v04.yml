@@ -1,0 +1,47 @@
+name: Yeni Nesil Villagers V0.4 - Bed ownership and block compile
+on:
+  push:
+    branches: [koyluler-yeni-nesil-v0.4-bed-ownership]
+    paths:
+      - 'KoylulerYeniNesil/Source/**'
+      - '.github/workflows/koyluler-yeni-nesil-v04.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Static checks (independent bed, retained roaming)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files=list(Path('KoylulerYeniNesil/Source').glob('*.cs'))
+          s='\n'.join(p.read_text() for p in files)
+          for x in ['YeniNesilBedBlock : CubeBlock','GetDefaultTexture','SearchForUnownedBed',
+                    'IsMyBedPresent','YeniNesilBedPosition','BedClaimedByOther',
+                    'TryStartConversation()','TryFindWalkTarget','DuskStart','DawnStart']:
+              assert x in s, x
+          assert 'ComponentLivingTownsVillager' not in s
+          print('V0.4 source checks passed')
+          PY
+      - name: Restore SCAPI
+        run: dotnet restore KoylulerYeniNesil/YeniNesilVillagers.csproj --configfile nuget.config
+      - name: Compile against SCAPI 1.9.5.1
+        run: dotnet build KoylulerYeniNesil/YeniNesilVillagers.csproj -c Release --no-restore
+      - name: Check compiled DLL
+        run: test -s KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.4-DLL
+          path: KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.4-SOURCES
+          path: |
+            KoylulerYeniNesil/Source/*.cs
+            KoylulerYeniNesil/YeniNesilVillagers.csproj
+          if-no-files-found: error
