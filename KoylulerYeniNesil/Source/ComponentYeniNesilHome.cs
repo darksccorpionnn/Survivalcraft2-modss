@@ -24,6 +24,7 @@ namespace Game
         private float m_returnElapsed;
         private float m_returnRetryDelay;
         private int m_returnAttempts;
+        private int m_returnFailures;
         private Vector3 m_lastHomeMovePosition;
         private int m_homeLogCount;
 
@@ -75,6 +76,7 @@ namespace Game
             m_returnElapsed = 0f;
             m_returnNoProgress = 0f;
             m_returnAttempts = 0;
+            m_returnFailures = 0;
             m_lastHomeMovePosition = m_body.Position;
             SyncNightRestAnimation(false);
             if (!m_homeKnown || !m_homeFoundDoor)
@@ -155,7 +157,7 @@ namespace Game
                 return true;
             }
 
-            if (Vector3.DistanceSquared(m_body.Position,m_lastHomeMovePosition)>0.22f)
+            if (Vector3.DistanceSquared(m_body.Position,m_lastHomeMovePosition)>0.03f)
                 m_returnNoProgress=0f;
             else
                 m_returnNoProgress+=step;
@@ -165,8 +167,9 @@ namespace Game
             if (m_path.IsStuck || m_returnNoProgress>10f || m_returnElapsed>36f)
             {
                 m_path.Stop();
-                LogHome("Route to home stalled. Attempt="+m_returnAttempts);
-                if (m_returnAttempts>=3)
+                m_returnFailures++;
+                LogHome("Route to home stalled. Failure="+m_returnFailures);
+                if (m_returnFailures>=3)
                 {
                     // Do not teleport or get stuck in a permanent retry loop.
                     BeginNightRest("Cannot reach home: resting at current safe position.");
@@ -183,7 +186,7 @@ namespace Game
 
         private void StartHomePath()
         {
-            if (m_homeGoal == default) m_homeGoal=m_origin;
+            if (!m_homeKnown) m_homeGoal=m_origin;
             m_path.SetDestination(m_homeGoal,0.9f,1.25f,1400,
                 true,false,false,null);
             m_returnAttempts++;
