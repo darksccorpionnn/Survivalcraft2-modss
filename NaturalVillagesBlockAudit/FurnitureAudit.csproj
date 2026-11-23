@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><EnableDefaultItems>false</EnableDefaultItems><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><Compile Include="FurnitureAudit.cs"/><PackageReference Include="SurvivalcraftAPI.Survivalcraft" Version="1.9.5.1"/></ItemGroup></Project>
