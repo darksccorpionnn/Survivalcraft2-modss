@@ -1,0 +1,76 @@
+name: Natural Villages V0.11 - Hillside House Rescue
+on:
+  push:
+    branches: [natural-villages-v0.11-terrain-fix]
+    paths:
+      - 'NaturalVillagesBuildProbe/V011/**'
+      - '.github/workflows/natural-villages-v011.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore last known full V0.10 source
+        uses: actions/download-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.10-SOURCE
+          run-id: 45116442250
+          github-token: ${{ github.token }}
+          path: NaturalVillages-Medieval-V0.10.1
+      - name: Reapply validated V0.10.1 Wicker Lamp update
+        run: python NaturalVillagesBuildProbe/v0101-wicker-patch.py
+      - name: Apply terrain fix and hillside cottage
+        run: |
+          mv NaturalVillages-Medieval-V0.10.1 NaturalVillages-Medieval-V0.11
+          python NaturalVillagesBuildProbe/V011/apply_v011.py NaturalVillages-Medieval-V0.11
+          test "$(find NaturalVillages-Medieval-V0.11/Source -name '*.cs' | wc -l)" -eq 10
+      - name: Run source and synthetic terrain regression tests
+        working-directory: NaturalVillages-Medieval-V0.11
+        run: python -m unittest discover -s Tests -p test_v011.py -v
+      - name: Restore SDK packages
+        working-directory: NaturalVillages-Medieval-V0.11
+        run: dotnet restore NaturalVillagesMedieval.csproj --configfile nuget.config
+      - name: Compile complete source with SCAPI 1.9.5.1
+        working-directory: NaturalVillages-Medieval-V0.11
+        run: dotnet build NaturalVillagesMedieval.csproj -c Release --no-restore
+      - name: Package real compiled DLL
+        working-directory: NaturalVillages-Medieval-V0.11
+        run: |
+          test -s bin/Release/net10.0/NaturalVillagesMedieval.dll
+          python package_mod.py
+          python - <<'PY'
+          from zipfile import ZipFile
+          import json
+          with ZipFile('NaturalVillages-Medieval-V0.11.scmod') as z:
+            assert z.testzip() is None
+            assert set(z.namelist())=={'modinfo.json','NaturalVillagesMedieval.dll'}
+            assert json.loads(z.read('modinfo.json'))['Version']=='0.11.0'
+            assert len(z.read('NaturalVillagesMedieval.dll'))>1024
+          print('V0.11 verified compiled .scmod')
+          PY
+      - name: Publish experimental mod
+        uses: actions/upload-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.11-EXPERIMENTAL
+          path: NaturalVillages-Medieval-V0.11/NaturalVillages-Medieval-V0.11.scmod
+          if-no-files-found: error
+      - name: Publish source files
+        uses: actions/upload-artifact@v4
+        with:
+          name: NaturalVillages-Medieval-V0.11-SOURCE
+          path: |
+            NaturalVillages-Medieval-V0.11/Source/**
+            NaturalVillages-Medieval-V0.11/Tests/*.py
+            NaturalVillages-Medieval-V0.11/NaturalVillagesMedieval.csproj
+            NaturalVillages-Medieval-V0.11/modinfo.json
+            NaturalVillages-Medieval-V0.11/nuget.config
+            NaturalVillages-Medieval-V0.11/package_mod.py
+            NaturalVillages-Medieval-V0.11/README.md
+          if-no-files-found: error
