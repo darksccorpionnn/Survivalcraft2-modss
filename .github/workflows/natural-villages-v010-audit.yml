@@ -1,0 +1,14 @@
+name: Natural Villages V0.10 block audit
+on:
+  push:
+    branches: [natural-villages-v0.10-compact-lit]
+    paths: ['NaturalVillagesBlockAudit/FurnitureAudit*','.github/workflows/natural-villages-v010-audit.yml']
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project NaturalVillagesBlockAudit/FurnitureAudit.csproj -c Release
