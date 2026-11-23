@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Linq;
 using Game;
 var assembly = typeof(ComponentPathfinding).Assembly;
-foreach(var name in new[]{"Game.ComponentModel","Game.ComponentFrame","Game.ComponentHumanModel","Game.AnimationController","Game.AnimationStateManager","Game.ComponentPathfinding","Game.ComponentPilot","Game.ComponentHumanModel","Game.ComponentCreatureModel","Game.ComponentBody","Game.ComponentCreature","Game.ComponentLocomotion","Game.SubsystemTerrain","Game.SubsystemTime","Game.SubsystemBodies","Game.SubsystemCreatureSpawn","Game.Component","Game.ModLoader","Game.ComponentNoEffect","Game.ComponentBehavior","Game.IUpdateable"}){
+foreach(var name in new[]{"Game.SubsystemTimeOfDay","Game.DoorBlock","Game.WoodenDoorBlock","Game.BedBlock","Game.FurnitureBlock","Game.ComponentModel","Game.ComponentFrame","Game.ComponentHumanModel","Game.AnimationController","Game.AnimationStateManager","Game.ComponentPathfinding","Game.ComponentPilot","Game.ComponentHumanModel","Game.ComponentCreatureModel","Game.ComponentBody","Game.ComponentCreature","Game.ComponentLocomotion","Game.SubsystemTerrain","Game.SubsystemTime","Game.SubsystemBodies","Game.SubsystemCreatureSpawn","Game.Component","Game.ModLoader","Game.ComponentNoEffect","Game.ComponentBehavior","Game.IUpdateable"}){
  Type t=assembly.GetType(name,false);
  if(t==null){Console.WriteLine("MISSING "+name);continue;}
  Console.WriteLine("TYPE "+name+" BASE "+t.BaseType?.FullName);
