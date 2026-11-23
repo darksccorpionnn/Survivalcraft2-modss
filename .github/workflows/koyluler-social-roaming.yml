@@ -1,0 +1,60 @@
+name: Koyluler Social Roaming - Compile and Pack
+on:
+  push:
+    branches: [koyluler-social-roam-v0.1]
+    paths:
+      - 'KoylulerSocialAddon/**'
+      - '.github/workflows/koyluler-social-roaming.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build safe roaming addon source from existing repository patch
+        run: python KoylulerSocialAddon/create_patched_roam.py
+      - name: Assert targeted hooks only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('KoylulerSocialAddon/VillagerBedRoamingPatched.cs').read_text()
+          assert '[ThreadStatic]' in s
+          assert 'ReferenceEquals(s_patrolOwner, __instance)' in s
+          assert 'TickPatrolPostfix' in s
+          assert 'return true;' in s.split('private static bool TickPatrolPrefix')[1].split('private static void TickPatrolPostfix')[0]
+          for forbidden in ('TickWorkSignRoutine','TickSleepRoutine','TickHomeReturnRoutine','TickFarmer'):
+              assert forbidden not in s
+          print('SAFE PATCH STATIC TESTS PASS')
+          PY
+      - name: Restore SCAPI packages
+        run: dotnet restore KoylulerSocialAddon/KoylulerSocialAddon.csproj --configfile nuget.config
+      - name: Compile actual mod DLL
+        run: dotnet build KoylulerSocialAddon/KoylulerSocialAddon.csproj -c Release --no-restore
+      - name: Build small independent scmod
+        run: |
+          python - <<'PY'
+          import zipfile,json,pathlib
+          base=pathlib.Path('KoylulerSocialAddon')
+          dll=base/'bin/Release/net10.0/KoylulerSocialAddon.dll'
+          assert dll.is_file() and dll.stat().st_size>1024
+          meta=base/'modinfo.json'
+          assert json.loads(meta.read_text())['Version']=='0.1.0'
+          target=base/'Koyluler-Sosyal-Yasam-0.1-TEST.scmod'
+          with zipfile.ZipFile(target,'w',compression=zipfile.ZIP_DEFLATED) as z:
+              z.write(meta,'modinfo.json');z.write(dll,'KoylulerSocialAddon.dll')
+          with zipfile.ZipFile(target) as z:
+              assert z.testzip() is None
+              assert set(z.namelist())=={'modinfo.json','KoylulerSocialAddon.dll'}
+          print('Scmod ZIP checked:',target,target.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Koyluler-Sosyal-Yasam-0.1-TEST
+          path: KoylulerSocialAddon/Koyluler-Sosyal-Yasam-0.1-TEST.scmod
+          if-no-files-found: error
