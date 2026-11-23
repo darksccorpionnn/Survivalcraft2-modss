@@ -1,0 +1,38 @@
+name: Yeni Nesil Villagers V0.2 - Social AI Compile
+on:
+  push:
+    branches: [koyluler-yeni-nesil-v0.2-social]
+    paths:
+      - 'KoylulerYeniNesil/Source/**'
+      - 'KoylulerYeniNesil/YeniNesilVillagers.csproj'
+      - '.github/workflows/koyluler-yeni-nesil-v02.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify social AI source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('KoylulerYeniNesil/Source/ComponentYeniNesilVillager.cs').read_text()
+          for t in ('SetGreeting(true)','SetGreeting(false)','m_greetingRemaining','SetTalking(true)','TryStartConversation','ComponentPathfinding'):
+              assert t in s,t
+          assert 'ComponentLivingTownsVillager' not in s
+          print('V0.2 social code checks PASS')
+          PY
+      - name: Restore SCAPI
+        run: dotnet restore KoylulerYeniNesil/YeniNesilVillagers.csproj --configfile nuget.config
+      - name: Compile
+        run: dotnet build KoylulerYeniNesil/YeniNesilVillagers.csproj -c Release --no-restore
+      - name: Validate DLL
+        run: test -s KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.2-DLL
+          path: KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+          if-no-files-found: error
