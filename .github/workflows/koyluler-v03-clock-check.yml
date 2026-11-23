@@ -1,0 +1,17 @@
+name: V0.3 Night Clock API Check
+on:
+  push:
+    branches: [koyluler-yeni-nesil-v0.3-home-cycle]
+    paths:
+      - '.github/workflows/koyluler-v03-clock-check.yml'
+  workflow_dispatch:
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Inspect SCAPI time and doors
+        run: dotnet run -c Release --project KoylulerYeniNesil/Inspector/Inspector.csproj
