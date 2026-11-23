@@ -1,0 +1,39 @@
+name: Koyluler 0.2.14.8 - Autonomous idle roaming DLL
+on:
+  push:
+    branches: [koyluler-v0.2.14.8-autonomous-roam]
+    paths:
+      - 'KoylulerAutonomousRoam/**'
+      - '.github/workflows/koyluler-autonomous-roam-02148.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify no invasive AI prefix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('KoylulerAutonomousRoam/KoylulerAutonomousRoam.cs').read_text()
+          for expected in ('UpdatePostfix','TryChooseDestination','IsValidStandingCell',
+              'SetManagedDestination','CriticalBusyFields','IsNight','IsDusk','StopManagedPath'):
+              assert expected in s, expected
+          assert 's_harmony.Patch(update, postfix:' in s
+          assert 's_harmony.Patch(update, prefix:' not in s
+          print('Autonomous idle-safe patch source verified')
+          PY
+      - name: Restore SCAPI 1.9.5.1
+        run: dotnet restore KoylulerAutonomousRoam/KoylulerAutonomousRoam.csproj --configfile nuget.config
+      - name: Build actual DLL
+        run: dotnet build KoylulerAutonomousRoam/KoylulerAutonomousRoam.csproj -c Release --no-restore
+      - name: Verify DLL
+        run: test -s KoylulerAutonomousRoam/bin/Release/net10.0/KoylulerAutonomousRoam.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Koyluler-0.2.14.8-Autonomous-Roam-DLL
+          path: KoylulerAutonomousRoam/bin/Release/net10.0/KoylulerAutonomousRoam.dll
+          if-no-files-found: error
