@@ -38,6 +38,7 @@ namespace Game
         private float m_talkCooldown = 8f;
         private float m_socialCheck;
         private float m_socialRemaining;
+        private float m_greetingRemaining;
         private ComponentYeniNesilVillager m_partner;
         private bool m_isTalking;
         private int m_logCount;
@@ -106,6 +107,7 @@ namespace Game
             if (m_partner != null)
             {
                 m_socialRemaining -= delta;
+                m_greetingRemaining = Math.Max(0f, m_greetingRemaining - delta);
                 if (m_partner.m_body == null ||
                     Vector3.DistanceSquared(m_partner.m_body.Position, m_body.Position) > 64f ||
                     m_socialRemaining <= 0f)
@@ -117,6 +119,7 @@ namespace Game
                     if (m_model != null)
                         m_model.LookAtOrder = m_partner.m_body.Position + new Vector3(0f, 1.25f, 0f);
                     SetTalking(true);
+                    SetGreeting(m_greetingRemaining > 0f);
                 }
             }
 
@@ -280,10 +283,14 @@ namespace Game
                 float duration = 3f + (float)m_random.NextDouble() * 3f;
                 m_socialRemaining = duration;
                 other.m_socialRemaining = duration;
+                m_greetingRemaining = 1.15f;
+                other.m_greetingRemaining = 1.15f;
                 StopWalking(0.5f);
                 other.StopWalking(0.5f);
                 SetTalking(true);
                 other.SetTalking(true);
+                SetGreeting(true);
+                other.SetGreeting(true);
                 if (m_logCount < 12)
                 {
                     m_logCount++;
@@ -300,6 +307,8 @@ namespace Game
             ComponentYeniNesilVillager other = m_partner;
             m_partner = null;
             m_socialRemaining = 0f;
+            m_greetingRemaining = 0f;
+            SetGreeting(false);
             m_talkCooldown = 18f + (float)m_random.NextDouble() * 14f;
             SetTalking(false);
             m_idleWait = 1f + (float)m_random.NextDouble() * 3f;
@@ -308,10 +317,19 @@ namespace Game
             {
                 other.m_partner = null;
                 other.m_socialRemaining = 0f;
+                other.m_greetingRemaining = 0f;
+                other.SetGreeting(false);
                 other.m_talkCooldown = 18f + (float)other.m_random.NextDouble() * 14f;
                 other.m_idleWait = 1f + (float)other.m_random.NextDouble() * 3f;
                 other.SetTalking(false);
             }
+        }
+
+        private void SetGreeting(bool greeting)
+        {
+            var controller = m_model?.AnimationController;
+            if (controller != null && controller.Parameters.HasParameter("IsGreeting"))
+                controller.Parameters.SetBool("IsGreeting", greeting);
         }
 
         private void SetTalking(bool talking)
