@@ -1,0 +1,52 @@
+name: Yeni Nesil Villagers V0.3 - Day Night Home Compile
+on:
+  push:
+    branches: [koyluler-yeni-nesil-v0.3-home-cycle]
+    paths:
+      - 'KoylulerYeniNesil/Source/**'
+      - '.github/workflows/koyluler-yeni-nesil-v03.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check V0.2 wandering intact and V0.3 home logic independent
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          original=Path('KoylulerYeniNesil/Source/ComponentYeniNesilVillager.cs').read_text()
+          home=Path('KoylulerYeniNesil/Source/ComponentYeniNesilHome.cs').read_text()
+          for expected in ('TryStartConversation()', 'TryFindWalkTarget', 'SetGreeting', 'SetTalking', 'm_path.SetDestination(destination'):
+            assert expected in original,expected
+          for expected in ('SubsystemTimeOfDay', 'DuskStart', 'DawnStart', 'SearchHomeNearOrigin',
+                           'DoorBlock', 'StartHomePath', 'BeginNightRest', 'WakeForMorning',
+                           'm_returnFailures>=3', 'YeniNesilHomeGoal'):
+            assert expected in home,expected
+          assert 'HandleHomeRoutine(delta)' in original
+          assert not ('ComponentLivingTownsVillager' in original+home)
+          assert original.count('public sealed partial class ComponentYeniNesilVillager')==1
+          assert home.count('public sealed partial class ComponentYeniNesilVillager')==1
+          print('V0.3 independent day/night source checks PASS')
+          PY
+      - name: Restore SCAPI dependency
+        run: dotnet restore KoylulerYeniNesil/YeniNesilVillagers.csproj --configfile nuget.config
+      - name: Compile whole AI
+        run: dotnet build KoylulerYeniNesil/YeniNesilVillagers.csproj -c Release --no-restore
+      - name: Ensure DLL generated
+        run: test -s KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.3-DLL
+          path: KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.3-SOURCE
+          path: |
+            KoylulerYeniNesil/Source/*.cs
+            KoylulerYeniNesil/YeniNesilVillagers.csproj
+          if-no-files-found: error
