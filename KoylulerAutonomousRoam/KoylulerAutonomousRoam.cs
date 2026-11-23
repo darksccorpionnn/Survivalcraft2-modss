@@ -80,7 +80,7 @@ namespace Game
             public int Successes;
             public int Logs;
             public int DiagnosticCountdown;
-            public Random Random;
+            public System.Random Random;
         }
 
         public static void Install(Harmony harmony)
@@ -177,7 +177,7 @@ namespace Game
             if (__instance == null) return;
             VillagerState state = States.GetValue(__instance, _ => new VillagerState());
             if (state.Random == null)
-                state.Random = new Random(unchecked(Environment.TickCount ^
+                state.Random = new System.Random(unchecked(Environment.TickCount ^
                     RuntimeHelpers.GetHashCode(__instance) * 1664525));
             float dt = __0;
             if (dt <= 0f || dt > 4f) dt = 0.05f;
@@ -270,7 +270,7 @@ namespace Game
 
         private static bool TryChooseDestination(
             object villager, SubsystemTerrain terrain, Vector3 position,
-            Random random, out Vector3 target)
+            System.Random random, out Vector3 target)
         {
             target = default;
             if (terrain?.Terrain == null) return false;
