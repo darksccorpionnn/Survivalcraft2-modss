@@ -11,7 +11,7 @@ namespace Game
     /// No references to LivingTowns, its private fields, or the old villager AI.
     /// First playable prototype: autonomous wandering, stuck recovery, simple social greeting.
     /// </summary>
-    public sealed class ComponentYeniNesilVillager : Component, IUpdateable
+    public sealed partial class ComponentYeniNesilVillager : Component, IUpdateable
     {
         private static readonly List<WeakReference<ComponentYeniNesilVillager>> Active =
             new List<WeakReference<ComponentYeniNesilVillager>>();
@@ -61,7 +61,8 @@ namespace Game
                 m_origin = valuesDictionary.GetValue<Vector3>("VillageOrigin");
                 m_hasOrigin = true;
             }
-            Log.Information("[YeniNesil] New autonomous villager component loaded.");
+            LoadHomeState(valuesDictionary);
+            Log.Information("[YeniNesil] V0.3 autonomous villager loaded with home-cycle component.");
         }
 
         public override void Save(ValuesDictionary valuesDictionary, EntityToIdMap entityToIdMap)
@@ -72,6 +73,7 @@ namespace Game
                 valuesDictionary.SetValue("HasVillageOrigin", true);
                 valuesDictionary.SetValue("VillageOrigin", m_origin);
             }
+            SaveHomeState(valuesDictionary);
         }
 
         public void Update(float dt)
@@ -103,6 +105,13 @@ namespace Game
             m_talkCooldown = Math.Max(0f, m_talkCooldown - delta);
             m_socialCheck -= delta;
             m_idleWait -= delta;
+
+            // Seasonal dusk-to-dawn priority; skips social and wandering only at night.
+            if (HandleHomeRoutine(delta))
+            {
+                m_tick = 0f;
+                return;
+            }
 
             if (m_partner != null)
             {
@@ -349,7 +358,7 @@ namespace Game
     {
         public override void __ModInitialize()
         {
-            Log.Information("[YeniNesil] Independent villager AI V0.1 registered. No LivingTowns.dll required.");
+            Log.Information("[YeniNesil] Independent villager AI V0.3 home routines registered. No LivingTowns.dll required.");
         }
     }
 }
