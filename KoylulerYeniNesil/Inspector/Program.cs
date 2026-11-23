@@ -2,8 +2,9 @@ using System;
 using System.Reflection;
 using System.Linq;
 using Game;
+var assembly = typeof(ComponentPathfinding).Assembly;
 foreach(var name in new[]{"Game.ComponentPathfinding","Game.ComponentPilot","Game.ComponentHumanModel","Game.ComponentCreatureModel","Game.ComponentBody","Game.ComponentCreature","Game.ComponentLocomotion","Game.SubsystemTerrain","Game.SubsystemTime","Game.SubsystemBodies","Game.SubsystemCreatureSpawn","Game.Component","Game.ModLoader","Game.ComponentNoEffect","Game.ComponentBehavior","Game.IUpdateable"}){
- Type t=AppDomain.CurrentDomain.GetAssemblies().Select(a=>a.GetType(name,false)).FirstOrDefault(x=>x!=null);
+ Type t=assembly.GetType(name,false);
  if(t==null){Console.WriteLine("MISSING "+name);continue;}
  Console.WriteLine("TYPE "+name+" BASE "+t.BaseType?.FullName);
  const BindingFlags f=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static|BindingFlags.DeclaredOnly;
