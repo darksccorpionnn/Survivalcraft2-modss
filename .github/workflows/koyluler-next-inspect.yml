@@ -1,0 +1,14 @@
+name: New Villagers SCAPI Reflection Probe
+on:
+  push:
+    branches: [koyluler-yeni-nesil-v0.1-prototype]
+    paths: ['KoylulerYeniNesil/Inspector/**','.github/workflows/koyluler-next-inspect.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run -c Release --project KoylulerYeniNesil/Inspector/Inspector.csproj -- --list
