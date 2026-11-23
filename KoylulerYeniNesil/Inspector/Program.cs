@@ -12,3 +12,12 @@ foreach(var name in new[]{"Game.ComponentModel","Game.ComponentFrame","Game.Comp
  foreach(var x in t.GetFields(f))Console.WriteLine("F "+x.FieldType.FullName+" "+x.Name);
  foreach(var m in t.GetMethods(f))Console.WriteLine("M "+m.ReturnType.FullName+" "+m.Name+"("+string.Join(",",m.GetParameters().Select(p=>p.ParameterType.Name+" "+p.Name+(p.HasDefaultValue?"="+p.DefaultValue:"")))+")");
 }
+
+// Animation controller is located in Engine, not Game.
+foreach (var t in new [] {typeof(ComponentModel).GetProperty("AnimationController").PropertyType}) {
+ Console.WriteLine("ANIMTYPE "+t.FullName);
+ foreach(var m in t.GetMethods(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.DeclaredOnly))
+  Console.WriteLine("ANIMM "+m.ReturnType.Name+" "+m.Name+"("+string.Join(",",m.GetParameters().Select(p=>p.ParameterType.Name+" "+p.Name))+")");
+ foreach(var p in t.GetProperties(BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.DeclaredOnly))
+  Console.WriteLine("ANIMP "+p.PropertyType.Name+" "+p.Name);
+}
