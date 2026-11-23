@@ -1,0 +1,48 @@
+name: Yeni Nesil Villagers V0.1 - Actual SCAPI compile
+on:
+  push:
+    branches: [koyluler-yeni-nesil-v0.1-prototype]
+    paths:
+      - 'KoylulerYeniNesil/Source/**'
+      - 'KoylulerYeniNesil/YeniNesilVillagers.csproj'
+      - '.github/workflows/koyluler-yeni-nesil-compile.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Reject accidental old AI dependency
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('KoylulerYeniNesil/Source/ComponentYeniNesilVillager.cs').read_text(encoding='utf-8')
+          assert 'ComponentLivingTownsVillager' not in source
+          assert 'TickPatrol(' not in source
+          assert 'ComponentPathfinding' in source and 'SetDestination(' in source
+          assert 'TryStartConversation' in source and 'SetTalking' in source
+          assert 'm_noProgress' in source
+          print('Independent AI source sanity checks: PASS')
+          PY
+      - name: Restore real SCAPI 1.9.5.1
+        run: dotnet restore KoylulerYeniNesil/YeniNesilVillagers.csproj --configfile nuget.config
+      - name: Build new independent AI
+        run: dotnet build KoylulerYeniNesil/YeniNesilVillagers.csproj -c Release --no-restore
+      - name: Verify binary output
+        run: test -s KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.1-COMPILED-DLL
+          path: KoylulerYeniNesil/bin/Release/net10.0/YeniNesilVillagers.dll
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YeniNesilVillagers-V0.1-SOURCE
+          path: |
+            KoylulerYeniNesil/Source/**/*.cs
+            KoylulerYeniNesil/YeniNesilVillagers.csproj
+            KoylulerYeniNesil/README-TR.md
+          if-no-files-found: error
